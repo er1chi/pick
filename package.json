@@ -1,0 +1,46 @@
+{
+  "name": "pick",
+  "private": true,
+  "type": "module",
+  "module": "index.tsx",
+  "scripts": {
+    "start": "bun run index.tsx",
+    "dev": "bun --watch run index.tsx",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint:staged": "lint-staged",
+    "lint": "pnpm run format:check && oxlint --deny-warnings .",
+    "duplication": "jscpd --config .jscpd.json",
+    "knip": "knip",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.4.5",
+    "@opentui/keymap": "^0.4.5",
+    "@opentui/solid": "^0.4.5",
+    "@tuiparts/dialog": "./vendor/tuiparts-dialog",
+    "@tuiparts/toast": "./vendor/tuiparts-toast",
+    "solid-js": "1.9.12"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "1.78.0",
+    "@types/bun": "latest",
+    "husky": "9.1.7",
+    "jscpd": "5",
+    "knip": "6.32.2",
+    "lint-staged": "17.2.0",
+    "oxfmt": "0.61.0",
+    "oxlint": "1.78.0",
+    "typescript": "^5.9.2"
+  },
+  "lint-staged": {
+    "**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts}": [
+      "oxfmt --write",
+      "oxlint --deny-warnings"
+    ],
+    "**/*.{json,jsonc}": "oxfmt --write"
+  },
+  "packageManager": "pnpm@11.1.3"
+}

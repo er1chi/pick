@@ -1,0 +1,54 @@
+{
+  "name": "@tuiparts/dialog",
+  "version": "0.1.2",
+  "private": false,
+  "description": "A dialog/modal library for terminal UIs built on OpenTUI",
+  "author": "Matt Simpson",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tuiparts/tuiparts.git",
+    "directory": "packages/dialog"
+  },
+  "type": "module",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./themes": {
+      "types": "./dist/themes.d.mts",
+      "import": "./dist/themes.mjs"
+    },
+    "./react": {
+      "types": "./dist/react.d.mts",
+      "import": "./dist/react.mjs"
+    },
+    "./solid": {
+      "types": "./dist/solid.d.mts",
+      "import": "./dist/solid.mjs"
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/tuiparts/tuiparts/issues"
+  },
+  "files": [
+    "dist"
+  ],
+  "homepage": "https://github.com/tuiparts/tuiparts#readme",
+  "keywords": [
+    "dialog",
+    "modal",
+    "tui",
+    "terminal",
+    "cli",
+    "opentui"
+  ],
+  "peerDependencies": {
+    "@opentui/core": "^0.4.3",
+    "@opentui/solid": "^0.4.3"
+  }
+}

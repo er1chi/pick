@@ -3,6 +3,7 @@ export const colors = {
   green: "#9ece6a",
   purple: "#bb9af7",
   yellow: "#e0af68",
+  red: "#f7768e",
   foreground: "#c0caf5",
   muted: "#6b7280",
   dim: "#565f89",

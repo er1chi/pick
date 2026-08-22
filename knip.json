@@ -1,10 +1,4 @@
 {
-  "entry": [
-    "src/hooks/**/*.{ts,tsx}",
-    "src/packages/pierre/solid/diffs/index.ts",
-    "src/packages/pierre/solid/trees/index.ts",
-    "src/**/*.test.{ts,tsx}",
-    "tools/oxlint/anti-slop/effect/index.ts"
-  ],
+  "entry": ["src/**/*.{ts,tsx}", "tools/oxlint/anti-slop/effect/index.ts"],
   "project": ["src/**/*.{ts,tsx}", "tools/oxlint/anti-slop/**/*.ts"]
 }

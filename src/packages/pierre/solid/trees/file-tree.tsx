@@ -174,6 +174,49 @@ export function FileTree(props: FileTreeProps) {
     ],
   }));
 
+  useBindings(() => ({
+    target: treeBox,
+    enabled: () => !search.isOpen(),
+    bindings: [
+      {
+        key: "k",
+        cmd: () => {
+          props.model.focusPreviousItem();
+        },
+      },
+      {
+        key: "j",
+        cmd: () => {
+          props.model.focusNextItem();
+        },
+      },
+      {
+        key: "h",
+        cmd: () => {
+          moveFocusLeft(props.model);
+        },
+      },
+      {
+        key: "l",
+        cmd: () => {
+          moveFocusRight(props.model);
+        },
+      },
+      {
+        key: "gg",
+        cmd: () => {
+          props.model.focusFirstItem();
+        },
+      },
+      {
+        key: "shift+g",
+        cmd: () => {
+          props.model.focusLastItem();
+        },
+      },
+    ],
+  }));
+
   const renderRow = (row: FileTreeVisibleRow): JSX.Element => {
     const render = props.children;
     if (render == null) {

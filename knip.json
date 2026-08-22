@@ -1,6 +1,6 @@
 {
   "entry": [
-    "src/hooks/**/*.{ts,tsx}",
+    "src/packages/**/index.ts",
     "src/**/*.test.{ts,tsx}",
     "tools/oxlint/anti-slop/effect/index.ts"
   ],

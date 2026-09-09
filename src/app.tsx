@@ -1,5 +1,6 @@
 import { Button } from "@/components/button";
 import { missingConfigurationMessage, pickConfigResult } from "@/config/config";
+import { ForgeService } from "@/services/forge/forge";
 import { ForgejoProvider } from "@/services/forge/forgejo/forgejo";
 import { GithubProvider } from "@/services/forge/github/github";
 import { colors } from "@/theme";
@@ -8,13 +9,15 @@ import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
 import { onMount } from "solid-js";
 
-const github = pickConfigResult.isOk()
-  ? new GithubProvider({ token: pickConfigResult.value.githubAuthToken })
-  : undefined;
-const forgejo = pickConfigResult.isOk()
-  ? new ForgejoProvider({
-      baseUrl: pickConfigResult.value.kubbFetchBaseUrl,
-      token: pickConfigResult.value.forgejoAuthToken,
+const forge = pickConfigResult.isOk()
+  ? new ForgeService({
+      github: new GithubProvider({
+        token: pickConfigResult.value.githubAuthToken,
+      }),
+      forgejo: new ForgejoProvider({
+        baseUrl: pickConfigResult.value.kubbFetchBaseUrl,
+        token: pickConfigResult.value.forgejoAuthToken,
+      }),
     })
   : undefined;
 
@@ -23,11 +26,7 @@ export function App() {
 
   onMount(() => {
     renderer.setTerminalTitle("Pick");
-    if (
-      pickConfigResult.isErr() ||
-      github === undefined ||
-      forgejo === undefined
-    ) {
+    if (pickConfigResult.isErr() || forge === undefined) {
       toast.warning(missingConfigurationMessage);
     }
   });

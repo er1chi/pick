@@ -24,5 +24,6 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["index.tsx", "src/**/*"]
+  "include": ["index.tsx", "src/**/*"],
+  "exclude": ["src/gen/**"]
 }

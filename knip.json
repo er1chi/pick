@@ -2,7 +2,9 @@
   "entry": [
     "src/packages/**/index.ts",
     "src/**/*.test.{ts,tsx}",
-    "tools/oxlint/anti-slop/effect/index.ts"
+    "tools/oxlint/anti-slop/effect/index.ts",
+    "kubb.config.ts"
   ],
-  "project": ["src/**/*.{ts,tsx}", "tools/oxlint/anti-slop/**/*.ts"]
+  "project": ["src/**/*.{ts,tsx}", "tools/oxlint/anti-slop/**/*.ts"],
+  "ignore": ["src/gen/**"]
 }

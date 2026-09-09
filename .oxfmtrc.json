@@ -1,5 +1,5 @@
 {
   "printWidth": 80,
   "useTabs": false,
-  "ignorePatterns": ["vendor/**", "node_modules/**"]
+  "ignorePatterns": ["vendor/**", "node_modules/**", "src/gen/**"]
 }

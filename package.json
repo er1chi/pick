@@ -14,7 +14,6 @@
     "lint": "pnpm run format:check && oxlint --deny-warnings .",
     "duplication": "jscpd --config .jscpd.json",
     "knip": "knip",
-    "generate": "kubb generate",
     "prepare": "husky"
   },
   "dependencies": {
@@ -25,20 +24,14 @@
     "@pierre/trees": "1.0.0-beta.6",
     "@tuiparts/dialog": "./vendor/tuiparts-dialog",
     "@tuiparts/toast": "./vendor/tuiparts-toast",
-    "arktype": "^2.2.3",
-    "better-result": "^3.0.1",
-    "octokit": "^5.0.5",
     "solid-js": "1.9.12"
   },
   "devDependencies": {
-    "@kubb/plugin-fetch": "^5.1.1",
-    "@kubb/plugin-ts": "^5.0.0",
     "@oxlint/plugins": "1.78.0",
     "@types/bun": "latest",
     "husky": "9.1.7",
     "jscpd": "5",
     "knip": "6.32.2",
-    "kubb": "^5.0.3",
     "lint-staged": "17.2.0",
     "oxfmt": "0.61.0",
     "oxlint": "1.78.0",

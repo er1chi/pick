@@ -13,8 +13,7 @@
     ".roo/**",
     ".windsurf/**",
     "tools/oxlint/anti-slop/**",
-    "vendor/**",
-    "src/gen/**"
+    "vendor/**"
   ],
   "jsPlugins": [
     {

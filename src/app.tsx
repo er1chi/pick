@@ -1,35 +1,14 @@
 import { Button } from "@/components/button";
-import { missingConfigurationMessage, pickConfigResult } from "@/config/config";
-import { ForgeService } from "@/services/forge/forge";
-import { ForgejoProvider } from "@/services/forge/forgejo/forgejo";
-import { GithubProvider } from "@/services/forge/github/github";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
 import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
 import { onMount } from "solid-js";
 
-const forge = pickConfigResult.isOk()
-  ? new ForgeService({
-      github: new GithubProvider({
-        token: pickConfigResult.value.githubAuthToken,
-      }),
-      forgejo: new ForgejoProvider({
-        baseUrl: pickConfigResult.value.kubbFetchBaseUrl,
-        token: pickConfigResult.value.forgejoAuthToken,
-      }),
-    })
-  : undefined;
-
 export function App() {
   const renderer = useRenderer();
 
-  onMount(() => {
-    renderer.setTerminalTitle("Pick");
-    if (pickConfigResult.isErr() || forge === undefined) {
-      toast.warning(missingConfigurationMessage);
-    }
-  });
+  onMount(() => renderer.setTerminalTitle("Pick"));
 
   useBindings(() => ({
     commands: [

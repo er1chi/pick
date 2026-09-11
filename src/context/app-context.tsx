@@ -1,29 +1,24 @@
 import { Result } from "better-result";
+import type { Result as ResultType } from "better-result";
 import { createContext, useContext } from "solid-js";
 import type { JSX } from "@opentui/solid";
-import {
-  GithubService,
-  type GithubServiceInitializationError,
-} from "@/services/forge/github-service";
-import {
-  ForgejoService,
-  type ForgejoServiceInitializationError,
-} from "@/services/forge/forgejo-service";
+import { ForgejoService } from "@/services/forge/forgejo-service";
+import { GithubService } from "@/services/forge/github-service";
+import type { CliCheckError } from "@/services/forge/cli-check";
+import type {
+  ForgeInitializationError,
+  ForgeKind,
+  ForgeService,
+} from "@/services/forge/forge-service";
 
 export type AppContextState =
   | {
       readonly kind: "application";
+      readonly forge: undefined;
     }
   | {
-      readonly kind: "github";
-      readonly github: Result<GithubService, GithubServiceInitializationError>;
-    }
-  | {
-      readonly kind: "forgejo";
-      readonly forgejo: Result<
-        ForgejoService,
-        ForgejoServiceInitializationError
-      >;
+      readonly kind: ForgeKind;
+      readonly forge: ResultType<ForgeService, ForgeInitializationError>;
     };
 
 type RemoteEntry = {
@@ -92,6 +87,30 @@ async function readGitRemoteOutput(
   );
 }
 
+function normalizeForgeInitializationError(
+  kind: ForgeKind,
+  error: CliCheckError<string>,
+): ForgeInitializationError {
+  switch (error.code) {
+    case "executable-unavailable":
+      return { kind, code: "executable-unavailable" };
+    case "version-check-failed":
+      return { kind, code: "version-check-failed", exitCode: error.exitCode };
+  }
+}
+
+function upcastForgeResult<
+  Service extends ForgeService,
+  CliError extends CliCheckError<string>,
+>(
+  kind: ForgeKind,
+  result: ResultType<Service, CliError>,
+): ResultType<ForgeService, ForgeInitializationError> {
+  return result
+    .map((service): ForgeService => service)
+    .mapError((error) => normalizeForgeInitializationError(kind, error));
+}
+
 export async function initializeAppContext(
   cwd = process.cwd(),
 ): Promise<AppContextState> {
@@ -99,19 +118,19 @@ export async function initializeAppContext(
     .map(parseRemoteEntries)
     .unwrapOr([]);
   if (remoteEntries.length === 0) {
-    return { kind: "application" };
+    return { kind: "application", forge: undefined };
   }
 
   if (remoteEntries.some(({ url }) => isGithubRemoteUrl(url))) {
     return {
       kind: "github",
-      github: await GithubService.initialize(),
+      forge: upcastForgeResult("github", await GithubService.initialize()),
     };
   }
 
   return {
     kind: "forgejo",
-    forgejo: await ForgejoService.initialize(),
+    forge: upcastForgeResult("forgejo", await ForgejoService.initialize()),
   };
 }
 

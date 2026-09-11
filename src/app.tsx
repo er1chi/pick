@@ -1,5 +1,9 @@
 import { Button } from "@/components/button";
 import { useAppContext } from "@/context/app-context";
+import type {
+  ForgeInitializationError,
+  ForgeKind,
+} from "@/services/forge/forge-service";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
 import { useRenderer } from "@opentui/solid";
@@ -7,10 +11,11 @@ import { Toaster, toast } from "@tuiparts/toast/solid";
 import { onMount } from "solid-js";
 
 function notifyCliInitializationError(
-  service: "GitHub" | "Forgejo",
-  executable: "gh" | "fj",
-  code: "executable-unavailable" | "version-check-failed",
+  kind: ForgeKind,
+  code: ForgeInitializationError["code"],
 ) {
+  const service = kind === "github" ? "GitHub" : "Forgejo";
+  const executable = kind === "github" ? "gh" : "fj";
   const reason =
     code === "executable-unavailable"
       ? "is unavailable"
@@ -25,19 +30,10 @@ export function App() {
   onMount(() => {
     renderer.setTerminalTitle("Pick");
 
-    if (appContext.kind === "github" && appContext.github.isErr()) {
+    if (appContext.kind !== "application" && appContext.forge.isErr()) {
       notifyCliInitializationError(
-        "GitHub",
-        "gh",
-        appContext.github.error.code,
-      );
-    }
-
-    if (appContext.kind === "forgejo" && appContext.forgejo.isErr()) {
-      notifyCliInitializationError(
-        "Forgejo",
-        "fj",
-        appContext.forgejo.error.code,
+        appContext.kind,
+        appContext.forge.error.code,
       );
     }
   });

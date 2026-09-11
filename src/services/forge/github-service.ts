@@ -1,18 +1,27 @@
-import type { Result } from "better-result";
-import { checkCli, type CliCheckError } from "./cli-check";
+import type { CliCheckError } from "./cli-check";
+import type { ForgeService } from "./forge-service";
+import {
+  ForgeServiceAdapter,
+  initializeForgeService,
+} from "./scaffold-capabilities";
 
 export type GithubServiceInitializationError = CliCheckError<"gh">;
 
 const executableName = "gh";
 
-export class GithubService {
-  public static async initialize(): Promise<
-    Result<GithubService, GithubServiceInitializationError>
-  > {
-    return (await checkCli(executableName, ["--version"])).map(
-      () => new GithubService(executableName),
+export class GithubService
+  extends ForgeServiceAdapter<"github">
+  implements ForgeService
+{
+  public static async initialize() {
+    return initializeForgeService(
+      executableName,
+      ["--version"],
+      () => new GithubService(),
     );
   }
 
-  private constructor(public readonly executableName: "gh") {}
+  private constructor() {
+    super("github");
+  }
 }

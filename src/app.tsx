@@ -1,14 +1,46 @@
 import { Button } from "@/components/button";
+import { useAppContext } from "@/context/app-context";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
 import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
 import { onMount } from "solid-js";
 
+function notifyCliInitializationError(
+  service: "GitHub" | "Forgejo",
+  executable: "gh" | "fj",
+  code: "executable-unavailable" | "version-check-failed",
+) {
+  const reason =
+    code === "executable-unavailable"
+      ? "is unavailable"
+      : "version check failed";
+  toast.warning(`${service} CLI (${executable}) ${reason}.`);
+}
+
 export function App() {
   const renderer = useRenderer();
+  const appContext = useAppContext();
 
-  onMount(() => renderer.setTerminalTitle("Pick"));
+  onMount(() => {
+    renderer.setTerminalTitle("Pick");
+
+    if (appContext.kind === "github" && appContext.github.isErr()) {
+      notifyCliInitializationError(
+        "GitHub",
+        "gh",
+        appContext.github.error.code,
+      );
+    }
+
+    if (appContext.kind === "forgejo" && appContext.forgejo.isErr()) {
+      notifyCliInitializationError(
+        "Forgejo",
+        "fj",
+        appContext.forgejo.error.code,
+      );
+    }
+  });
 
   useBindings(() => ({
     commands: [

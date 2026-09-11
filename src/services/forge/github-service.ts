@@ -1,28 +1,18 @@
-import { Result } from "better-result";
+import type { Result } from "better-result";
+import { checkCli, type CliCheckError } from "./cli-check";
 
-export interface GithubServiceInitializationError {
-  readonly code: "executable-not-found";
-  readonly executable: "gh";
-}
+export type GithubServiceInitializationError = CliCheckError<"gh">;
 
 const executableName = "gh";
 
 export class GithubService {
-  public static initialize(): Result<
-    GithubService,
-    GithubServiceInitializationError
+  public static async initialize(): Promise<
+    Result<GithubService, GithubServiceInitializationError>
   > {
-    const executablePath = Bun.which(executableName);
-    if (executablePath === null) {
-      const error: GithubServiceInitializationError = {
-        code: "executable-not-found",
-        executable: executableName,
-      };
-      return Result.err(error);
-    }
-
-    return Result.ok(new GithubService(executablePath));
+    return (await checkCli(executableName, ["--version"])).map(
+      () => new GithubService(executableName),
+    );
   }
 
-  private constructor(public readonly executablePath: string) {}
+  private constructor(public readonly executableName: "gh") {}
 }

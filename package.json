@@ -24,6 +24,7 @@
     "@pierre/trees": "1.0.0-beta.6",
     "@tuiparts/dialog": "./vendor/tuiparts-dialog",
     "@tuiparts/toast": "./vendor/tuiparts-toast",
+    "better-result": "^3.0.1",
     "solid-js": "1.9.12"
   },
   "devDependencies": {

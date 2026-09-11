@@ -29,6 +29,9 @@ importers:
       '@tuiparts/toast':
         specifier: ./vendor/tuiparts-toast
         version: link:vendor/tuiparts-toast
+      better-result:
+        specifier: ^3.0.1
+        version: 3.0.1
       solid-js:
         specifier: 1.9.12
         version: 1.9.12
@@ -947,6 +950,9 @@ packages:
     resolution: {integrity: sha512-JyJ954WzuIR8/FFzX0o5krdSTrBAkcCSRfWSleRsIHSWV+cZe2FI1PKggVkFke1hBldRs+LRxUczzE9iPmgZww==}
     engines: {node: '>=6.0.0'}
     hasBin: true
+
+  better-result@3.0.1:
+    resolution: {integrity: sha512-rnCeqEXkKPHmz5MO5ZroPRDyHe4YvlNPyy7qj8cVcWs/GnvSvC3086G74/220W+wWcIWlXgzvcjskFV0A4blUQ==}
 
   brace-expansion@2.1.4:
     resolution: {integrity: sha512-hGfVzPxthbf3+2yjg/RBs60cB0FhqBS/zvdV/4wn4/BmN0bNMMHPc4V/BbFieqf1TKAGGAHnY4eSjajCl0f2Xg==}
@@ -2176,6 +2182,8 @@ snapshots:
   balanced-match@1.0.2: {}
 
   baseline-browser-mapping@2.11.14: {}
+
+  better-result@3.0.1: {}
 
   brace-expansion@2.1.4:
     dependencies:

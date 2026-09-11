@@ -15,29 +15,29 @@ export async function checkCli<Executable extends string>(
   executable: Executable,
   args: readonly string[],
 ): Promise<Result<void, CliCheckError<Executable>>> {
-  try {
-    const subprocess = Bun.spawn([executable, ...args], {
-      stdin: "ignore",
-      stdout: "ignore",
-      stderr: "ignore",
-    });
-    const exitCode = await subprocess.exited;
+  const execution = await Result.tryPromise({
+    try: async () => {
+      const subprocess = Bun.spawn([executable, ...args], {
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+      });
 
-    if (exitCode !== 0) {
-      const error: CliCheckError<Executable> = {
-        code: "version-check-failed",
-        executable,
-        exitCode,
-      };
-      return Result.err(error);
-    }
-  } catch {
-    const error: CliCheckError<Executable> = {
-      code: "executable-unavailable",
+      return await subprocess.exited;
+    },
+    catch: () => ({
+      code: "executable-unavailable" as const,
       executable,
-    };
-    return Result.err(error);
-  }
+    }),
+  });
 
-  return Result.ok();
+  return execution.andThen((exitCode) =>
+    exitCode === 0
+      ? Result.ok()
+      : Result.err({
+          code: "version-check-failed" as const,
+          executable,
+          exitCode,
+        }),
+  );
 }

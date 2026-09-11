@@ -1,4 +1,4 @@
-import type { Result } from "better-result";
+import { Result } from "better-result";
 import { createContext, useContext } from "solid-js";
 import type { JSX } from "@opentui/solid";
 import {
@@ -48,43 +48,56 @@ function isGithubRemoteUrl(url: string): boolean {
     return true;
   }
 
-  try {
-    return new URL(url).hostname.toLowerCase() === "github.com";
-  } catch {
-    return false;
-  }
+  return Result.try(() => new URL(url))
+    .map(({ hostname }) => hostname.toLowerCase() === "github.com")
+    .unwrapOr(false);
 }
 
-async function readGitRemoteOutput(cwd: string): Promise<string | undefined> {
-  try {
-    const subprocess = Bun.spawn(["git", "remote", "-v"], {
-      cwd,
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+type GitRemoteError =
+  | {
+      readonly code: "git-unavailable";
+    }
+  | {
+      readonly code: "git-command-failed";
+      readonly exitCode: number;
+    };
 
-    const [stdout, , exitCode] = await Promise.all([
-      new Response(subprocess.stdout).text(),
-      new Response(subprocess.stderr).text(),
-      subprocess.exited,
-    ]);
+async function readGitRemoteOutput(
+  cwd: string,
+): Promise<Result<string, GitRemoteError>> {
+  const execution = await Result.tryPromise({
+    try: async () => {
+      const subprocess = Bun.spawn(["git", "remote", "-v"], {
+        cwd,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+      });
 
-    return exitCode === 0 ? stdout : undefined;
-  } catch {
-    return undefined;
-  }
+      const [stdout, , exitCode] = await Promise.all([
+        new Response(subprocess.stdout).text(),
+        new Response(subprocess.stderr).text(),
+        subprocess.exited,
+      ]);
+
+      return { stdout, exitCode };
+    },
+    catch: () => ({ code: "git-unavailable" as const }),
+  });
+
+  return execution.andThen(({ stdout, exitCode }) =>
+    exitCode === 0
+      ? Result.ok(stdout)
+      : Result.err({ code: "git-command-failed" as const, exitCode }),
+  );
 }
 
 export async function initializeAppContext(
   cwd = process.cwd(),
 ): Promise<AppContextState> {
-  const remoteOutput = await readGitRemoteOutput(cwd);
-  if (remoteOutput === undefined) {
-    return { kind: "application" };
-  }
-
-  const remoteEntries = parseRemoteEntries(remoteOutput);
+  const remoteEntries = (await readGitRemoteOutput(cwd))
+    .map(parseRemoteEntries)
+    .unwrapOr([]);
   if (remoteEntries.length === 0) {
     return { kind: "application" };
   }

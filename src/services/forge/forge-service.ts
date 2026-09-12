@@ -1,11 +1,14 @@
 import type { Result } from "better-result";
-import type { CliCheckError } from "./cli-check";
 import { ForgejoService } from "./forgejo-service";
 import { GithubService } from "./github-service";
 import type {
+  CliCheckError,
   ForgeAdapter,
   ForgeInitializationError,
   ForgeKind,
+  ForgeOperationError,
+  PullRequest,
+  PullRequestComment,
 } from "./types";
 
 export class ForgeService {
@@ -17,16 +20,29 @@ export class ForgeService {
 
   public static async initialize(
     kind: ForgeKind,
+    cwd = process.cwd(),
   ): Promise<Result<ForgeService, ForgeInitializationError>> {
     if (kind === "github") {
-      return (await GithubService.initialize())
+      return (await GithubService.initialize(cwd))
         .map((adapter) => new ForgeService(adapter))
         .mapError((error) => normalizeInitializationError(kind, error));
     }
 
-    return (await ForgejoService.initialize())
+    return (await ForgejoService.initialize(cwd))
       .map((adapter) => new ForgeService(adapter))
       .mapError((error) => normalizeInitializationError(kind, error));
+  }
+
+  public getPullRequest(
+    number: number,
+  ): Promise<Result<PullRequest, ForgeOperationError>> {
+    return this.adapter.getPullRequest(number);
+  }
+
+  public getPullRequestComments(
+    number: number,
+  ): Promise<Result<readonly PullRequestComment[], ForgeOperationError>> {
+    return this.adapter.getPullRequestComments(number);
   }
 }
 

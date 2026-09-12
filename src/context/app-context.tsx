@@ -100,7 +100,7 @@ export async function initializeAppContext(
 
   return {
     kind,
-    forge: await ForgeService.initialize(kind),
+    forge: await ForgeService.initialize(kind, cwd),
   };
 }
 

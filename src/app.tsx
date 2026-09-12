@@ -1,5 +1,5 @@
 import { Button } from "@/components/button";
-import { useAppContext } from "@/context/app-context";
+import { type AppContextState, useAppContext } from "@/context/app-context";
 import type {
   ForgeInitializationError,
   ForgeKind,
@@ -9,6 +9,12 @@ import { useBindings } from "@opentui/keymap/solid";
 import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
 import { onMount } from "solid-js";
+
+const contextLabels = {
+  application: "Application",
+  github: "GitHub",
+  forgejo: "Forgejo",
+} as const satisfies Record<AppContextState["kind"], string>;
 
 function notifyCliInitializationError(
   kind: ForgeKind,
@@ -61,6 +67,7 @@ export function App() {
         <strong>Pick</strong>
       </text>
       <text fg={colors.muted}>Git, GitHub, and Forgejo — in the terminal.</text>
+      <text fg={colors.muted}>Context: {contextLabels[appContext.kind]}</text>
       <Button label="Press Enter" color={colors.green} />
       <text fg={colors.dim}>Ctrl+Q quits</text>
       <Toaster position="top-right" stackingMode="stack" visibleToasts={3} />

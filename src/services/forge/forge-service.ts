@@ -1,76 +1,43 @@
 import type { Result } from "better-result";
-import type { Comment, Issue, PullRequest } from "./models";
+import type { CliCheckError } from "./cli-check";
+import { ForgejoService } from "./forgejo-service";
+import { GithubService } from "./github-service";
+import type {
+  ForgeAdapter,
+  ForgeInitializationError,
+  ForgeKind,
+} from "./types";
 
-export type ForgeKind = "github" | "forgejo";
+export class ForgeService {
+  private constructor(private readonly adapter: ForgeAdapter) {}
 
-export type ForgeInitializationError =
-  | {
-      readonly kind: ForgeKind;
-      readonly code: "executable-unavailable";
+  public get kind(): ForgeKind {
+    return this.adapter.kind;
+  }
+
+  public static async initialize(
+    kind: ForgeKind,
+  ): Promise<Result<ForgeService, ForgeInitializationError>> {
+    if (kind === "github") {
+      return (await GithubService.initialize())
+        .map((adapter) => new ForgeService(adapter))
+        .mapError((error) => normalizeInitializationError(kind, error));
     }
-  | {
-      readonly kind: ForgeKind;
-      readonly code: "version-check-failed";
-      readonly exitCode: number;
-    };
 
-export type ForgeOperation =
-  | "pullRequests.get"
-  | "pullRequests.getComments"
-  | "issues.create"
-  | "issues.getComments";
-
-type ForgeOperationContext = {
-  readonly kind: ForgeKind;
-  readonly operation: ForgeOperation;
-};
-
-export type ForgeOperationError =
-  | (ForgeOperationContext & { readonly code: "cli-unavailable" })
-  | (ForgeOperationContext & {
-      readonly code: "authentication-required";
-    })
-  | (ForgeOperationContext & { readonly code: "not-found" })
-  | (ForgeOperationContext & { readonly code: "permission-denied" })
-  | (ForgeOperationContext & { readonly code: "command-failed" })
-  | (ForgeOperationContext & { readonly code: "invalid-response" })
-  | (ForgeOperationContext & { readonly code: "not-implemented" });
-
-export interface GetPullRequestInput {
-  readonly number: number;
+    return (await ForgejoService.initialize())
+      .map((adapter) => new ForgeService(adapter))
+      .mapError((error) => normalizeInitializationError(kind, error));
+  }
 }
 
-export interface GetPullRequestCommentsInput {
-  readonly number: number;
-}
-
-export interface CreateIssueInput {
-  readonly title: string;
-  readonly body?: string;
-}
-
-export interface GetIssueCommentsInput {
-  readonly number: number;
-}
-
-export interface PullRequestOperations {
-  get(
-    input: GetPullRequestInput,
-  ): Promise<Result<PullRequest, ForgeOperationError>>;
-  getComments(
-    input: GetPullRequestCommentsInput,
-  ): Promise<Result<readonly Comment[], ForgeOperationError>>;
-}
-
-export interface IssueOperations {
-  create(input: CreateIssueInput): Promise<Result<Issue, ForgeOperationError>>;
-  getComments(
-    input: GetIssueCommentsInput,
-  ): Promise<Result<readonly Comment[], ForgeOperationError>>;
-}
-
-export interface ForgeService {
-  readonly kind: ForgeKind;
-  readonly pullRequests: PullRequestOperations;
-  readonly issues: IssueOperations;
+function normalizeInitializationError(
+  kind: ForgeKind,
+  error: CliCheckError<string>,
+): ForgeInitializationError {
+  switch (error.code) {
+    case "executable-unavailable":
+      return { kind, code: "executable-unavailable" };
+    case "version-check-failed":
+      return { kind, code: "version-check-failed", exitCode: error.exitCode };
+  }
 }

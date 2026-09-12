@@ -1,27 +1,18 @@
 import type { CliCheckError } from "./cli-check";
-import type { ForgeService } from "./forge-service";
-import {
-  ForgeServiceAdapter,
-  initializeForgeService,
-} from "./scaffold-capabilities";
+import { checkCli } from "./cli-check";
 
 export type GithubServiceInitializationError = CliCheckError<"gh">;
 
 const executableName = "gh";
 
-export class GithubService
-  extends ForgeServiceAdapter<"github">
-  implements ForgeService
-{
+export class GithubService {
+  public readonly kind = "github" as const;
+
   public static async initialize() {
-    return initializeForgeService(
-      executableName,
-      ["--version"],
+    return (await checkCli(executableName, ["--version"])).map(
       () => new GithubService(),
     );
   }
 
-  private constructor() {
-    super("github");
-  }
+  private constructor() {}
 }

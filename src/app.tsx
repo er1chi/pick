@@ -3,7 +3,7 @@ import { useAppContext } from "@/context/app-context";
 import type {
   ForgeInitializationError,
   ForgeKind,
-} from "@/services/forge/forge-service";
+} from "@/services/forge/types";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
 import { useRenderer } from "@opentui/solid";

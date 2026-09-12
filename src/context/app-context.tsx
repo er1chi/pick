@@ -2,14 +2,11 @@ import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
 import { createContext, useContext } from "solid-js";
 import type { JSX } from "@opentui/solid";
-import { ForgejoService } from "@/services/forge/forgejo-service";
-import { GithubService } from "@/services/forge/github-service";
-import type { CliCheckError } from "@/services/forge/cli-check";
+import { ForgeService } from "@/services/forge/forge-service";
 import type {
   ForgeInitializationError,
   ForgeKind,
-  ForgeService,
-} from "@/services/forge/forge-service";
+} from "@/services/forge/types";
 
 export type AppContextState =
   | {
@@ -87,30 +84,6 @@ async function readGitRemoteOutput(
   );
 }
 
-function normalizeForgeInitializationError(
-  kind: ForgeKind,
-  error: CliCheckError<string>,
-): ForgeInitializationError {
-  switch (error.code) {
-    case "executable-unavailable":
-      return { kind, code: "executable-unavailable" };
-    case "version-check-failed":
-      return { kind, code: "version-check-failed", exitCode: error.exitCode };
-  }
-}
-
-function upcastForgeResult<
-  Service extends ForgeService,
-  CliError extends CliCheckError<string>,
->(
-  kind: ForgeKind,
-  result: ResultType<Service, CliError>,
-): ResultType<ForgeService, ForgeInitializationError> {
-  return result
-    .map((service): ForgeService => service)
-    .mapError((error) => normalizeForgeInitializationError(kind, error));
-}
-
 export async function initializeAppContext(
   cwd = process.cwd(),
 ): Promise<AppContextState> {
@@ -121,16 +94,13 @@ export async function initializeAppContext(
     return { kind: "application", forge: undefined };
   }
 
-  if (remoteEntries.some(({ url }) => isGithubRemoteUrl(url))) {
-    return {
-      kind: "github",
-      forge: upcastForgeResult("github", await GithubService.initialize()),
-    };
-  }
+  const kind = remoteEntries.some(({ url }) => isGithubRemoteUrl(url))
+    ? "github"
+    : "forgejo";
 
   return {
-    kind: "forgejo",
-    forge: upcastForgeResult("forgejo", await ForgejoService.initialize()),
+    kind,
+    forge: await ForgeService.initialize(kind),
   };
 }
 

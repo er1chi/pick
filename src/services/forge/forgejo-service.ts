@@ -1,27 +1,18 @@
 import type { CliCheckError } from "./cli-check";
-import type { ForgeService } from "./forge-service";
-import {
-  ForgeServiceAdapter,
-  initializeForgeService,
-} from "./scaffold-capabilities";
+import { checkCli } from "./cli-check";
 
 export type ForgejoServiceInitializationError = CliCheckError<"fj">;
 
 const executableName = "fj";
 
-export class ForgejoService
-  extends ForgeServiceAdapter<"forgejo">
-  implements ForgeService
-{
+export class ForgejoService {
+  public readonly kind = "forgejo" as const;
+
   public static async initialize() {
-    return initializeForgeService(
-      executableName,
-      ["version"],
+    return (await checkCli(executableName, ["--version"])).map(
       () => new ForgejoService(),
     );
   }
 
-  private constructor() {
-    super("forgejo");
-  }
+  private constructor() {}
 }

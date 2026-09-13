@@ -1,15 +1,8 @@
+import { type } from "arktype";
 import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
 import { checkCli } from "./cli-check";
 import { executeCli } from "./cli-execution";
-import {
-  isInteger,
-  isJsonObject,
-  isNullableString,
-  isStableProviderId,
-  isString,
-  toIsoTimestamp,
-} from "./json-validation";
 import type {
   ForgeAdapter,
   ForgeAuthor,
@@ -22,29 +15,27 @@ import type {
 const executableName = "gh";
 const kind = "github" as const;
 
-interface GithubPullRequestPayload {
-  readonly number?: unknown;
-  readonly title?: unknown;
-  readonly body?: unknown;
-  readonly state?: unknown;
-  readonly author?: unknown;
-  readonly mergedAt?: unknown;
-}
+const authorSchema = type({ login: "string" });
+const providerIdSchema = type("string | (number.integer & number.safe)");
+const pullRequestSchema = type({
+  number: "number.integer",
+  title: "string",
+  body: "string | null",
+  state: "'OPEN' | 'CLOSED' | 'MERGED'",
+  author: authorSchema.or("null").optional(),
+  mergedAt: "string | null",
+});
+const commentSchema = type({
+  id: providerIdSchema,
+  author: authorSchema.or("null").optional(),
+  body: "string | null",
+  createdAt: "string.date.parse",
+});
+const commentsSchema = type({ comments: commentSchema.array() });
 
-interface GithubCommentsPayload {
-  readonly comments?: unknown;
-}
-
-interface GithubCommentPayload {
-  readonly id?: unknown;
-  readonly author?: unknown;
-  readonly body?: unknown;
-  readonly createdAt?: unknown;
-}
-
-interface GithubAuthorPayload {
-  readonly login?: unknown;
-}
+type GithubAuthor = typeof authorSchema.infer;
+type GithubPullRequest = typeof pullRequestSchema.infer;
+type GithubComment = typeof commentSchema.infer;
 
 export class GithubService implements ForgeAdapter {
   public readonly kind = kind;
@@ -111,123 +102,61 @@ function decodeJson<T>(
     }),
   });
 
-  return parsed.andThen(decoder);
+  return parsed.andThen((value) => decoder(value));
 }
 
 function normalizePullRequest(
   cause: unknown,
 ): ResultType<PullRequest, ForgeOperationError> {
-  if (!isPullRequestPayload(cause)) {
-    return incompatible("Expected a pull request object");
-  }
-
-  const author = normalizeAuthor(cause.author);
-  const state = normalizeState(cause);
-  if (
-    !isInteger(cause.number) ||
-    !isString(cause.title) ||
-    !isNullableString(cause.body) ||
-    author === undefined ||
-    state === undefined
-  ) {
-    return incompatible("Pull request fields did not match the GitHub schema");
+  const payload = pullRequestSchema(cause);
+  if (payload instanceof type.errors) {
+    return incompatible(
+      `GitHub pull request response did not match the schema: ${payload.summary}`,
+    );
   }
 
   return Result.ok({
-    number: cause.number,
-    title: cause.title,
-    body: cause.body,
-    state,
-    author,
+    number: payload.number,
+    title: payload.title,
+    body: payload.body,
+    state: normalizeState(payload),
+    author: normalizeAuthor(payload.author),
   });
 }
 
 function normalizeComments(
   cause: unknown,
 ): ResultType<readonly PullRequestComment[], ForgeOperationError> {
-  if (!isCommentsPayload(cause) || !Array.isArray(cause.comments)) {
-    return incompatible("Expected an object containing a comments array");
+  const payload = commentsSchema(cause);
+  if (payload instanceof type.errors) {
+    return incompatible(
+      `GitHub comments response did not match the schema: ${payload.summary}`,
+    );
   }
 
-  const comments: PullRequestComment[] = [];
-  for (const candidate of cause.comments) {
-    const comment = normalizeComment(candidate);
-    if (comment.isErr()) {
-      return comment;
-    }
-    comments.push(comment.value);
-  }
-
-  return Result.ok(comments);
+  return Result.ok(payload.comments.map(normalizeComment));
 }
 
-function normalizeComment(
-  cause: unknown,
-): ResultType<PullRequestComment, ForgeOperationError> {
-  if (!isCommentPayload(cause)) {
-    return incompatible("Expected each comment to be an object");
-  }
-
-  const author = normalizeAuthor(cause.author);
-  const createdAt = toIsoTimestamp(cause.createdAt);
-  if (
-    !isStableProviderId(cause.id) ||
-    author === undefined ||
-    !isNullableString(cause.body) ||
-    createdAt === undefined
-  ) {
-    return incompatible("Comment fields did not match the GitHub schema");
-  }
-
-  return Result.ok({
-    id: String(cause.id),
-    author,
-    body: cause.body,
-    createdAt,
-  });
+function normalizeComment(payload: GithubComment): PullRequestComment {
+  return {
+    id: String(payload.id),
+    author: normalizeAuthor(payload.author),
+    body: payload.body,
+    createdAt: payload.createdAt.toISOString(),
+  };
 }
 
-function normalizeState(
-  payload: GithubPullRequestPayload,
-): PullRequestState | undefined {
-  if (!isNullableString(payload.mergedAt)) {
-    return undefined;
-  }
-  if (payload.state === "MERGED" || isString(payload.mergedAt)) {
+function normalizeState(payload: GithubPullRequest): PullRequestState {
+  if (payload.state === "MERGED" || payload.mergedAt !== null) {
     return "merged";
   }
-  if (payload.state === "OPEN") {
-    return "open";
-  }
-  return payload.state === "CLOSED" ? "closed" : undefined;
+  return payload.state === "OPEN" ? "open" : "closed";
 }
 
-function normalizeAuthor(cause: unknown): ForgeAuthor | null | undefined {
-  if (cause === null || cause === undefined) {
-    return null;
-  }
-  if (!isAuthorPayload(cause) || !isString(cause.login)) {
-    return undefined;
-  }
-  return { login: cause.login };
-}
-
-function isPullRequestPayload(
-  cause: unknown,
-): cause is GithubPullRequestPayload {
-  return isJsonObject(cause);
-}
-
-function isCommentsPayload(cause: unknown): cause is GithubCommentsPayload {
-  return isJsonObject(cause);
-}
-
-function isCommentPayload(cause: unknown): cause is GithubCommentPayload {
-  return isJsonObject(cause);
-}
-
-function isAuthorPayload(cause: unknown): cause is GithubAuthorPayload {
-  return isJsonObject(cause);
+function normalizeAuthor(
+  cause: GithubAuthor | null | undefined,
+): ForgeAuthor | null {
+  return cause === null || cause === undefined ? null : { login: cause.login };
 }
 
 function incompatible<T>(

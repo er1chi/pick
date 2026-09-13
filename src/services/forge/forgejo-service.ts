@@ -1,8 +1,3 @@
-import { Result } from "better-result";
-import type { Result as ResultType } from "better-result";
-import { checkCli } from "./cli-check";
-import { executeCli } from "./cli-execution";
-import * as Json from "./json-validation";
 import type {
   ForgeAdapter,
   ForgeAuthor,
@@ -11,29 +6,35 @@ import type {
   PullRequestComment,
   PullRequestState,
 } from "./types";
+import type { Result as ResultType } from "better-result";
+import { type } from "arktype";
+import { Result } from "better-result";
+import { checkCli } from "./cli-check";
+import { executeCli } from "./cli-execution";
 
 const executableName = "fj";
 const kind = "forgejo" as const;
 
-interface ForgejoPullRequestPayload {
-  readonly number?: unknown;
-  readonly title?: unknown;
-  readonly body?: unknown;
-  readonly state?: unknown;
-  readonly merged?: unknown;
-  readonly user?: unknown;
-}
+const userSchema = type({ login: "string" });
+const pullRequestSchema = type({
+  number: type("number.integer"),
+  title: "string",
+  body: "string | null",
+  state: "'open' | 'closed'",
+  merged: "boolean",
+  user: userSchema.or("null").optional(),
+});
+const commentSchema = type({
+  id: type("string | (number.integer & number.safe)"),
+  user: userSchema.or("null").optional(),
+  body: "string | null",
+  created_at: "string.date.parse",
+});
+const commentsSchema = commentSchema.array();
 
-interface ForgejoCommentPayload {
-  readonly id?: unknown;
-  readonly user?: unknown;
-  readonly body?: unknown;
-  readonly created_at?: unknown;
-}
-
-interface ForgejoUserPayload {
-  readonly login?: unknown;
-}
+type ForgejoAuthor = typeof userSchema.infer;
+type ForgejoPullRequest = typeof pullRequestSchema.infer;
+type ForgejoComment = typeof commentSchema.infer;
 
 export class ForgejoService implements ForgeAdapter {
   public readonly kind = kind;
@@ -58,7 +59,7 @@ export class ForgejoService implements ForgeAdapter {
         ["--json", "pr", "view", String(number)],
         this.cwd,
       )
-    ).andThen((output) => decodeJson(output, toPullRequest));
+    ).andThen((output) => decodeJson(output, normalizePullRequest));
   }
 
   public async getPullRequestComments(
@@ -71,7 +72,7 @@ export class ForgejoService implements ForgeAdapter {
         ["--json", "pr", "view", String(number), "comments"],
         this.cwd,
       )
-    ).andThen((output) => decodeJson(output, toComments));
+    ).andThen((output) => decodeJson(output, normalizeComments));
   }
 
   private constructor(private readonly cwd: string) {}
@@ -96,121 +97,67 @@ function decodeJson<T>(
   return providerJson.andThen(decoder);
 }
 
-function toPullRequest(
+function normalizePullRequest(
   cause: unknown,
 ): ResultType<PullRequest, ForgeOperationError> {
-  if (!isPullRequestPayload(cause)) {
-    return schemaError("Expected a pull request object");
+  const payload = pullRequestSchema(cause);
+  if (!(payload instanceof type.errors)) {
+    const { number, title, body, user } = payload;
+    return Result.ok({
+      number,
+      title,
+      body,
+      state: normalizeState(payload),
+      author: normalizeAuthor(user),
+    });
   }
 
-  const author = toAuthor(cause.user);
-  const state = toState(cause);
-  if (
-    !Json.isInteger(cause.number) ||
-    !Json.isString(cause.title) ||
-    !Json.isNullableString(cause.body) ||
-    author === undefined ||
-    state === undefined
-  ) {
-    return schemaError("Pull request fields did not match the Forgejo schema");
-  }
-
-  const pullRequest: PullRequest = {
-    number: cause.number,
-    title: cause.title,
-    body: cause.body,
-    state,
-    author,
-  };
-  return Result.ok(pullRequest);
-}
-
-function toComments(
-  cause: unknown,
-): ResultType<readonly PullRequestComment[], ForgeOperationError> {
-  if (!Array.isArray(cause)) {
-    return schemaError("Expected a comments array");
-  }
-
-  const comments: PullRequestComment[] = [];
-  for (const item of cause) {
-    const normalized = toComment(item);
-    if (normalized.isErr()) {
-      return normalized;
-    }
-    comments.push(normalized.value);
-  }
-
-  return Result.ok(comments);
-}
-
-function toComment(
-  cause: unknown,
-): ResultType<PullRequestComment, ForgeOperationError> {
-  if (!isCommentPayload(cause)) {
-    return schemaError("Expected each comment to be an object");
-  }
-
-  const author = toAuthor(cause.user);
-  const createdAt = Json.toIsoTimestamp(cause.created_at);
-  if (
-    !Json.isStableProviderId(cause.id) ||
-    author === undefined ||
-    !Json.isNullableString(cause.body) ||
-    createdAt === undefined
-  ) {
-    return schemaError("Comment fields did not match the Forgejo schema");
-  }
-
-  return Result.ok({
-    id: String(cause.id),
-    author,
-    body: cause.body,
-    createdAt,
+  const diagnostic = `Forgejo pull request response did not match the schema: ${payload.summary}`;
+  return Result.err({
+    kind,
+    code: "incompatible-response",
+    diagnostic,
   });
 }
 
-function toState(
-  payload: ForgejoPullRequestPayload,
-): PullRequestState | undefined {
-  if (payload.merged === true) {
+function normalizeComments(
+  cause: unknown,
+): ResultType<readonly PullRequestComment[], ForgeOperationError> {
+  const payload = commentsSchema(cause);
+  if (!(payload instanceof type.errors)) {
+    return Result.ok(payload.map((comment) => normalizeComment(comment)));
+  }
+
+  const diagnostic = `Forgejo comments response did not match the schema: ${payload.summary}`;
+  return Result.err({
+    kind,
+    code: "incompatible-response",
+    diagnostic,
+  });
+}
+
+function normalizeComment(payload: ForgejoComment): PullRequestComment {
+  const { id, user, body, created_at } = payload;
+  return {
+    id: String(id),
+    author: normalizeAuthor(user),
+    body,
+    createdAt: created_at.toISOString(),
+  };
+}
+
+function normalizeState(payload: ForgejoPullRequest): PullRequestState {
+  if (payload.merged) {
     return "merged";
   }
-  if (payload.merged !== false) {
-    return undefined;
-  }
-  if (payload.state === "open") {
-    return "open";
-  }
-  return payload.state === "closed" ? "closed" : undefined;
+  return payload.state === "open" ? "open" : "closed";
 }
 
-function toAuthor(cause: unknown): ForgeAuthor | null | undefined {
-  if (cause === null || cause === undefined) {
+function normalizeAuthor(
+  cause: ForgejoAuthor | null | undefined,
+): ForgeAuthor | null {
+  if (!cause) {
     return null;
   }
-  if (!isUserPayload(cause) || !Json.isString(cause.login)) {
-    return undefined;
-  }
   return { login: cause.login };
-}
-
-function isPullRequestPayload(
-  cause: unknown,
-): cause is ForgejoPullRequestPayload {
-  return Json.isJsonObject(cause);
-}
-
-function isCommentPayload(cause: unknown): cause is ForgejoCommentPayload {
-  return Json.isJsonObject(cause);
-}
-
-function isUserPayload(cause: unknown): cause is ForgejoUserPayload {
-  return Json.isJsonObject(cause);
-}
-
-function schemaError<T>(
-  diagnostic: string,
-): ResultType<T, ForgeOperationError> {
-  return Result.err({ kind, code: "incompatible-response", diagnostic });
 }

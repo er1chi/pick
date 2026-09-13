@@ -16,8 +16,9 @@ const executableName = "fj";
 const kind = "forgejo" as const;
 
 const userSchema = type({ login: "string" });
+const safeIntegerSchema = type("number.integer & number.safe");
 const pullRequestSchema = type({
-  number: type("number.integer"),
+  number: safeIntegerSchema,
   title: "string",
   body: "string | null",
   state: "'open' | 'closed'",
@@ -25,7 +26,7 @@ const pullRequestSchema = type({
   user: userSchema.or("null").optional(),
 });
 const commentSchema = type({
-  id: type("string | (number.integer & number.safe)"),
+  id: safeIntegerSchema,
   user: userSchema.or("null").optional(),
   body: "string | null",
   created_at: "string.date.parse",

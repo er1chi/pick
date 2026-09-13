@@ -16,9 +16,10 @@ const executableName = "gh";
 const kind = "github" as const;
 
 const authorSchema = type({ login: "string" });
-const providerIdSchema = type("string | (number.integer & number.safe)");
+const safeIntegerSchema = type("number.integer & number.safe");
+const providerIdSchema = type("string").or(safeIntegerSchema);
 const pullRequestSchema = type({
-  number: "number.integer",
+  number: safeIntegerSchema,
   title: "string",
   body: "string | null",
   state: "'OPEN' | 'CLOSED' | 'MERGED'",

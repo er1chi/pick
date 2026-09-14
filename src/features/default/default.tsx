@@ -1,20 +1,35 @@
+import type { BoxRenderable } from "@opentui/core";
 import {
   discoverRecentRepositories,
   type RecentRepository,
 } from "@/services/repository-discovery";
+import { moveInList } from "@/utils/navigation";
 import { colors } from "@/theme";
-import { For, Show, createSignal, onMount } from "solid-js";
+import { useBindings } from "@opentui/keymap/solid";
+import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 
 const discoveryRootLabel = "~/Developer";
 
-function RepositoryRow(props: { readonly repository: RecentRepository }) {
+function RepositoryRow(props: {
+  readonly repository: RecentRepository;
+  readonly selected: boolean;
+}) {
   return (
-    <box flexDirection="row" gap={1} width="100%">
-      <text fg={colors.blue}>{">"}</text>
+    <box
+      flexDirection="row"
+      gap={1}
+      width="100%"
+      backgroundColor={props.selected ? colors.selected : undefined}
+    >
+      <text fg={props.selected ? colors.blue : colors.dim}>
+        {props.selected ? ">" : " "}
+      </text>
       <text fg={colors.foreground}>
         <strong>{props.repository.name}</strong>
       </text>
-      <text fg={colors.dim}>{props.repository.displayPath}</text>
+      <text fg={props.selected ? colors.foreground : colors.dim}>
+        {props.repository.displayPath}
+      </text>
     </box>
   );
 }
@@ -24,6 +39,64 @@ export function Default() {
     readonly RecentRepository[]
   >([]);
   const [isLoading, setIsLoading] = createSignal(true);
+  const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
+  const [recentRepositoriesBox, setRecentRepositoriesBox] = createSignal<
+    BoxRenderable | undefined
+  >();
+
+  createEffect(() => {
+    const currentRepositories = repositories();
+    const currentSelectedPath = selectedPath();
+    const nextSelectedPath =
+      currentRepositories.find(
+        (repository) => repository.path === currentSelectedPath,
+      )?.path ??
+      currentRepositories[0]?.path ??
+      null;
+
+    if (nextSelectedPath !== currentSelectedPath) {
+      setSelectedPath(nextSelectedPath);
+    }
+  });
+
+  function moveSelection(offset: number): void {
+    const currentRepositories = repositories();
+    if (currentRepositories.length === 0) {
+      return;
+    }
+
+    const currentSelectedPath = selectedPath();
+    const currentRepository =
+      currentRepositories.find(
+        (repository) => repository.path === currentSelectedPath,
+      ) ?? currentRepositories[0]!;
+    const nextRepository = moveInList(
+      currentRepositories,
+      currentRepository,
+      offset,
+    );
+    setSelectedPath(nextRepository.path);
+  }
+
+  useBindings(() => ({
+    target: recentRepositoriesBox,
+    commands: [
+      {
+        name: "default.repositories.move-up",
+        run: () => moveSelection(-1),
+      },
+      {
+        name: "default.repositories.move-down",
+        run: () => moveSelection(1),
+      },
+    ],
+    bindings: [
+      { key: "k", cmd: "default.repositories.move-up" },
+      { key: "up", cmd: "default.repositories.move-up" },
+      { key: "j", cmd: "default.repositories.move-down" },
+      { key: "down", cmd: "default.repositories.move-down" },
+    ],
+  }));
 
   onMount(() => {
     void discoverRecentRepositories()
@@ -40,6 +113,9 @@ export function Default() {
 
   return (
     <box
+      ref={setRecentRepositoriesBox}
+      focusable
+      focused
       flexDirection="column"
       gap={1}
       width="100%"
@@ -73,7 +149,12 @@ export function Default() {
             stickyStart="top"
           >
             <For each={repositories()}>
-              {(repository) => <RepositoryRow repository={repository} />}
+              {(repository) => (
+                <RepositoryRow
+                  repository={repository}
+                  selected={repository.path === selectedPath()}
+                />
+              )}
             </For>
           </scrollbox>
         </Show>

@@ -1,5 +1,6 @@
 import { Button } from "@/components/button";
 import { type AppContextState, useAppContext } from "@/context/app-context";
+import { Default } from "@/features/default/default";
 import {
   ApplicationContext,
   ForgeInitializationErrorCode,
@@ -12,7 +13,7 @@ import { Toaster, toast } from "@tuiparts/toast/solid";
 import { onMount } from "solid-js";
 
 const contextLabels = {
-  [ApplicationContext.App]: "Application",
+  [ApplicationContext.Default]: "Application",
   [ApplicationContext.GitHub]: "GitHub",
   [ApplicationContext.Forgejo]: "Forgejo",
 } as const satisfies Record<AppContextState["kind"], string>;
@@ -64,6 +65,7 @@ export function App() {
       </text>
       <text fg={colors.muted}>Git, GitHub, and Forgejo — in the terminal.</text>
       <text fg={colors.muted}>Context: {contextLabels[appContext.kind]}</text>
+      {appContext.kind === ApplicationContext.Default ? <Default /> : null}
       <Button label="Press Enter" color={colors.green} />
       <text fg={colors.dim}>Ctrl+Q quits</text>
       <Toaster position="top-right" stackingMode="stack" visibleToasts={3} />

@@ -1,7 +1,7 @@
 import type { Result } from "better-result";
 
 export enum ApplicationContext {
-  App = "application",
+  Default = "application",
   GitHub = "github",
   Forgejo = "forgejo",
 }

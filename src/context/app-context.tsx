@@ -10,7 +10,7 @@ import {
 
 export type AppContextState =
   | {
-      readonly kind: ApplicationContext.App;
+      readonly kind: ApplicationContext.Default;
       readonly forge: undefined;
       readonly forgeError: undefined;
     }
@@ -105,7 +105,7 @@ export async function initializeAppContext(
     .unwrapOr([]);
   if (remoteUrls.length === 0) {
     return {
-      kind: ApplicationContext.App,
+      kind: ApplicationContext.Default,
       forge: undefined,
       forgeError: undefined,
     };

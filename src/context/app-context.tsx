@@ -1,5 +1,4 @@
 import { Result } from "better-result";
-import type { Result as ResultType } from "better-result";
 import { createContext, useContext } from "solid-js";
 import type { JSX } from "@opentui/solid";
 import { ForgeService } from "@/services/forge/forge-service";
@@ -12,10 +11,17 @@ export type AppContextState =
   | {
       readonly kind: "application";
       readonly forge: undefined;
+      readonly forgeError: undefined;
     }
   | {
       readonly kind: ForgeKind;
-      readonly forge: ResultType<ForgeService, ForgeInitializationError>;
+      readonly forge: ForgeService;
+      readonly forgeError: undefined;
+    }
+  | {
+      readonly kind: ForgeKind;
+      readonly forge: undefined;
+      readonly forgeError: ForgeInitializationError;
     };
 
 const remoteEntryPattern = /^\S+\s+(\S+)\s+\((?:fetch|push)\)$/;
@@ -87,15 +93,17 @@ export async function initializeAppContext(
     .map(parseRemoteUrls)
     .unwrapOr([]);
   if (remoteUrls.length === 0) {
-    return { kind: "application", forge: undefined };
+    return { kind: "application", forge: undefined, forgeError: undefined };
   }
 
   const kind = remoteUrls.some(isGithubRemoteUrl) ? "github" : "forgejo";
+  const initialization = await ForgeService.initialize(kind, cwd);
 
-  return {
-    kind,
-    forge: await ForgeService.initialize(kind, cwd),
-  };
+  if (initialization.isErr()) {
+    return { kind, forge: undefined, forgeError: initialization.error };
+  }
+
+  return { kind, forge: initialization.value, forgeError: undefined };
 }
 
 type AppContextProviderProps = {

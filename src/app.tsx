@@ -1,9 +1,6 @@
 import { Button } from "@/components/button";
 import { type AppContextState, useAppContext } from "@/context/app-context";
-import type {
-  ForgeInitializationError,
-  ForgeKind,
-} from "@/services/forge/types";
+import type { ForgeInitializationError } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
 import { useRenderer } from "@opentui/solid";
@@ -16,14 +13,11 @@ const contextLabels = {
   forgejo: "Forgejo",
 } as const satisfies Record<AppContextState["kind"], string>;
 
-function notifyCliInitializationError(
-  kind: ForgeKind,
-  code: ForgeInitializationError["code"],
-) {
-  const service = kind === "github" ? "GitHub" : "Forgejo";
-  const executable = kind === "github" ? "gh" : "fj";
+function notifyCliInitializationError(error: ForgeInitializationError) {
+  const service = error.kind === "github" ? "GitHub" : "Forgejo";
+  const executable = error.kind === "github" ? "gh" : "fj";
   const reason =
-    code === "executable-unavailable"
+    error.code === "executable-unavailable"
       ? "is unavailable"
       : "version check failed";
   toast.warning(`${service} CLI (${executable}) ${reason}.`);
@@ -36,11 +30,8 @@ export function App() {
   onMount(() => {
     renderer.setTerminalTitle("Pick");
 
-    if (appContext.kind !== "application" && appContext.forge.isErr()) {
-      notifyCliInitializationError(
-        appContext.kind,
-        appContext.forge.error.code,
-      );
+    if (appContext.forgeError !== undefined) {
+      notifyCliInitializationError(appContext.forgeError);
     }
   });
 

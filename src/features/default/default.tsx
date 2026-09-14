@@ -1,4 +1,4 @@
-import type { BoxRenderable } from "@opentui/core";
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import {
   discoverRecentRepositories,
   type RecentRepository,
@@ -16,6 +16,7 @@ function RepositoryRow(props: {
 }) {
   return (
     <box
+      id={props.repository.path}
       flexDirection="row"
       gap={1}
       width="100%"
@@ -43,6 +44,8 @@ export function Default() {
   const [recentRepositoriesBox, setRecentRepositoriesBox] = createSignal<
     BoxRenderable | undefined
   >();
+  const [recentRepositoriesScrollBox, setRecentRepositoriesScrollBox] =
+    createSignal<ScrollBoxRenderable | undefined>();
 
   createEffect(() => {
     const currentRepositories = repositories();
@@ -76,6 +79,7 @@ export function Default() {
       offset,
     );
     setSelectedPath(nextRepository.path);
+    recentRepositoriesScrollBox()?.scrollChildIntoView(nextRepository.path);
   }
 
   useBindings(() => ({
@@ -142,6 +146,7 @@ export function Default() {
           }
         >
           <scrollbox
+            ref={setRecentRepositoriesScrollBox}
             flexDirection="column"
             width="100%"
             maxHeight={8}

@@ -1,6 +1,9 @@
 import { Result } from "better-result";
-import { createContext, useContext } from "solid-js";
+import { resolve } from "node:path";
+import { createContext, createSignal, useContext } from "solid-js";
+import type { Accessor } from "solid-js";
 import type { JSX } from "@opentui/solid";
+import type { Result as ResultType } from "better-result";
 import { ForgeService } from "@/services/forge/forge-service";
 import {
   ApplicationContext,
@@ -10,20 +13,41 @@ import {
 
 export type AppContextState =
   | {
+      readonly cwd: string;
       readonly kind: ApplicationContext.Default;
       readonly forge: undefined;
       readonly forgeError: undefined;
     }
   | {
+      readonly cwd: string;
       readonly kind: ForgeKind;
       readonly forge: ForgeService;
       readonly forgeError: undefined;
     }
   | {
+      readonly cwd: string;
       readonly kind: ForgeKind;
       readonly forge: undefined;
       readonly forgeError: ForgeInitializationError;
     };
+
+export type RemoteAppContextState = Extract<
+  AppContextState,
+  { readonly kind: ForgeKind }
+>;
+
+export enum RepositorySelectionErrorCode {
+  DirectoryChangeFailed = "directory-change-failed",
+  ContextInitializationFailed = "context-initialization-failed",
+  TransitionInProgress = "transition-in-progress",
+}
+
+export type RepositorySelectionError = {
+  readonly code: RepositorySelectionErrorCode;
+  readonly path: string;
+};
+
+type RepositorySelectionResult = ResultType<void, RepositorySelectionError>;
 
 const remoteEntryPattern = /^\S+\s+(\S+)\s+\((?:fetch|push)\)$/;
 const githubScpRemotePattern = /^[^@/\s]+@([^:/\s]+):\S+$/;
@@ -100,11 +124,13 @@ async function readGitRemoteOutput(
 export async function initializeAppContext(
   cwd = process.cwd(),
 ): Promise<AppContextState> {
-  const remoteUrls = (await readGitRemoteOutput(cwd))
+  const activeCwd = resolve(cwd);
+  const remoteUrls = (await readGitRemoteOutput(activeCwd))
     .map(parseRemoteUrls)
     .unwrapOr([]);
   if (remoteUrls.length === 0) {
     return {
+      cwd: activeCwd,
       kind: ApplicationContext.Default,
       forge: undefined,
       forgeError: undefined,
@@ -114,13 +140,23 @@ export async function initializeAppContext(
   const kind = remoteUrls.some(isGithubRemoteUrl)
     ? ApplicationContext.GitHub
     : ApplicationContext.Forgejo;
-  const initialization = await ForgeService.initialize(kind, cwd);
+  const initialization = await ForgeService.initialize(kind, activeCwd);
 
   if (initialization.isErr()) {
-    return { kind, forge: undefined, forgeError: initialization.error };
+    return {
+      cwd: activeCwd,
+      kind,
+      forge: undefined,
+      forgeError: initialization.error,
+    };
   }
 
-  return { kind, forge: initialization.value, forgeError: undefined };
+  return {
+    cwd: activeCwd,
+    kind,
+    forge: initialization.value,
+    forgeError: undefined,
+  };
 }
 
 type AppContextProviderProps = {
@@ -128,19 +164,75 @@ type AppContextProviderProps = {
   readonly children: JSX.Element;
 };
 
-const AppContext = createContext<AppContextState>();
+export type AppContextValue = {
+  readonly state: Accessor<AppContextState>;
+  readonly selectRepository: (
+    repositoryPath: string,
+  ) => Promise<RepositorySelectionResult>;
+};
+
+const AppContext = createContext<AppContextValue>();
 
 export function AppContextProvider(
   props: AppContextProviderProps,
 ): JSX.Element {
+  const [state, setState] = createSignal(props.value);
+  let transitionInProgress = false;
+
+  const selectRepository = async (
+    repositoryPath: string,
+  ): Promise<RepositorySelectionResult> => {
+    const path = resolve(repositoryPath);
+    if (transitionInProgress) {
+      return Result.err<void, RepositorySelectionError>({
+        code: RepositorySelectionErrorCode.TransitionInProgress,
+        path,
+      });
+    }
+
+    transitionInProgress = true;
+    try {
+      const initialization = await Result.tryPromise({
+        try: () => initializeAppContext(path),
+        catch: (): RepositorySelectionError => ({
+          code: RepositorySelectionErrorCode.ContextInitializationFailed,
+          path,
+        }),
+      });
+
+      if (initialization.isErr()) {
+        return initialization;
+      }
+
+      const changeDirectory = Result.try({
+        try: () => {
+          process.chdir(path);
+        },
+        catch: (): RepositorySelectionError => ({
+          code: RepositorySelectionErrorCode.DirectoryChangeFailed,
+          path,
+        }),
+      });
+
+      if (changeDirectory.isErr()) {
+        return changeDirectory;
+      }
+
+      setState({ ...initialization.value, cwd: process.cwd() });
+      return Result.ok();
+    } finally {
+      transitionInProgress = false;
+    }
+  };
+
+  const context: AppContextValue = { state, selectRepository };
+
   return (
-    <AppContext.Provider value={props.value}>
-      {props.children}
-    </AppContext.Provider>
+    <AppContext.Provider value={context}>{props.children}</AppContext.Provider>
   );
 }
 
-export function useAppContext(): AppContextState {
+export function useAppContext(): AppContextValue {
   const context = useContext(AppContext);
   if (context === undefined) {
     throw new Error("useAppContext must be used within an AppContextProvider");

@@ -1,5 +1,10 @@
-import { useAppContext } from "@/context/app-context";
+import {
+  type AppContextState,
+  useAppContext,
+  type RemoteAppContextState,
+} from "@/context/app-context";
 import { Default } from "@/features/default/default";
+import { RepoView } from "@/features/repo-view/repo-view";
 import {
   ApplicationContext,
   ForgeInitializationErrorCode,
@@ -8,7 +13,14 @@ import {
 import { colors } from "@/theme";
 import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
-import { onMount } from "solid-js";
+import { createEffect, onMount, Show } from "solid-js";
+import type { Accessor } from "solid-js";
+
+function remoteAppContextState(
+  state: AppContextState,
+): RemoteAppContextState | undefined {
+  return state.kind === ApplicationContext.Default ? undefined : state;
+}
 
 function notifyCliInitializationError(error: ForgeInitializationError) {
   const service =
@@ -27,9 +39,12 @@ export function App() {
 
   onMount(() => {
     renderer.setTerminalTitle("Pick");
+  });
 
-    if (appContext.forgeError !== undefined) {
-      notifyCliInitializationError(appContext.forgeError);
+  createEffect(() => {
+    const forgeError = appContext.state().forgeError;
+    if (forgeError !== undefined) {
+      notifyCliInitializationError(forgeError);
     }
   });
 
@@ -44,7 +59,16 @@ export function App() {
     >
       <ascii_font text="PICK" font="block" color={colors.blue} />
       <text fg={colors.muted}>Git, GitHub, and Forgejo — in the terminal.</text>
-      {appContext.kind === ApplicationContext.Default ? <Default /> : null}
+      <box width="100%" maxWidth={80} alignSelf="center">
+        <Show
+          when={remoteAppContextState(appContext.state())}
+          fallback={<Default />}
+        >
+          {(state: Accessor<RemoteAppContextState>) => (
+            <RepoView state={state()} />
+          )}
+        </Show>
+      </box>
       <text fg={colors.dim}>Ctrl+Q quits</text>
       <Toaster position="top-right" stackingMode="stack" visibleToasts={3} />
     </box>

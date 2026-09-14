@@ -11,29 +11,31 @@ import {
   type ForgeKind,
 } from "@/services/forge/types";
 
-type AppContextBase = {
+interface AppContextBase<T extends ApplicationContext> {
   readonly cwd: string;
-};
+  readonly kind: T;
+}
 
-type RemoteAppContextState = AppContextBase & { readonly kind: ForgeKind } & (
-    | {
-        readonly forge: ForgeService;
-        readonly forgeError: undefined;
-      }
-    | {
-        readonly forge: undefined;
-        readonly forgeError: ForgeInitializationError;
-      }
-  );
+interface ExistingForge {
+  readonly forge: ForgeService;
+  readonly forgeError: undefined;
+}
 
-export type AppContextState =
-  | (AppContextBase & { readonly kind: ApplicationContext.Default })
-  | (AppContextBase & { readonly kind: ApplicationContext.Local })
-  | RemoteAppContextState;
+interface ForgeErrorState {
+  readonly forge: undefined;
+  readonly forgeError: ForgeInitializationError;
+}
+
+type RemoteAppContextState = AppContextBase<ForgeKind> &
+  (ExistingForge | ForgeErrorState);
+type LocalAppContextState =
+  | AppContextBase<ApplicationContext.Default>
+  | AppContextBase<ApplicationContext.Local>;
+export type AppContextState = LocalAppContextState | RemoteAppContextState;
 
 export type RepositoryAppContextState = Exclude<
   AppContextState,
-  { readonly kind: ApplicationContext.Default }
+  AppContextBase<ApplicationContext.Default>
 >;
 
 export enum RepositorySelectionErrorCode {

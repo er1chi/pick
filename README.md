@@ -3,26 +3,27 @@
 A terminal Git client: VS Code-style source control, plus PR review for
 connected GitHub and Forgejo accounts. Built with OpenTUI and Solid.
 
-## Setup
+## Prerequisites
 
-pnpm manages dependencies. Bun is required to run the TUI (OpenTUI Solid JSX
-preload).
+- authenticated gh cli
+- authenticated [forgejo cli](https://codeberg.org/stalecontext/forgejo-cli-plus)
+  - community fork recommended for --json outputs
+  - waiting on [Issue 213: Structured Outputs](https://codeberg.org/forgejo-contrib/forgejo-cli/issues/213) in 'official' cli
+- pnpm/bun
+
+## Setup
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-`Ctrl+Q` shuts down the renderer cleanly.
-
 ## Checks
 
 ```bash
-pnpm test
 pnpm typecheck
 pnpm lint
+pnpm test
 pnpm duplication
 pnpm knip
 ```
-
-Application code starts in `src/app.tsx`.

@@ -195,7 +195,6 @@ export function Default() {
         >
           <scrollbox
             ref={setRecentRepositoriesScrollBox}
-            flexDirection="column"
             width="100%"
             maxHeight={8}
             stickyScroll

@@ -50,18 +50,13 @@ export function RepoView(props: RepoViewProps) {
       <Show
         when={currentState().kind === ApplicationContext.Local}
         fallback={
-          <Show
-            when={currentState().forge !== undefined}
-            fallback={
-              <box flexDirection="column">
-                <text fg={colors.yellow}>Status: CLI initialization error</text>
-                <text fg={colors.muted}>
-                  {initializationErrorDescription(currentState().forgeError)}
-                </text>
-              </box>
-            }
-          >
-            <text fg={colors.green}>Status: Ready</text>
+          <Show when={currentState().forgeError !== undefined}>
+            <box flexDirection="column">
+              <text fg={colors.yellow}>Status: CLI initialization error</text>
+              <text fg={colors.muted}>
+                {initializationErrorDescription(currentState().forgeError)}
+              </text>
+            </box>
           </Show>
         }
       >

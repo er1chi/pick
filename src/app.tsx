@@ -60,9 +60,7 @@ export function App() {
       height="100%"
       gap={1}
     >
-      <text fg={colors.blue}>
-        <strong>Pick</strong>
-      </text>
+      <ascii_font text="PICK" font="grid" color={colors.blue} />
       <text fg={colors.muted}>Git, GitHub, and Forgejo — in the terminal.</text>
       <text fg={colors.muted}>Context: {contextLabels[appContext.kind]}</text>
       {appContext.kind === ApplicationContext.Default ? <Default /> : null}

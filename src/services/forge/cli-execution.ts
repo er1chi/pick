@@ -1,5 +1,6 @@
 import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
+import { ForgeOperationErrorCode } from "./types";
 import type {
   CliExecutionError,
   ForgeKind,
@@ -29,9 +30,9 @@ export async function executeCli(
 
       return { stdout, stderr, exitCode };
     },
-    catch: (cause) => ({
+    catch: (cause): CliExecutionError => ({
       kind,
-      code: "command-spawn-failed" as const,
+      code: ForgeOperationErrorCode.CommandSpawnFailed,
       diagnostic: describeCause(cause),
     }),
   });
@@ -39,9 +40,9 @@ export async function executeCli(
   return execution.andThen(({ stdout, stderr, exitCode }) =>
     exitCode === 0
       ? Result.ok(stdout)
-      : Result.err({
+      : Result.err<never, CliExecutionError>({
           kind,
-          code: "command-failed" as const,
+          code: ForgeOperationErrorCode.CommandFailed,
           exitCode,
           diagnostic: stderr.trim() || `CLI exited with code ${exitCode}`,
         }),
@@ -58,9 +59,9 @@ export function decodeJson<T>(
         const value: unknown = JSON.parse(output);
         return value;
       },
-      catch: (cause) => ({
+      catch: (cause): ForgeOperationError => ({
         kind,
-        code: "invalid-json" as const,
+        code: ForgeOperationErrorCode.InvalidJson,
         diagnostic:
           cause instanceof Error
             ? cause.message

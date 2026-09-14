@@ -1,27 +1,51 @@
 import type { Result } from "better-result";
 
-export type ForgeKind = "github" | "forgejo";
+export enum ApplicationContext {
+  App = "application",
+  GitHub = "github",
+  Forgejo = "forgejo",
+}
+
+export type ForgeKind = ApplicationContext.GitHub | ApplicationContext.Forgejo;
+
+export enum ForgeInitializationErrorCode {
+  ExecutableUnavailable = "executable-unavailable",
+  VersionCheckFailed = "version-check-failed",
+}
+
+export enum ForgeOperationErrorCode {
+  CommandSpawnFailed = "command-spawn-failed",
+  CommandFailed = "command-failed",
+  InvalidJson = "invalid-json",
+  IncompatibleResponse = "incompatible-response",
+}
+
+export enum PullRequestState {
+  Open = "open",
+  Closed = "closed",
+  Merged = "merged",
+}
 
 export type ForgeInitializationError =
   | {
       readonly kind: ForgeKind;
-      readonly code: "executable-unavailable";
+      readonly code: ForgeInitializationErrorCode.ExecutableUnavailable;
     }
   | {
       readonly kind: ForgeKind;
-      readonly code: "version-check-failed";
+      readonly code: ForgeInitializationErrorCode.VersionCheckFailed;
       readonly exitCode: number;
     };
 
 export type CliExecutionError =
   | {
       readonly kind: ForgeKind;
-      readonly code: "command-spawn-failed";
+      readonly code: ForgeOperationErrorCode.CommandSpawnFailed;
       readonly diagnostic: string;
     }
   | {
       readonly kind: ForgeKind;
-      readonly code: "command-failed";
+      readonly code: ForgeOperationErrorCode.CommandFailed;
       readonly exitCode: number;
       readonly diagnostic: string;
     };
@@ -30,16 +54,14 @@ export type ForgeOperationError =
   | CliExecutionError
   | {
       readonly kind: ForgeKind;
-      readonly code: "invalid-json";
+      readonly code: ForgeOperationErrorCode.InvalidJson;
       readonly diagnostic: string;
     }
   | {
       readonly kind: ForgeKind;
-      readonly code: "incompatible-response";
+      readonly code: ForgeOperationErrorCode.IncompatibleResponse;
       readonly diagnostic: string;
     };
-
-export type PullRequestState = "open" | "closed" | "merged";
 
 export interface ForgeAuthor {
   readonly login: string;
@@ -72,9 +94,9 @@ export interface ForgeAdapter {
 
 export type CliCheckError =
   | {
-      readonly code: "executable-unavailable";
+      readonly code: ForgeInitializationErrorCode.ExecutableUnavailable;
     }
   | {
-      readonly code: "version-check-failed";
+      readonly code: ForgeInitializationErrorCode.VersionCheckFailed;
       readonly exitCode: number;
     };

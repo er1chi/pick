@@ -2,14 +2,15 @@ import { Result } from "better-result";
 import { createContext, useContext } from "solid-js";
 import type { JSX } from "@opentui/solid";
 import { ForgeService } from "@/services/forge/forge-service";
-import type {
-  ForgeInitializationError,
-  ForgeKind,
+import {
+  ApplicationContext,
+  type ForgeInitializationError,
+  type ForgeKind,
 } from "@/services/forge/types";
 
 export type AppContextState =
   | {
-      readonly kind: "application";
+      readonly kind: ApplicationContext.App;
       readonly forge: undefined;
       readonly forgeError: undefined;
     }
@@ -47,12 +48,17 @@ function isGithubRemoteUrl(url: string): boolean {
     .unwrapOr(false);
 }
 
+enum GitRemoteErrorCode {
+  GitUnavailable = "git-unavailable",
+  GitCommandFailed = "git-command-failed",
+}
+
 type GitRemoteError =
   | {
-      readonly code: "git-unavailable";
+      readonly code: GitRemoteErrorCode.GitUnavailable;
     }
   | {
-      readonly code: "git-command-failed";
+      readonly code: GitRemoteErrorCode.GitCommandFailed;
       readonly exitCode: number;
     };
 
@@ -76,13 +82,18 @@ async function readGitRemoteOutput(
 
       return { stdout, exitCode };
     },
-    catch: () => ({ code: "git-unavailable" as const }),
+    catch: (): GitRemoteError => ({
+      code: GitRemoteErrorCode.GitUnavailable,
+    }),
   });
 
   return execution.andThen(({ stdout, exitCode }) =>
     exitCode === 0
       ? Result.ok(stdout)
-      : Result.err({ code: "git-command-failed" as const, exitCode }),
+      : Result.err<never, GitRemoteError>({
+          code: GitRemoteErrorCode.GitCommandFailed,
+          exitCode,
+        }),
   );
 }
 
@@ -93,10 +104,16 @@ export async function initializeAppContext(
     .map(parseRemoteUrls)
     .unwrapOr([]);
   if (remoteUrls.length === 0) {
-    return { kind: "application", forge: undefined, forgeError: undefined };
+    return {
+      kind: ApplicationContext.App,
+      forge: undefined,
+      forgeError: undefined,
+    };
   }
 
-  const kind = remoteUrls.some(isGithubRemoteUrl) ? "github" : "forgejo";
+  const kind = remoteUrls.some(isGithubRemoteUrl)
+    ? ApplicationContext.GitHub
+    : ApplicationContext.Forgejo;
   const initialization = await ForgeService.initialize(kind, cwd);
 
   if (initialization.isErr()) {

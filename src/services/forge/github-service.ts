@@ -3,17 +3,21 @@ import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
 import { checkCli } from "./cli-check";
 import { decodeJson, executeCli } from "./cli-execution";
+import {
+  ApplicationContext,
+  ForgeOperationErrorCode,
+  PullRequestState,
+} from "./types";
 import type {
   ForgeAdapter,
   ForgeAuthor,
   ForgeOperationError,
   PullRequest,
   PullRequestComment,
-  PullRequestState,
 } from "./types";
 
 const executableName = "gh";
-const kind = "github" as const;
+const kind = ApplicationContext.GitHub;
 
 const authorSchema = type({ login: "string" });
 const pullRequestSchema = type({
@@ -122,9 +126,11 @@ function normalizeComment(payload: GithubComment): PullRequestComment {
 
 function normalizeState(payload: GithubPullRequest): PullRequestState {
   if (payload.state === "MERGED") {
-    return "merged";
+    return PullRequestState.Merged;
   }
-  return payload.state === "OPEN" ? "open" : "closed";
+  return payload.state === "OPEN"
+    ? PullRequestState.Open
+    : PullRequestState.Closed;
 }
 
 function normalizeAuthor(
@@ -136,5 +142,9 @@ function normalizeAuthor(
 function incompatible<T>(
   diagnostic: string,
 ): ResultType<T, ForgeOperationError> {
-  return Result.err({ kind, code: "incompatible-response", diagnostic });
+  return Result.err({
+    kind,
+    code: ForgeOperationErrorCode.IncompatibleResponse,
+    diagnostic,
+  });
 }

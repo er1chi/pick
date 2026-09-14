@@ -1,10 +1,14 @@
+import {
+  ApplicationContext,
+  ForgeOperationErrorCode,
+  PullRequestState,
+} from "./types";
 import type {
   ForgeAdapter,
   ForgeAuthor,
   ForgeOperationError,
   PullRequest,
   PullRequestComment,
-  PullRequestState,
 } from "./types";
 import type { Result as ResultType } from "better-result";
 import { type } from "arktype";
@@ -13,7 +17,7 @@ import { checkCli } from "./cli-check";
 import { decodeJson, executeCli } from "./cli-execution";
 
 const executableName = "fj";
-const kind = "forgejo" as const;
+const kind = ApplicationContext.Forgejo;
 
 const userSchema = type({ login: "string" });
 const safeIntegerSchema = type("number.integer & number.safe");
@@ -102,7 +106,7 @@ function normalizePullRequest(
   const diagnostic = `Forgejo pull request response did not match the schema: ${payload.summary}`;
   return Result.err({
     kind,
-    code: "incompatible-response",
+    code: ForgeOperationErrorCode.IncompatibleResponse,
     diagnostic,
   });
 }
@@ -118,7 +122,7 @@ function normalizeComments(
   const diagnostic = `Forgejo comments response did not match the schema: ${payload.summary}`;
   return Result.err({
     kind,
-    code: "incompatible-response",
+    code: ForgeOperationErrorCode.IncompatibleResponse,
     diagnostic,
   });
 }
@@ -135,9 +139,11 @@ function normalizeComment(payload: ForgejoComment): PullRequestComment {
 
 function normalizeState(payload: ForgejoPullRequest): PullRequestState {
   if (payload.merged) {
-    return "merged";
+    return PullRequestState.Merged;
   }
-  return payload.state === "open" ? "open" : "closed";
+  return payload.state === "open"
+    ? PullRequestState.Open
+    : PullRequestState.Closed;
 }
 
 function normalizeAuthor(

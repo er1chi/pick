@@ -1,6 +1,10 @@
 import { Button } from "@/components/button";
 import { type AppContextState, useAppContext } from "@/context/app-context";
-import type { ForgeInitializationError } from "@/services/forge/types";
+import {
+  ApplicationContext,
+  ForgeInitializationErrorCode,
+  type ForgeInitializationError,
+} from "@/services/forge/types";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
 import { useRenderer } from "@opentui/solid";
@@ -8,16 +12,17 @@ import { Toaster, toast } from "@tuiparts/toast/solid";
 import { onMount } from "solid-js";
 
 const contextLabels = {
-  application: "Application",
-  github: "GitHub",
-  forgejo: "Forgejo",
+  [ApplicationContext.App]: "Application",
+  [ApplicationContext.GitHub]: "GitHub",
+  [ApplicationContext.Forgejo]: "Forgejo",
 } as const satisfies Record<AppContextState["kind"], string>;
 
 function notifyCliInitializationError(error: ForgeInitializationError) {
-  const service = error.kind === "github" ? "GitHub" : "Forgejo";
-  const executable = error.kind === "github" ? "gh" : "fj";
+  const service =
+    error.kind === ApplicationContext.GitHub ? "GitHub" : "Forgejo";
+  const executable = error.kind === ApplicationContext.GitHub ? "gh" : "fj";
   const reason =
-    error.code === "executable-unavailable"
+    error.code === ForgeInitializationErrorCode.ExecutableUnavailable
       ? "is unavailable"
       : "version check failed";
   toast.warning(`${service} CLI (${executable}) ${reason}.`);

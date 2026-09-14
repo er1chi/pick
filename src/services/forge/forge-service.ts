@@ -1,6 +1,7 @@
 import type { Result } from "better-result";
 import { ForgejoService } from "./forgejo-service";
 import { GithubService } from "./github-service";
+import { ApplicationContext, ForgeInitializationErrorCode } from "./types";
 import type {
   CliCheckError,
   ForgeAdapter,
@@ -22,7 +23,7 @@ export class ForgeService {
     kind: ForgeKind,
     cwd = process.cwd(),
   ): Promise<Result<ForgeService, ForgeInitializationError>> {
-    if (kind === "github") {
+    if (kind === ApplicationContext.GitHub) {
       return (await GithubService.initialize(cwd))
         .map((adapter) => new ForgeService(adapter))
         .mapError((error) => normalizeInitializationError(kind, error));
@@ -51,9 +52,13 @@ function normalizeInitializationError(
   error: CliCheckError,
 ): ForgeInitializationError {
   switch (error.code) {
-    case "executable-unavailable":
-      return { kind, code: "executable-unavailable" };
-    case "version-check-failed":
-      return { kind, code: "version-check-failed", exitCode: error.exitCode };
+    case ForgeInitializationErrorCode.ExecutableUnavailable:
+      return { kind, code: ForgeInitializationErrorCode.ExecutableUnavailable };
+    case ForgeInitializationErrorCode.VersionCheckFailed:
+      return {
+        kind,
+        code: ForgeInitializationErrorCode.VersionCheckFailed,
+        exitCode: error.exitCode,
+      };
   }
 }

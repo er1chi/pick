@@ -20,6 +20,12 @@ export type AppContextState =
     }
   | {
       readonly cwd: string;
+      readonly kind: ApplicationContext.Local;
+      readonly forge: undefined;
+      readonly forgeError: undefined;
+    }
+  | {
+      readonly cwd: string;
       readonly kind: ForgeKind;
       readonly forge: ForgeService;
       readonly forgeError: undefined;
@@ -31,10 +37,19 @@ export type AppContextState =
       readonly forgeError: ForgeInitializationError;
     };
 
-export type RemoteAppContextState = Extract<
+type LocalAppContextState = Extract<
+  AppContextState,
+  { readonly kind: ApplicationContext.Local }
+>;
+
+type RemoteAppContextState = Extract<
   AppContextState,
   { readonly kind: ForgeKind }
 >;
+
+export type RepositoryAppContextState =
+  | LocalAppContextState
+  | RemoteAppContextState;
 
 export enum RepositorySelectionErrorCode {
   DirectoryChangeFailed = "directory-change-failed",
@@ -125,13 +140,21 @@ export async function initializeAppContext(
   cwd = process.cwd(),
 ): Promise<AppContextState> {
   const activeCwd = resolve(cwd);
-  const remoteUrls = (await readGitRemoteOutput(activeCwd))
-    .map(parseRemoteUrls)
-    .unwrapOr([]);
-  if (remoteUrls.length === 0) {
+  const remoteOutput = await readGitRemoteOutput(activeCwd);
+  if (remoteOutput.isErr()) {
     return {
       cwd: activeCwd,
       kind: ApplicationContext.Default,
+      forge: undefined,
+      forgeError: undefined,
+    };
+  }
+
+  const remoteUrls = parseRemoteUrls(remoteOutput.value);
+  if (remoteUrls.length === 0) {
+    return {
+      cwd: activeCwd,
+      kind: ApplicationContext.Local,
       forge: undefined,
       forgeError: undefined,
     };

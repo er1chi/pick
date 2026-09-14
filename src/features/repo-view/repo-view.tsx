@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { type RemoteAppContextState } from "@/context/app-context";
+import { type RepositoryAppContextState } from "@/context/app-context";
 import {
   ApplicationContext,
   ForgeInitializationErrorCode,
@@ -10,11 +10,15 @@ import { colors } from "@/theme";
 import { Show } from "solid-js";
 
 export type RepoViewProps = {
-  readonly state: RemoteAppContextState;
+  readonly state: RepositoryAppContextState;
 };
 
 function serviceName(kind: ForgeKind): string {
   return kind === ApplicationContext.GitHub ? "GitHub" : "Forgejo";
+}
+
+function contextLabel(kind: RepositoryAppContextState["kind"]): string {
+  return kind === ApplicationContext.Local ? "Local Git" : serviceName(kind);
 }
 
 function initializationErrorDescription(
@@ -34,7 +38,7 @@ function initializationErrorDescription(
 export function RepoView(props: RepoViewProps) {
   const currentState = () => props.state;
   const name = () => basename(currentState().cwd) || currentState().cwd;
-  const contextName = () => serviceName(currentState().kind);
+  const contextName = () => contextLabel(currentState().kind);
 
   return (
     <box flexDirection="column" gap={1} width="100%">
@@ -44,17 +48,29 @@ export function RepoView(props: RepoViewProps) {
       <text fg={colors.muted}>{currentState().cwd}</text>
       <text fg={colors.muted}>Context: {contextName()}</text>
       <Show
-        when={currentState().forge !== undefined}
+        when={currentState().kind === ApplicationContext.Local}
         fallback={
-          <box flexDirection="column">
-            <text fg={colors.yellow}>Status: CLI initialization error</text>
-            <text fg={colors.muted}>
-              {initializationErrorDescription(currentState().forgeError)}
-            </text>
-          </box>
+          <Show
+            when={currentState().forge !== undefined}
+            fallback={
+              <box flexDirection="column">
+                <text fg={colors.yellow}>Status: CLI initialization error</text>
+                <text fg={colors.muted}>
+                  {initializationErrorDescription(currentState().forgeError)}
+                </text>
+              </box>
+            }
+          >
+            <text fg={colors.green}>Status: Ready</text>
+          </Show>
         }
       >
-        <text fg={colors.green}>Status: Ready</text>
+        <box flexDirection="column">
+          <text fg={colors.yellow}>Status: Local Git repository</text>
+          <text fg={colors.muted}>
+            Add a GitHub or Forgejo remote to initialize it.
+          </text>
+        </box>
       </Show>
     </box>
   );

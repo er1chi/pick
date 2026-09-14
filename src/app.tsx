@@ -1,7 +1,7 @@
 import {
   type AppContextState,
   useAppContext,
-  type RemoteAppContextState,
+  type RepositoryAppContextState,
 } from "@/context/app-context";
 import { Default } from "@/features/default/default";
 import { RepoView } from "@/features/repo-view/repo-view";
@@ -16,9 +16,9 @@ import { Toaster, toast } from "@tuiparts/toast/solid";
 import { createEffect, onMount, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 
-function remoteAppContextState(
+function repositoryAppContextState(
   state: AppContextState,
-): RemoteAppContextState | undefined {
+): RepositoryAppContextState | undefined {
   return state.kind === ApplicationContext.Default ? undefined : state;
 }
 
@@ -61,10 +61,10 @@ export function App() {
       <text fg={colors.muted}>Git, GitHub, and Forgejo — in the terminal.</text>
       <box width="100%" maxWidth={80} alignSelf="center">
         <Show
-          when={remoteAppContextState(appContext.state())}
+          when={repositoryAppContextState(appContext.state())}
           fallback={<Default />}
         >
-          {(state: Accessor<RemoteAppContextState>) => (
+          {(state: Accessor<RepositoryAppContextState>) => (
             <RepoView state={state()} />
           )}
         </Show>

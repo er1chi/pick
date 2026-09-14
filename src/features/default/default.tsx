@@ -48,7 +48,6 @@ export function Default() {
   >([]);
   const [isLoading, setIsLoading] = createSignal(true);
   const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
-  const [isActivating, setIsActivating] = createSignal(false);
   const [recentRepositoriesBox, setRecentRepositoriesBox] = createSignal<
     BoxRenderable | undefined
   >();
@@ -107,10 +106,6 @@ export function Default() {
   }
 
   function activateSelectedRepository(): void {
-    if (isActivating()) {
-      return;
-    }
-
     const currentRepositories = repositories();
     const currentSelectedPath = selectedPath();
     const selectedRepository = currentRepositories.find(
@@ -120,7 +115,6 @@ export function Default() {
       return;
     }
 
-    setIsActivating(true);
     void appContext
       .selectRepository(selectedRepository.path)
       .then((result) => {
@@ -130,9 +124,6 @@ export function Default() {
       })
       .catch(() => {
         toast.error(`Could not open ${selectedRepository.name}.`);
-      })
-      .finally(() => {
-        setIsActivating(false);
       });
   }
 
@@ -219,9 +210,6 @@ export function Default() {
               )}
             </For>
           </scrollbox>
-          <Show when={isActivating()}>
-            <text fg={colors.muted}>Opening repository…</text>
-          </Show>
         </Show>
       </Show>
     </box>

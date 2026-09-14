@@ -8,6 +8,7 @@ import {
 } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { Show } from "solid-js";
+import type { Accessor } from "solid-js";
 
 export type RepoViewProps = {
   readonly state: RepositoryAppContextState;
@@ -22,17 +23,19 @@ function contextLabel(kind: RepositoryAppContextState["kind"]): string {
 }
 
 function initializationErrorDescription(
-  error: ForgeInitializationError | undefined,
+  error: ForgeInitializationError,
 ): string {
-  if (error === undefined) {
-    return "The CLI could not be initialized.";
-  }
-
   const service = serviceName(error.kind);
   if (error.code === ForgeInitializationErrorCode.ExecutableUnavailable) {
     return `${service} CLI is unavailable.`;
   }
   return `${service} CLI version check failed.`;
+}
+
+function forgeInitializationError(
+  state: RepositoryAppContextState,
+): ForgeInitializationError | undefined {
+  return state.kind === ApplicationContext.Local ? undefined : state.forgeError;
 }
 
 export function RepoView(props: RepoViewProps) {
@@ -47,25 +50,23 @@ export function RepoView(props: RepoViewProps) {
       </text>
       <text fg={colors.muted}>{currentState().cwd}</text>
       <text fg={colors.muted}>Context: {contextName()}</text>
-      <Show
-        when={currentState().kind === ApplicationContext.Local}
-        fallback={
-          <Show when={currentState().forgeError !== undefined}>
-            <box flexDirection="column">
-              <text fg={colors.yellow}>Status: CLI initialization error</text>
-              <text fg={colors.muted}>
-                {initializationErrorDescription(currentState().forgeError)}
-              </text>
-            </box>
-          </Show>
-        }
-      >
+      <Show when={currentState().kind === ApplicationContext.Local}>
         <box flexDirection="column">
           <text fg={colors.yellow}>Status: Local Git repository</text>
           <text fg={colors.muted}>
             Add a GitHub or Forgejo remote to initialize it.
           </text>
         </box>
+      </Show>
+      <Show when={forgeInitializationError(currentState())}>
+        {(error: Accessor<ForgeInitializationError>) => (
+          <box flexDirection="column">
+            <text fg={colors.yellow}>Status: CLI initialization error</text>
+            <text fg={colors.muted}>
+              {initializationErrorDescription(error())}
+            </text>
+          </box>
+        )}
       </Show>
     </box>
   );

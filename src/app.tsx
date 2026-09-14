@@ -42,9 +42,13 @@ export function App() {
   });
 
   createEffect(() => {
-    const forgeError = appContext.state().forgeError;
-    if (forgeError !== undefined) {
-      notifyCliInitializationError(forgeError);
+    const state = appContext.state();
+    if (
+      state.kind !== ApplicationContext.Default &&
+      state.kind !== ApplicationContext.Local &&
+      state.forgeError !== undefined
+    ) {
+      notifyCliInitializationError(state.forgeError);
     }
   });
 

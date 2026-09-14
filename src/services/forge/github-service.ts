@@ -2,7 +2,7 @@ import { type } from "arktype";
 import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
 import { checkCli } from "./cli-check";
-import { executeCli } from "./cli-execution";
+import { decodeJson, executeCli } from "./cli-execution";
 import type {
   ForgeAdapter,
   ForgeAuthor,
@@ -16,18 +16,15 @@ const executableName = "gh";
 const kind = "github" as const;
 
 const authorSchema = type({ login: "string" });
-const safeIntegerSchema = type("number.integer & number.safe");
-const providerIdSchema = type("string").or(safeIntegerSchema);
 const pullRequestSchema = type({
-  number: safeIntegerSchema,
+  number: "number.integer & number.safe",
   title: "string",
   body: "string | null",
   state: "'OPEN' | 'CLOSED' | 'MERGED'",
   author: authorSchema.or("null").optional(),
-  mergedAt: "string | null",
 });
 const commentSchema = type({
-  id: providerIdSchema,
+  id: "string",
   author: authorSchema.or("null").optional(),
   body: "string | null",
   createdAt: "string.date.parse",
@@ -43,7 +40,7 @@ export class GithubService implements ForgeAdapter {
 
   private constructor(private readonly cwd: string) {}
 
-  public static async initialize(cwd = process.cwd()) {
+  public static async initialize(cwd: string) {
     return (await checkCli(kind, executableName, ["--version"], cwd)).map(
       () => new GithubService(cwd),
     );
@@ -60,14 +57,12 @@ export class GithubService implements ForgeAdapter {
         "view",
         String(number),
         "--json",
-        "number,title,body,state,author,mergedAt",
+        "number,title,body,state,author",
       ],
       this.cwd,
     );
 
-    return execution.andThen((output) =>
-      decodeJson(output, normalizePullRequest),
-    );
+    return execution.andThen(decodeJson(kind, normalizePullRequest));
   }
 
   public async getPullRequestComments(
@@ -80,30 +75,8 @@ export class GithubService implements ForgeAdapter {
       this.cwd,
     );
 
-    return execution.andThen((output) => decodeJson(output, normalizeComments));
+    return execution.andThen(decodeJson(kind, normalizeComments));
   }
-}
-
-type GithubDecoder<T> = (cause: unknown) => ResultType<T, ForgeOperationError>;
-
-function decodeJson<T>(
-  output: string,
-  decoder: GithubDecoder<T>,
-): ResultType<T, ForgeOperationError> {
-  const parsed = Result.try({
-    try: () => {
-      const value: unknown = JSON.parse(output);
-      return value;
-    },
-    catch: (cause) => ({
-      kind,
-      code: "invalid-json" as const,
-      diagnostic:
-        cause instanceof Error ? cause.message : "CLI returned malformed JSON",
-    }),
-  });
-
-  return parsed.andThen((value) => decoder(value));
 }
 
 function normalizePullRequest(
@@ -140,7 +113,7 @@ function normalizeComments(
 
 function normalizeComment(payload: GithubComment): PullRequestComment {
   return {
-    id: String(payload.id),
+    id: payload.id,
     author: normalizeAuthor(payload.author),
     body: payload.body,
     createdAt: payload.createdAt.toISOString(),
@@ -148,7 +121,7 @@ function normalizeComment(payload: GithubComment): PullRequestComment {
 }
 
 function normalizeState(payload: GithubPullRequest): PullRequestState {
-  if (payload.state === "MERGED" || payload.mergedAt !== null) {
+  if (payload.state === "MERGED") {
     return "merged";
   }
   return payload.state === "OPEN" ? "open" : "closed";

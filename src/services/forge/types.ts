@@ -70,13 +70,11 @@ export interface ForgeAdapter {
   ): Promise<Result<readonly PullRequestComment[], ForgeOperationError>>;
 }
 
-export type CliCheckError<Executable extends string> =
+export type CliCheckError =
   | {
       readonly code: "executable-unavailable";
-      readonly executable: Executable;
     }
   | {
       readonly code: "version-check-failed";
-      readonly executable: Executable;
       readonly exitCode: number;
     };

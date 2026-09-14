@@ -10,7 +10,7 @@ import type { Result as ResultType } from "better-result";
 import { type } from "arktype";
 import { Result } from "better-result";
 import { checkCli } from "./cli-check";
-import { executeCli } from "./cli-execution";
+import { decodeJson, executeCli } from "./cli-execution";
 
 const executableName = "fj";
 const kind = "forgejo" as const;
@@ -40,7 +40,7 @@ type ForgejoComment = typeof commentSchema.infer;
 export class ForgejoService implements ForgeAdapter {
   public readonly kind = kind;
 
-  public static async initialize(cwd = process.cwd()) {
+  public static async initialize(cwd: string) {
     const availability = await checkCli(
       kind,
       executableName,
@@ -50,52 +50,38 @@ export class ForgejoService implements ForgeAdapter {
     return availability.map(() => new ForgejoService(cwd));
   }
 
-  public async getPullRequest(
+  public getPullRequest(
     number: number,
   ): Promise<ResultType<PullRequest, ForgeOperationError>> {
-    return (
-      await executeCli(
-        kind,
-        executableName,
-        ["--json", "pr", "view", String(number)],
-        this.cwd,
-      )
-    ).andThen((output) => decodeJson(output, normalizePullRequest));
+    return this.executeJson(
+      ["--json", "pr", "view", String(number)],
+      normalizePullRequest,
+    );
   }
 
-  public async getPullRequestComments(
+  public getPullRequestComments(
     number: number,
   ): Promise<ResultType<readonly PullRequestComment[], ForgeOperationError>> {
-    return (
-      await executeCli(
-        kind,
-        executableName,
-        ["--json", "pr", "view", String(number), "comments"],
-        this.cwd,
-      )
-    ).andThen((output) => decodeJson(output, normalizeComments));
+    return this.executeJson(
+      ["--json", "pr", "view", String(number), "comments"],
+      normalizeComments,
+    );
+  }
+
+  private async executeJson<T>(
+    args: readonly string[],
+    decoder: (cause: unknown) => ResultType<T, ForgeOperationError>,
+  ): Promise<ResultType<T, ForgeOperationError>> {
+    const execution = await executeCli(
+      this.kind,
+      executableName,
+      args,
+      this.cwd,
+    );
+    return execution.andThen(decodeJson(kind, decoder));
   }
 
   private constructor(private readonly cwd: string) {}
-}
-
-function decodeJson<T>(
-  output: string,
-  decoder: (cause: unknown) => ResultType<T, ForgeOperationError>,
-): ResultType<T, ForgeOperationError> {
-  const providerJson = Result.try({
-    try: () => {
-      const untrustedProviderValue: unknown = JSON.parse(output);
-      return untrustedProviderValue;
-    },
-    catch: (cause) => {
-      const diagnostic =
-        cause instanceof Error ? cause.message : "CLI returned malformed JSON";
-      return { kind, code: "invalid-json" as const, diagnostic };
-    },
-  });
-
-  return providerJson.andThen(decoder);
 }
 
 function normalizePullRequest(
@@ -126,7 +112,7 @@ function normalizeComments(
 ): ResultType<readonly PullRequestComment[], ForgeOperationError> {
   const payload = commentsSchema(cause);
   if (!(payload instanceof type.errors)) {
-    return Result.ok(payload.map((comment) => normalizeComment(comment)));
+    return Result.ok(payload.map(normalizeComment));
   }
 
   const diagnostic = `Forgejo comments response did not match the schema: ${payload.summary}`;

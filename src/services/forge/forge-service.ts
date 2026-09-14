@@ -48,7 +48,7 @@ export class ForgeService {
 
 function normalizeInitializationError(
   kind: ForgeKind,
-  error: CliCheckError<string>,
+  error: CliCheckError,
 ): ForgeInitializationError {
   switch (error.code) {
     case "executable-unavailable":

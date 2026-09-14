@@ -15,7 +15,7 @@ const renderer = await createCliRenderer({
   targetFps: 30,
 });
 const keymap = createAppKeymap(renderer);
-const appContext = await initializeAppContext(process.cwd());
+const appContext = await initializeAppContext();
 
 await render(
   () => (

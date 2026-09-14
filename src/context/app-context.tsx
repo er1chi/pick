@@ -18,19 +18,15 @@ export type AppContextState =
       readonly forge: ResultType<ForgeService, ForgeInitializationError>;
     };
 
-type RemoteEntry = {
-  readonly url: string;
-};
-
 const remoteEntryPattern = /^\S+\s+(\S+)\s+\((?:fetch|push)\)$/;
 const githubScpRemotePattern = /^[^@/\s]+@([^:/\s]+):\S+$/;
 
-function parseRemoteEntries(output: string): RemoteEntry[] {
+function parseRemoteUrls(output: string): string[] {
   return output.split(/\r?\n/).flatMap((line) => {
     const match = remoteEntryPattern.exec(line.trim());
     const url = match?.[1];
 
-    return url ? [{ url }] : [];
+    return url ? [url] : [];
   });
 }
 
@@ -87,16 +83,14 @@ async function readGitRemoteOutput(
 export async function initializeAppContext(
   cwd = process.cwd(),
 ): Promise<AppContextState> {
-  const remoteEntries = (await readGitRemoteOutput(cwd))
-    .map(parseRemoteEntries)
+  const remoteUrls = (await readGitRemoteOutput(cwd))
+    .map(parseRemoteUrls)
     .unwrapOr([]);
-  if (remoteEntries.length === 0) {
+  if (remoteUrls.length === 0) {
     return { kind: "application", forge: undefined };
   }
 
-  const kind = remoteEntries.some(({ url }) => isGithubRemoteUrl(url))
-    ? "github"
-    : "forgejo";
+  const kind = remoteUrls.some(isGithubRemoteUrl) ? "github" : "forgejo";
 
   return {
     kind,

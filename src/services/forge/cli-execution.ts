@@ -1,11 +1,10 @@
 import { Result } from "better-result";
-import type { CliExecutionError, ForgeKind } from "./types";
-
-type CliOutput = {
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly exitCode: number;
-};
+import type { Result as ResultType } from "better-result";
+import type {
+  CliExecutionError,
+  ForgeKind,
+  ForgeOperationError,
+} from "./types";
 
 export async function executeCli(
   kind: ForgeKind,
@@ -28,7 +27,7 @@ export async function executeCli(
         subprocess.exited,
       ]);
 
-      return { stdout, stderr, exitCode } satisfies CliOutput;
+      return { stdout, stderr, exitCode };
     },
     catch: (cause) => ({
       kind,
@@ -47,6 +46,30 @@ export async function executeCli(
           diagnostic: stderr.trim() || `CLI exited with code ${exitCode}`,
         }),
   );
+}
+
+export function decodeJson<T>(
+  kind: ForgeKind,
+  decoder: (cause: unknown) => ResultType<T, ForgeOperationError>,
+): (output: string) => ResultType<T, ForgeOperationError> {
+  return (output) => {
+    const parsed = Result.try({
+      try: () => {
+        const value: unknown = JSON.parse(output);
+        return value;
+      },
+      catch: (cause) => ({
+        kind,
+        code: "invalid-json" as const,
+        diagnostic:
+          cause instanceof Error
+            ? cause.message
+            : "CLI returned malformed JSON",
+      }),
+    });
+
+    return parsed.andThen(decoder);
+  };
 }
 
 function describeCause(cause: unknown): string {

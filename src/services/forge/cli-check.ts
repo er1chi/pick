@@ -2,22 +2,21 @@ import type { Result } from "better-result";
 import { executeCli } from "./cli-execution";
 import type { CliCheckError, ForgeKind } from "./types";
 
-export async function checkCli<Executable extends string>(
+export async function checkCli(
   kind: ForgeKind,
-  executable: Executable,
+  executable: string,
   args: readonly string[],
-  cwd = process.cwd(),
-): Promise<Result<void, CliCheckError<Executable>>> {
+  cwd: string,
+): Promise<Result<void, CliCheckError>> {
   const execution = await executeCli(kind, executable, args, cwd);
 
   return execution
     .map(() => undefined)
     .mapError((error) =>
       error.code === "command-spawn-failed"
-        ? { code: "executable-unavailable" as const, executable }
+        ? { code: "executable-unavailable" as const }
         : {
             code: "version-check-failed" as const,
-            executable,
             exitCode: error.exitCode,
           },
     );

@@ -1,7 +1,6 @@
 {
   "entry": [
     "src/packages/**/index.ts",
-    "src/services/forge/*.ts",
     "src/**/*.test.{ts,tsx}",
     "tools/oxlint/anti-slop/effect/index.ts"
   ],

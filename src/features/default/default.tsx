@@ -124,7 +124,7 @@ export function Default() {
       gap={1}
       width="100%"
       maxWidth={80}
-      alignSelf="stretch"
+      alignSelf="center"
     >
       <text fg={colors.foreground}>
         <strong>Recent repositories</strong>

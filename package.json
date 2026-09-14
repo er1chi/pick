@@ -6,6 +6,7 @@
   "scripts": {
     "start": "bun run index.tsx",
     "dev": "bun --watch run index.tsx",
+    "build:executable": "bun run tools/build-executable.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "format": "oxfmt .",

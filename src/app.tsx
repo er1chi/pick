@@ -1,21 +1,26 @@
-import { Button } from "@/components/button";
-import { type AppContextState, useAppContext } from "@/context/app-context";
+import {
+  type AppContextState,
+  useAppContext,
+  type RepositoryAppContextState,
+} from "@/context/app-context";
+import { Default } from "@/features/default/default";
+import { RepoView } from "@/features/repo-view/repo-view";
 import {
   ApplicationContext,
   ForgeInitializationErrorCode,
   type ForgeInitializationError,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
-import { useBindings } from "@opentui/keymap/solid";
 import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
-import { onMount } from "solid-js";
+import { createEffect, onMount, Show } from "solid-js";
+import type { Accessor } from "solid-js";
 
-const contextLabels = {
-  [ApplicationContext.App]: "Application",
-  [ApplicationContext.GitHub]: "GitHub",
-  [ApplicationContext.Forgejo]: "Forgejo",
-} as const satisfies Record<AppContextState["kind"], string>;
+function repositoryAppContextState(
+  state: AppContextState,
+): RepositoryAppContextState | undefined {
+  return state.kind === ApplicationContext.Default ? undefined : state;
+}
 
 function notifyCliInitializationError(error: ForgeInitializationError) {
   const service =
@@ -34,21 +39,18 @@ export function App() {
 
   onMount(() => {
     renderer.setTerminalTitle("Pick");
-
-    if (appContext.forgeError !== undefined) {
-      notifyCliInitializationError(appContext.forgeError);
-    }
   });
 
-  useBindings(() => ({
-    commands: [
-      {
-        name: "pick.notify",
-        run: () => toast.success("Pick is ready."),
-      },
-    ],
-    bindings: [{ key: "return", cmd: "pick.notify" }],
-  }));
+  createEffect(() => {
+    const state = appContext.state();
+    if (
+      state.kind !== ApplicationContext.Default &&
+      state.kind !== ApplicationContext.Local &&
+      state.forgeError !== undefined
+    ) {
+      notifyCliInitializationError(state.forgeError);
+    }
+  });
 
   return (
     <box
@@ -59,12 +61,18 @@ export function App() {
       height="100%"
       gap={1}
     >
-      <text fg={colors.blue}>
-        <strong>Pick</strong>
-      </text>
+      <ascii_font text="PICK" font="block" color={colors.blue} />
       <text fg={colors.muted}>Git, GitHub, and Forgejo — in the terminal.</text>
-      <text fg={colors.muted}>Context: {contextLabels[appContext.kind]}</text>
-      <Button label="Press Enter" color={colors.green} />
+      <box width="100%" maxWidth={80} alignSelf="center">
+        <Show
+          when={repositoryAppContextState(appContext.state())}
+          fallback={<Default />}
+        >
+          {(state: Accessor<RepositoryAppContextState>) => (
+            <RepoView state={state()} />
+          )}
+        </Show>
+      </box>
       <text fg={colors.dim}>Ctrl+Q quits</text>
       <Toaster position="top-right" stackingMode="stack" visibleToasts={3} />
     </box>

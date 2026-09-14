@@ -7,7 +7,8 @@ import {
 import {
   discoverRecentRepositories,
   type RecentRepository,
-} from "@/services/repository-discovery";
+  type RepositoryDiscoveryError,
+} from "@/services/repo-discovery";
 import { moveInList } from "@/utils/navigation";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
@@ -46,6 +47,9 @@ export function Default() {
   const [repositories, setRepositories] = createSignal<
     readonly RecentRepository[]
   >([]);
+  const [discoveryError, setDiscoveryError] = createSignal<
+    RepositoryDiscoveryError | undefined
+  >();
   const [isLoading, setIsLoading] = createSignal(true);
   const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
   const [recentRepositoriesBox, setRecentRepositoriesBox] = createSignal<
@@ -154,11 +158,17 @@ export function Default() {
 
   onMount(() => {
     void discoverRecentRepositories()
-      .then((discoveredRepositories) => {
-        setRepositories(discoveredRepositories);
-      })
-      .catch(() => {
-        setRepositories([]);
+      .then((result) => {
+        result.match({
+          ok: (discoveredRepositories) => {
+            setRepositories(discoveredRepositories);
+            setDiscoveryError(undefined);
+          },
+          err: (error) => {
+            setRepositories([]);
+            setDiscoveryError(error);
+          },
+        });
       })
       .finally(() => {
         setIsLoading(false);
@@ -186,29 +196,38 @@ export function Default() {
         }
       >
         <Show
-          when={repositories().length > 0}
+          when={discoveryError() === undefined}
           fallback={
             <text fg={colors.muted}>
-              No Git repositories found in {discoveryRootLabel}.
+              Could not search for Git repositories in {discoveryRootLabel}.
             </text>
           }
         >
-          <scrollbox
-            ref={setRecentRepositoriesScrollBox}
-            width="100%"
-            maxHeight={8}
-            stickyScroll
-            stickyStart="top"
+          <Show
+            when={repositories().length > 0}
+            fallback={
+              <text fg={colors.muted}>
+                No Git repositories found in {discoveryRootLabel}.
+              </text>
+            }
           >
-            <For each={repositories()}>
-              {(repository) => (
-                <RepositoryRow
-                  repository={repository}
-                  selected={repository.path === selectedPath()}
-                />
-              )}
-            </For>
-          </scrollbox>
+            <scrollbox
+              ref={setRecentRepositoriesScrollBox}
+              width="100%"
+              maxHeight={8}
+              stickyScroll
+              stickyStart="top"
+            >
+              <For each={repositories()}>
+                {(repository) => (
+                  <RepositoryRow
+                    repository={repository}
+                    selected={repository.path === selectedPath()}
+                  />
+                )}
+              </For>
+            </scrollbox>
+          </Show>
         </Show>
       </Show>
     </box>

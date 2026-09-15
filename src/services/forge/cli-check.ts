@@ -13,12 +13,17 @@ export async function checkCli(
 
   return execution
     .map(() => undefined)
-    .mapError((error) =>
-      error.code === ForgeOperationErrorCode.CommandSpawnFailed
-        ? { code: ForgeInitializationErrorCode.ExecutableUnavailable }
-        : {
-            code: ForgeInitializationErrorCode.VersionCheckFailed,
-            exitCode: error.exitCode,
-          },
-    );
+    .mapError((error) => {
+      if (error.code === ForgeOperationErrorCode.CommandSpawnFailed) {
+        return { code: ForgeInitializationErrorCode.ExecutableUnavailable };
+      }
+
+      return {
+        code: ForgeInitializationErrorCode.VersionCheckFailed,
+        exitCode:
+          error.code === ForgeOperationErrorCode.CommandFailed
+            ? error.exitCode
+            : -1,
+      };
+    });
 }

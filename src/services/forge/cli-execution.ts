@@ -7,12 +7,42 @@ import type {
   ForgeOperationError,
 } from "./types";
 
+const diagnosticOutputLimit = 1024 * 1024;
+const defaultTimeoutMs = 30_000;
+
+export interface CliExecutionOptions {
+  readonly signal?: AbortSignal;
+  readonly timeoutMs?: number;
+  readonly maxOutputBytes?: number;
+}
+
+class CliOutputFailure extends Error {
+  public constructor(
+    public readonly code:
+      | ForgeOperationErrorCode.OutputLimitExceeded
+      | ForgeOperationErrorCode.Cancelled
+      | ForgeOperationErrorCode.TimedOut,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 export async function executeCli(
   kind: ForgeKind,
   executable: string,
   args: readonly string[],
   cwd: string,
+  options: CliExecutionOptions = {},
 ): Promise<Result<string, CliExecutionError>> {
+  if (options.signal?.aborted) {
+    return Result.err({
+      kind,
+      code: ForgeOperationErrorCode.Cancelled,
+      diagnostic: "CLI execution was cancelled before it started",
+    });
+  }
+
   const execution = await Result.tryPromise({
     try: async () => {
       const subprocess = Bun.spawn([executable, ...args], {
@@ -21,20 +51,68 @@ export async function executeCli(
         stdout: "pipe",
         stderr: "pipe",
       });
+      let cancelled = false;
+      let timedOut = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
 
-      const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(subprocess.stdout).text(),
-        new Response(subprocess.stderr).text(),
-        subprocess.exited,
-      ]);
+      const cancel = () => {
+        cancelled = true;
+        subprocess.kill();
+      };
+      const expire = () => {
+        timedOut = true;
+        subprocess.kill();
+      };
 
-      return { stdout, stderr, exitCode };
+      options.signal?.addEventListener("abort", cancel, { once: true });
+      timeout = setTimeout(expire, timeoutMs);
+
+      try {
+        const [stdout, stderr, exitCode] = await Promise.all([
+          readStream(subprocess.stdout, options.maxOutputBytes),
+          readStream(subprocess.stderr, diagnosticOutputLimit),
+          subprocess.exited,
+        ]);
+
+        if (cancelled) {
+          throw new CliOutputFailure(
+            ForgeOperationErrorCode.Cancelled,
+            "CLI execution was cancelled",
+          );
+        }
+        if (timedOut) {
+          throw new CliOutputFailure(
+            ForgeOperationErrorCode.TimedOut,
+            `CLI execution exceeded ${timeoutMs}ms`,
+          );
+        }
+
+        return { stdout, stderr, exitCode };
+      } catch (cause) {
+        subprocess.kill();
+        throw cause;
+      } finally {
+        if (timeout !== undefined) {
+          clearTimeout(timeout);
+        }
+        options.signal?.removeEventListener("abort", cancel);
+      }
     },
-    catch: (cause): CliExecutionError => ({
-      kind,
-      code: ForgeOperationErrorCode.CommandSpawnFailed,
-      diagnostic: describeCause(cause),
-    }),
+    catch: (cause): CliExecutionError => {
+      if (cause instanceof CliOutputFailure) {
+        return {
+          kind,
+          code: cause.code,
+          diagnostic: cause.message,
+        };
+      }
+      return {
+        kind,
+        code: ForgeOperationErrorCode.CommandSpawnFailed,
+        diagnostic: describeCause(cause),
+      };
+    },
   });
 
   return execution.andThen(({ stdout, stderr, exitCode }) =>
@@ -71,6 +149,43 @@ export function decodeJson<T>(
 
     return parsed.andThen(decoder);
   };
+}
+
+async function readStream(
+  stream: ReadableStream<Uint8Array>,
+  maxBytes: number | undefined,
+): Promise<string> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        break;
+      }
+
+      byteLength += chunk.value.byteLength;
+      if (maxBytes !== undefined && byteLength > maxBytes) {
+        throw new CliOutputFailure(
+          ForgeOperationErrorCode.OutputLimitExceeded,
+          `CLI output exceeded the ${maxBytes}-byte limit`,
+        );
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function describeCause(cause: unknown): string {

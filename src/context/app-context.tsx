@@ -9,6 +9,11 @@ import {
   ApplicationContext,
   type ForgeInitializationError,
   type ForgeKind,
+  type ForgeOperationError,
+  type PullRequestDetails,
+  type PullRequestDetailsOptions,
+  type PullRequestList,
+  type PullRequestListOptions,
 } from "@/services/forge/types";
 
 interface AppContextBase<T extends ApplicationContext> {
@@ -16,18 +21,16 @@ interface AppContextBase<T extends ApplicationContext> {
   readonly kind: T;
 }
 
-interface ExistingForge {
-  readonly forge: ForgeService;
+interface ExistingForgeState {
   readonly forgeError: undefined;
 }
 
 interface ForgeErrorState {
-  readonly forge: undefined;
   readonly forgeError: ForgeInitializationError;
 }
 
 type RemoteAppContextState = AppContextBase<ForgeKind> &
-  (ExistingForge | ForgeErrorState);
+  (ExistingForgeState | ForgeErrorState);
 type LocalAppContextState =
   | AppContextBase<ApplicationContext.Default>
   | AppContextBase<ApplicationContext.Local>;
@@ -37,6 +40,32 @@ export type RepositoryAppContextState = Exclude<
   AppContextState,
   AppContextBase<ApplicationContext.Default>
 >;
+
+export interface AppContextBootstrap {
+  readonly state: AppContextState;
+  readonly forge: ForgeService | undefined;
+}
+
+export enum ForgeContextErrorCode {
+  NoActiveForge = "no-active-forge",
+}
+
+export type ForgeContextError =
+  | ForgeOperationError
+  | {
+      readonly code: ForgeContextErrorCode.NoActiveForge;
+      readonly cwd: string;
+    };
+
+interface ForgeContext {
+  readonly getPullRequests: (
+    options?: PullRequestListOptions,
+  ) => Promise<ResultType<PullRequestList, ForgeContextError>>;
+  readonly getPullRequestDetails: (
+    number: number,
+    options?: PullRequestDetailsOptions,
+  ) => Promise<ResultType<PullRequestDetails, ForgeContextError>>;
+}
 
 export enum RepositorySelectionErrorCode {
   DirectoryChangeFailed = "directory-change-failed",
@@ -125,21 +154,27 @@ async function readGitRemoteOutput(
 
 export async function initializeAppContext(
   cwd = process.cwd(),
-): Promise<AppContextState> {
+): Promise<AppContextBootstrap> {
   const activeCwd = resolve(cwd);
   const remoteOutput = await readGitRemoteOutput(activeCwd);
   if (remoteOutput.isErr()) {
     return {
-      cwd: activeCwd,
-      kind: ApplicationContext.Default,
+      state: {
+        cwd: activeCwd,
+        kind: ApplicationContext.Default,
+      },
+      forge: undefined,
     };
   }
 
   const remoteUrls = parseRemoteUrls(remoteOutput.value);
   if (remoteUrls.length === 0) {
     return {
-      cwd: activeCwd,
-      kind: ApplicationContext.Local,
+      state: {
+        cwd: activeCwd,
+        kind: ApplicationContext.Local,
+      },
+      forge: undefined,
     };
   }
 
@@ -150,28 +185,33 @@ export async function initializeAppContext(
 
   if (initialization.isErr()) {
     return {
-      cwd: activeCwd,
-      kind,
+      state: {
+        cwd: activeCwd,
+        kind,
+        forgeError: initialization.error,
+      },
       forge: undefined,
-      forgeError: initialization.error,
     };
   }
 
   return {
-    cwd: activeCwd,
-    kind,
+    state: {
+      cwd: activeCwd,
+      kind,
+      forgeError: undefined,
+    },
     forge: initialization.value,
-    forgeError: undefined,
   };
 }
 
 type AppContextProviderProps = {
-  readonly value: AppContextState;
+  readonly value: AppContextBootstrap;
   readonly children: JSX.Element;
 };
 
 export type AppContextValue = {
   readonly state: Accessor<AppContextState>;
+  readonly forge: ForgeContext;
   readonly selectRepository: (
     repositoryPath: string,
   ) => Promise<RepositorySelectionResult>;
@@ -182,8 +222,37 @@ const AppContext = createContext<AppContextValue>();
 export function AppContextProvider(
   props: AppContextProviderProps,
 ): JSX.Element {
-  const [state, setState] = createSignal(props.value);
+  const [state, setState] = createSignal(props.value.state);
+  const [activeForge, setActiveForge] = createSignal<ForgeService | undefined>(
+    props.value.forge,
+  );
   let transitionInProgress = false;
+
+  function runWithActiveForge<T>(
+    operation: (
+      service: ForgeService,
+    ) => Promise<ResultType<T, ForgeOperationError>>,
+  ): Promise<ResultType<T, ForgeContextError>> {
+    const service = activeForge();
+    if (service === undefined) {
+      return Promise.resolve(
+        Result.err({
+          code: ForgeContextErrorCode.NoActiveForge,
+          cwd: state().cwd,
+        }),
+      );
+    }
+    return operation(service);
+  }
+
+  const forge: ForgeContext = {
+    getPullRequests: (options) =>
+      runWithActiveForge((service) => service.getPullRequests(options)),
+    getPullRequestDetails: (number, options) =>
+      runWithActiveForge((service) =>
+        service.getPullRequestDetails(number, options),
+      ),
+  };
 
   const selectRepository = async (
     repositoryPath: string,
@@ -197,6 +266,8 @@ export function AppContextProvider(
     }
 
     transitionInProgress = true;
+    const previousForge = activeForge();
+    setActiveForge(undefined);
     try {
       const initialization = await Result.tryPromise({
         try: () => initializeAppContext(path),
@@ -207,6 +278,7 @@ export function AppContextProvider(
       });
 
       if (initialization.isErr()) {
+        setActiveForge(previousForge);
         return initialization;
       }
 
@@ -221,17 +293,19 @@ export function AppContextProvider(
       });
 
       if (changeDirectory.isErr()) {
+        setActiveForge(previousForge);
         return changeDirectory;
       }
 
-      setState({ ...initialization.value, cwd: process.cwd() });
+      setState({ ...initialization.value.state, cwd: process.cwd() });
+      setActiveForge(initialization.value.forge);
       return Result.ok();
     } finally {
       transitionInProgress = false;
     }
   };
 
-  const context: AppContextValue = { state, selectRepository };
+  const context: AppContextValue = { state, forge, selectRepository };
 
   return (
     <AppContext.Provider value={context}>{props.children}</AppContext.Provider>

@@ -1,6 +1,7 @@
 import type { Result } from "better-result";
 import { ForgejoService } from "./forgejo-service";
 import { GithubService } from "./github-service";
+import { invalidRequest, validatePullRequestNumber } from "./normalization";
 import { ApplicationContext, ForgeInitializationErrorCode } from "./types";
 import type {
   CliCheckError,
@@ -8,8 +9,10 @@ import type {
   ForgeInitializationError,
   ForgeKind,
   ForgeOperationError,
-  PullRequest,
-  PullRequestComment,
+  PullRequestDetails,
+  PullRequestDetailsOptions,
+  PullRequestList,
+  PullRequestListOptions,
 } from "./types";
 
 export class ForgeService {
@@ -34,16 +37,32 @@ export class ForgeService {
       .mapError((error) => normalizeInitializationError(kind, error));
   }
 
-  public getPullRequest(
-    number: number,
-  ): Promise<Result<PullRequest, ForgeOperationError>> {
-    return this.adapter.getPullRequest(number);
+  public getPullRequests(
+    options?: PullRequestListOptions,
+  ): Promise<Result<PullRequestList, ForgeOperationError>> {
+    const limit = options?.limit;
+    if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
+      return Promise.resolve(
+        invalidRequest(
+          this.kind,
+          "Pull request list limit must be a positive safe integer",
+        ),
+      );
+    }
+
+    return this.adapter.getPullRequests(options);
   }
 
-  public getPullRequestComments(
+  public getPullRequestDetails(
     number: number,
-  ): Promise<Result<readonly PullRequestComment[], ForgeOperationError>> {
-    return this.adapter.getPullRequestComments(number);
+    options?: PullRequestDetailsOptions,
+  ): Promise<Result<PullRequestDetails, ForgeOperationError>> {
+    const validation = validatePullRequestNumber(this.kind, number);
+    if (validation.isErr()) {
+      return Promise.resolve(validation);
+    }
+
+    return this.adapter.getPullRequestDetails(validation.value, options);
   }
 }
 

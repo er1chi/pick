@@ -7,6 +7,7 @@ import { Default } from "@/features/default/default";
 import { Footer, type FooterBinding } from "@/features/footer/footer";
 import { Menubar } from "@/features/menubar/menubar";
 import { PrView } from "@/features/pr-view/pr-view";
+import { usePullRequestData } from "@/features/pr-view/use-pr-view-data";
 import { Sidebar } from "@/features/sidebar/sidebar";
 import {
   ApplicationContext,
@@ -61,13 +62,18 @@ function notifyCliInitializationError(error: ForgeInitializationError) {
 
 function RepositoryShell(props: { readonly state: RepositoryAppContextState }) {
   const contextLabel = repositoryContextLabel(props.state.kind);
+  const pullRequestView = usePullRequestData();
 
   return (
     <box flexDirection="column" width="100%" height="100%">
       <Menubar contextLabel={contextLabel} />
       <box flexDirection="row" flexGrow={1} width="100%">
-        <Sidebar />
-        <PrView state={props.state} contextLabel={contextLabel} />
+        <Sidebar view={pullRequestView} />
+        <PrView
+          state={props.state}
+          contextLabel={contextLabel}
+          view={pullRequestView}
+        />
       </box>
       <Footer bindings={repositoryFooterBindings(props.state.kind)} />
     </box>

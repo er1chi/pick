@@ -10,37 +10,13 @@ import {
   type RepositoryDiscoveryError,
 } from "@/services/repo-discovery";
 import { moveInList } from "@/utils/navigation";
+import { SelectableRow } from "@/features/shared/selectable-row";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
 import { toast } from "@tuiparts/toast/solid";
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 
 const discoveryRootLabel = "~/Developer";
-
-function RepositoryRow(props: {
-  readonly repository: RecentRepository;
-  readonly selected: boolean;
-}) {
-  return (
-    <box
-      id={props.repository.path}
-      flexDirection="row"
-      gap={1}
-      width="100%"
-      backgroundColor={props.selected ? colors.selected : undefined}
-    >
-      <text fg={props.selected ? colors.blue : colors.dim}>
-        {props.selected ? ">" : " "}
-      </text>
-      <text fg={colors.foreground}>
-        <strong>{props.repository.name}</strong>
-      </text>
-      <text fg={props.selected ? colors.foreground : colors.dim}>
-        {props.repository.displayPath}
-      </text>
-    </box>
-  );
-}
 
 export function Default() {
   const appContext = useAppContext();
@@ -220,8 +196,11 @@ export function Default() {
             >
               <For each={repositories()}>
                 {(repository) => (
-                  <RepositoryRow
-                    repository={repository}
+                  <SelectableRow
+                    id={repository.path}
+                    marker=""
+                    label={repository.name}
+                    detail={repository.displayPath}
                     selected={repository.path === selectedPath()}
                   />
                 )}

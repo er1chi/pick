@@ -38,7 +38,7 @@
     "lint-staged": "17.2.0",
     "oxfmt": "0.61.0",
     "oxlint": "1.78.0",
-    "typescript": "^5.9.2"
+    "typescript": "^7.0.2"
   },
   "lint-staged": {
     "**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts}": [

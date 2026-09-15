@@ -1,25 +1,22 @@
 import { basename } from "node:path";
-import { type RepositoryAppContextState } from "@/context/app-context";
 import {
   ApplicationContext,
   ForgeInitializationErrorCode,
   type ForgeInitializationError,
   type ForgeKind,
 } from "@/services/forge/types";
+import type { RepositoryAppContextState } from "@/context/app-context";
 import { colors } from "@/theme";
 import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
 
-export type RepoViewProps = {
+export interface PrViewProps {
   readonly state: RepositoryAppContextState;
-};
+  readonly contextLabel: string;
+}
 
 function serviceName(kind: ForgeKind): string {
   return kind === ApplicationContext.GitHub ? "GitHub" : "Forgejo";
-}
-
-function contextLabel(kind: RepositoryAppContextState["kind"]): string {
-  return kind === ApplicationContext.Local ? "Local Git" : serviceName(kind);
 }
 
 function initializationErrorDescription(
@@ -38,18 +35,29 @@ function forgeInitializationError(
   return state.kind === ApplicationContext.Local ? undefined : state.forgeError;
 }
 
-export function RepoView(props: RepoViewProps) {
+export function PrView(props: PrViewProps) {
   const currentState = () => props.state;
   const name = () => basename(currentState().cwd) || currentState().cwd;
-  const contextName = () => contextLabel(currentState().kind);
 
   return (
-    <box flexDirection="column" gap={1} width="100%">
+    <box
+      flexDirection="column"
+      flexGrow={1}
+      flexShrink={1}
+      minWidth={0}
+      gap={1}
+      paddingLeft={2}
+      paddingRight={1}
+    >
+      <text fg={colors.foreground}>
+        <strong>Pull Requests</strong>
+      </text>
       <text fg={colors.foreground}>
         <strong>{name()}</strong>
       </text>
       <text fg={colors.muted}>{currentState().cwd}</text>
-      <text fg={colors.muted}>Context: {contextName()}</text>
+      <text fg={colors.muted}>Context: {props.contextLabel}</text>
+      <text fg={colors.muted}>Pull requests will appear here.</text>
       <Show when={currentState().kind === ApplicationContext.Local}>
         <box flexDirection="column">
           <text fg={colors.yellow}>Status: Local Git repository</text>

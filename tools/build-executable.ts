@@ -1,6 +1,7 @@
 import solidPlugin from "@opentui/solid/bun-plugin";
 import { chmod, mkdir, rename, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const nativePackages = [
   "@opentui/core-darwin-arm64",
@@ -38,14 +39,31 @@ function currentNativePackage(): (typeof nativePackages)[number] {
 const outputPath = resolve(process.env.PICK_EXECUTABLE_PATH ?? "/tmp/pick-bin");
 const temporaryOutputPath = `${outputPath}.next`;
 const bundledNativePackage = currentNativePackage();
+const treeSitterWorkerPath = "opentui-tree-sitter-worker.js";
+const treeSitterWorker = await Bun.file(
+  fileURLToPath(import.meta.resolve("@opentui/core/parser.worker")),
+).text();
+const bunfsRoot =
+  process.platform === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/";
 
 await mkdir(dirname(outputPath), { recursive: true });
 await rm(temporaryOutputPath, { force: true });
 
 try {
   const result = await Bun.build({
-    entrypoints: [resolve("index.tsx")],
-    compile: { outfile: temporaryOutputPath },
+    entrypoints: [resolve("index.tsx"), treeSitterWorkerPath],
+    compile: {
+      autoloadBunfig: false,
+      outfile: temporaryOutputPath,
+    },
+    define: {
+      OTUI_TREE_SITTER_WORKER_PATH: JSON.stringify(
+        `${bunfsRoot}${treeSitterWorkerPath}`,
+      ),
+    },
+    files: {
+      [treeSitterWorkerPath]: treeSitterWorker,
+    },
     plugins: [solidPlugin],
     external: nativePackages.filter(
       (packageName) => packageName !== bundledNativePackage,

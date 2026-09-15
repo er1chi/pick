@@ -4,7 +4,10 @@ import {
   type RepositoryAppContextState,
 } from "@/context/app-context";
 import { Default } from "@/features/default/default";
-import { RepoView } from "@/features/repo-view/repo-view";
+import { Footer, type FooterBinding } from "@/features/footer/footer";
+import { Menubar } from "@/features/menubar/menubar";
+import { PrView } from "@/features/pr-view/pr-view";
+import { Sidebar } from "@/features/sidebar/sidebar";
 import {
   ApplicationContext,
   ForgeInitializationErrorCode,
@@ -22,6 +25,29 @@ function repositoryAppContextState(
   return state.kind === ApplicationContext.Default ? undefined : state;
 }
 
+function repositoryContextLabel(
+  kind: RepositoryAppContextState["kind"],
+): string {
+  if (kind === ApplicationContext.Local) {
+    return "Local Git";
+  }
+  if (kind === ApplicationContext.GitHub) {
+    return "GitHub";
+  }
+  return "Forgejo";
+}
+
+function repositoryFooterBindings(
+  kind: RepositoryAppContextState["kind"],
+): readonly FooterBinding[] {
+  const contextBinding =
+    kind === ApplicationContext.Local
+      ? { key: "R", label: "Refresh repository" }
+      : { key: "Enter", label: "Open pull request" };
+
+  return [{ key: "Ctrl+Q", label: "Quit" }, contextBinding];
+}
+
 function notifyCliInitializationError(error: ForgeInitializationError) {
   const service =
     error.kind === ApplicationContext.GitHub ? "GitHub" : "Forgejo";
@@ -31,6 +57,41 @@ function notifyCliInitializationError(error: ForgeInitializationError) {
       ? "is unavailable"
       : "version check failed";
   toast.warning(`${service} CLI (${executable}) ${reason}.`);
+}
+
+function RepositoryShell(props: { readonly state: RepositoryAppContextState }) {
+  const contextLabel = repositoryContextLabel(props.state.kind);
+
+  return (
+    <box flexDirection="column" width="100%" height="100%">
+      <Menubar contextLabel={contextLabel} />
+      <box flexDirection="row" flexGrow={1} width="100%">
+        <Sidebar />
+        <PrView state={props.state} contextLabel={contextLabel} />
+      </box>
+      <Footer bindings={repositoryFooterBindings(props.state.kind)} />
+    </box>
+  );
+}
+
+function DefaultWelcome() {
+  return (
+    <box
+      flexDirection="column"
+      alignItems="center"
+      justifyContent="center"
+      width="100%"
+      height="100%"
+      gap={1}
+    >
+      <ascii_font text="PICK" font="block" color={colors.blue} />
+      <text fg={colors.muted}>Git, GitHub, and Forgejo — in the terminal.</text>
+      <box width="100%" maxWidth={80} alignSelf="center">
+        <Default />
+      </box>
+      <text fg={colors.dim}>Ctrl+Q quits</text>
+    </box>
+  );
 }
 
 export function App() {
@@ -53,27 +114,15 @@ export function App() {
   });
 
   return (
-    <box
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-      gap={1}
-    >
-      <ascii_font text="PICK" font="block" color={colors.blue} />
-      <text fg={colors.muted}>Git, GitHub, and Forgejo — in the terminal.</text>
-      <box width="100%" maxWidth={80} alignSelf="center">
-        <Show
-          when={repositoryAppContextState(appContext.state())}
-          fallback={<Default />}
-        >
-          {(state: Accessor<RepositoryAppContextState>) => (
-            <RepoView state={state()} />
-          )}
-        </Show>
-      </box>
-      <text fg={colors.dim}>Ctrl+Q quits</text>
+    <box width="100%" height="100%">
+      <Show
+        when={repositoryAppContextState(appContext.state())}
+        fallback={<DefaultWelcome />}
+      >
+        {(state: Accessor<RepositoryAppContextState>) => (
+          <RepositoryShell state={state()} />
+        )}
+      </Show>
       <Toaster position="top-right" stackingMode="stack" visibleToasts={3} />
     </box>
   );

@@ -48,7 +48,7 @@
     "opentui"
   ],
   "peerDependencies": {
-    "@opentui/core": "^0.4.3",
-    "@opentui/solid": "^0.4.3"
+    "@opentui/core": "^0.5.11",
+    "@opentui/solid": "^0.5.11"
   }
 }

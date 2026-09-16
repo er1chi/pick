@@ -176,8 +176,11 @@ export function Sidebar(props: SidebarProps) {
       focused
       flexDirection="column"
       width={32}
-      minWidth={0}
-      flexShrink={1}
+      minWidth={32}
+      maxWidth={32}
+      flexGrow={0}
+      flexShrink={0}
+      overflow="hidden"
       height="100%"
       backgroundColor={colors.selected}
     >

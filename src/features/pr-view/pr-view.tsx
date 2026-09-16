@@ -537,8 +537,8 @@ function renderResourceTab(content: PrViewContent): JSX.Element {
           </box>
         )}
       </Show>
-      <Show when={content.resource().value}>
-        {(value: Accessor<PullRequestResource>) => renderResource(value())}
+      <Show keyed when={content.resource().value}>
+        {(value: PullRequestResource) => renderResource(value)}
       </Show>
       <Show
         when={
@@ -643,12 +643,10 @@ export function PrView(props: PrViewProps) {
               </box>
             )}
           </Show>
-          <Show when={currentOverview()}>
-            {(overview: Accessor<PullRequestOverview>) => (
-              <Show when={summary()}>
-                {(item: Accessor<PullRequestSummary>) =>
-                  renderOverview(item(), overview())
-                }
+          <Show keyed when={currentOverview()}>
+            {(overview: PullRequestOverview) => (
+              <Show keyed when={summary()}>
+                {(item: PullRequestSummary) => renderOverview(item, overview)}
               </Show>
             )}
           </Show>

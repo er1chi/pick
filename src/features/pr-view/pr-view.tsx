@@ -614,18 +614,13 @@ export function PrView(props: PrViewProps) {
         }
       >
         {renderTabs(props.content)}
-        <Show when={summary()}>
-          {(item: Accessor<PullRequestSummary>) => (
-            <box flexDirection="column">
-              <text fg={colors.foreground}>
-                <strong>
-                  {repositoryName()}#{item().number}
-                </strong>
-              </text>
-              <text fg={colors.foreground}>
-                <strong>{item().title}</strong>
-              </text>
-            </box>
+        <Show keyed when={summary()}>
+          {(item: PullRequestSummary) => (
+            <text fg={colors.foreground}>
+              <strong>
+                {item.title} #{item.number}
+              </strong>
+            </text>
           )}
         </Show>
         <Show when={overviewLoading()}>

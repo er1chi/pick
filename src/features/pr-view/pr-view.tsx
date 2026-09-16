@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { RepositoryAppContextState } from "@/context/app-context";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
+import type { PaneFocus } from "@/features/shared/pane-focus";
 import {
   pullRequestTabs,
   type OverviewLoadState,
@@ -32,8 +33,10 @@ import {
   type PullRequestSummary,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
+import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { For, Show } from "solid-js";
+import { useBindings } from "@opentui/keymap/solid";
+import { For, Show, createEffect, createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
 
 export interface PrViewProps {
@@ -41,6 +44,7 @@ export interface PrViewProps {
   readonly contextLabel: string;
   readonly titles: PrTitles;
   readonly content: PrViewContent;
+  readonly paneFocus: PaneFocus;
 }
 
 function serviceName(
@@ -557,6 +561,8 @@ function renderResourceTab(content: PrViewContent): JSX.Element {
 }
 
 export function PrView(props: PrViewProps) {
+  const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
+  const focused = () => props.paneFocus.pane() === "content";
   const currentState = () => props.state;
   const localName = () => basename(currentState().cwd) || currentState().cwd;
   const repositoryName = () =>
@@ -571,8 +577,43 @@ export function PrView(props: PrViewProps) {
   const currentOverview = () => overviewValue(props.content.overview());
   const overviewLoading = () => props.content.overview().status === "loading";
 
+  useBindings(() => ({
+    target: contentBox,
+    commands: [
+      ...pullRequestTabs.map((tab) => ({
+        name: `pr-view.tab-${tab}`,
+        run: () => props.content.selectTab(tab),
+      })),
+      {
+        name: "pr-view.retry",
+        run: () => props.content.retry(),
+      },
+      {
+        name: "pr-view.focus-sidebar",
+        run: () => props.paneFocus.focus("sidebar"),
+      },
+    ],
+    bindings: [
+      ...pullRequestTabs.map((tab, index) => ({
+        key: String(index + 1),
+        cmd: `pr-view.tab-${tab}`,
+      })),
+      { key: "r", cmd: "pr-view.retry" },
+      { key: "0", cmd: "pr-view.focus-sidebar" },
+    ],
+  }));
+
+  createEffect(() => {
+    if (focused()) {
+      contentBox()?.focus();
+    }
+  });
+
   return (
     <box
+      ref={setContentBox}
+      focusable
+      focused={focused()}
       flexDirection="column"
       flexGrow={1}
       flexShrink={1}
@@ -580,8 +621,11 @@ export function PrView(props: PrViewProps) {
       gap={1}
       paddingLeft={2}
       paddingRight={1}
+      border={["left"]}
+      borderColor={colors.border}
+      focusedBorderColor={colors.blue}
     >
-      <text fg={colors.foreground}>
+      <text fg={focused() ? colors.blue : colors.foreground}>
         <strong>Pull Requests</strong>
       </text>
       <text fg={colors.foreground}>
@@ -661,7 +705,7 @@ export function PrView(props: PrViewProps) {
           {renderResourceTab(props.content)}
         </Show>
         <text fg={colors.dim}>
-          1–7 switch tabs · r reloads the visible tab.
+          0 list · 1–7 tabs · r reloads the visible tab.
         </text>
       </Show>
     </box>

@@ -1,18 +1,18 @@
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
-import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type {
   ForgeOperationError,
   PullRequestSummary,
 } from "@/services/forge/types";
 import { SelectableRow } from "@/features/shared/selectable-row";
+import type { PaneFocus } from "@/features/shared/pane-focus";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
 import { For, Show, createEffect, createSignal, on } from "solid-js";
 
 export interface SidebarProps {
   readonly titles: PrTitles;
-  readonly content: PrViewContent;
+  readonly paneFocus: PaneFocus;
 }
 
 function listItems(titles: PrTitles): readonly PullRequestSummary[] {
@@ -58,10 +58,7 @@ export function Sidebar(props: SidebarProps) {
   const [scrollBox, setScrollBox] = createSignal<
     ScrollBoxRenderable | undefined
   >();
-
-  function keepSidebarFocused(): void {
-    sidebarBox()?.focus();
-  }
+  const focused = () => props.paneFocus.pane() === "sidebar";
 
   useBindings(() => ({
     target: sidebarBox,
@@ -76,80 +73,35 @@ export function Sidebar(props: SidebarProps) {
       },
       {
         name: "pr-list.filter-open",
-        run: () => {
-          props.titles.setFilter("open");
-          keepSidebarFocused();
-        },
+        run: () => props.titles.setFilter("open"),
       },
       {
         name: "pr-list.filter-closed",
-        run: () => {
-          props.titles.setFilter("closed");
-          keepSidebarFocused();
-        },
+        run: () => props.titles.setFilter("closed"),
       },
       {
         name: "pr-list.filter-all",
-        run: () => {
-          props.titles.setFilter("all");
-          keepSidebarFocused();
-        },
+        run: () => props.titles.setFilter("all"),
       },
       {
         name: "pr-list.filter-previous",
-        run: () => {
-          props.titles.cycleFilter(-1);
-          keepSidebarFocused();
-        },
+        run: () => props.titles.cycleFilter(-1),
       },
       {
         name: "pr-list.filter-next",
-        run: () => {
-          props.titles.cycleFilter(1);
-          keepSidebarFocused();
-        },
-      },
-      {
-        name: "pr.retry",
-        run: () => {
-          if (props.titles.list().status === "error") {
-            props.titles.retry();
-            return;
-          }
-          props.content.retry();
-        },
+        run: () => props.titles.cycleFilter(1),
       },
       {
         name: "pr-list.retry",
         run: () => props.titles.retry(),
       },
       {
-        name: "pr-view.tab-overview",
-        run: () => props.content.selectTab("overview"),
+        name: "pr-list.activate",
+        run: () => props.paneFocus.focus("content"),
       },
       {
-        name: "pr-view.tab-details",
-        run: () => props.content.selectTab("details"),
-      },
-      {
-        name: "pr-view.tab-diff",
-        run: () => props.content.selectTab("diff"),
-      },
-      {
-        name: "pr-view.tab-commits",
-        run: () => props.content.selectTab("commits"),
-      },
-      {
-        name: "pr-view.tab-reviews",
-        run: () => props.content.selectTab("reviews"),
-      },
-      {
-        name: "pr-view.tab-checks",
-        run: () => props.content.selectTab("checks"),
-      },
-      {
-        name: "pr-view.tab-development",
-        run: () => props.content.selectTab("development"),
+        name: "pr-list.focus",
+        run: () => props.paneFocus.focus("sidebar"),
       },
     ],
     bindings: [
@@ -162,15 +114,10 @@ export function Sidebar(props: SidebarProps) {
       { key: "a", cmd: "pr-list.filter-all" },
       { key: "[", cmd: "pr-list.filter-previous" },
       { key: "]", cmd: "pr-list.filter-next" },
-      { key: "r", cmd: "pr.retry" },
       { key: "R", cmd: "pr-list.retry" },
-      { key: "1", cmd: "pr-view.tab-overview" },
-      { key: "2", cmd: "pr-view.tab-details" },
-      { key: "3", cmd: "pr-view.tab-diff" },
-      { key: "4", cmd: "pr-view.tab-commits" },
-      { key: "5", cmd: "pr-view.tab-reviews" },
-      { key: "6", cmd: "pr-view.tab-checks" },
-      { key: "7", cmd: "pr-view.tab-development" },
+      { key: "return", cmd: "pr-list.activate" },
+      { key: "1", cmd: "pr-list.activate" },
+      { key: "0", cmd: "pr-list.focus" },
     ],
   }));
 
@@ -184,12 +131,15 @@ export function Sidebar(props: SidebarProps) {
   createEffect(
     on(
       [
+        () => props.paneFocus.pane(),
         () => props.titles.filter(),
         () => props.titles.list().status,
         sidebarBox,
       ],
       () => {
-        keepSidebarFocused();
+        if (focused()) {
+          sidebarBox()?.focus();
+        }
       },
     ),
   );
@@ -198,7 +148,7 @@ export function Sidebar(props: SidebarProps) {
     <box
       ref={setSidebarBox}
       focusable
-      focused
+      focused={focused()}
       flexDirection="column"
       width={32}
       minWidth={32}
@@ -208,6 +158,9 @@ export function Sidebar(props: SidebarProps) {
       overflow="hidden"
       height="100%"
       backgroundColor={colors.selected}
+      border={["left"]}
+      borderColor={colors.border}
+      focusedBorderColor={colors.blue}
     >
       <box
         width="100%"
@@ -215,7 +168,7 @@ export function Sidebar(props: SidebarProps) {
         paddingLeft={1}
         backgroundColor={colors.border}
       >
-        <text fg={colors.foreground}>
+        <text fg={focused() ? colors.blue : colors.foreground}>
           <strong>Pull Requests</strong>
         </text>
       </box>
@@ -242,7 +195,7 @@ export function Sidebar(props: SidebarProps) {
             <box flexDirection="column" paddingLeft={1} paddingRight={1}>
               <text fg={colors.yellow}>Could not load pull requests.</text>
               <text fg={colors.dim}>{listError(props.titles)}</text>
-              <text fg={colors.muted}>Press r to retry.</text>
+              <text fg={colors.muted}>Press R to retry.</text>
             </box>
           }
         >

@@ -10,6 +10,7 @@ import { PrView } from "@/features/pr-view/pr-view";
 import { usePrTitles } from "@/features/pr-view/use-pr-titles";
 import { usePrViewContent } from "@/features/pr-view/use-pr-view-content";
 import { Sidebar } from "@/features/sidebar/sidebar";
+import type { PaneFocus, RepositoryPane } from "@/features/shared/pane-focus";
 import {
   ApplicationContext,
   ForgeInitializationErrorCode,
@@ -18,7 +19,7 @@ import {
 import { colors } from "@/theme";
 import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
-import { createEffect, onMount, Show } from "solid-js";
+import { createEffect, createSignal, onMount, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 
 function repositoryAppContextState(
@@ -41,6 +42,7 @@ function repositoryContextLabel(
 
 function repositoryFooterBindings(
   kind: RepositoryAppContextState["kind"],
+  pane: RepositoryPane,
 ): readonly FooterBinding[] {
   if (kind === ApplicationContext.Local) {
     return [
@@ -49,13 +51,22 @@ function repositoryFooterBindings(
     ];
   }
 
+  if (pane === "sidebar") {
+    return [
+      { key: "Ctrl+Q", label: "Quit" },
+      { key: "0/1", label: "List/Content" },
+      { key: "j/k", label: "Navigate" },
+      { key: "o/c/a", label: "Open/Closed/All" },
+      { key: "Enter", label: "Open" },
+      { key: "R", label: "Reload list" },
+    ];
+  }
+
   return [
     { key: "Ctrl+Q", label: "Quit" },
-    { key: "j/k", label: "Navigate" },
-    { key: "o/c/a", label: "Open/Closed/All" },
+    { key: "0", label: "List" },
     { key: "1–7", label: "Tabs" },
     { key: "r", label: "Reload visible" },
-    { key: "R", label: "Reload list" },
   ];
 }
 
@@ -74,20 +85,30 @@ function RepositoryShell(props: { readonly state: RepositoryAppContextState }) {
   const contextLabel = repositoryContextLabel(props.state.kind);
   const titles = usePrTitles();
   const content = usePrViewContent(titles);
+  const [focusedPane, setFocusedPane] = createSignal<RepositoryPane>("sidebar");
+  const paneFocus: PaneFocus = {
+    pane: focusedPane,
+    focus: (pane) => {
+      setFocusedPane(pane);
+    },
+  };
 
   return (
     <box flexDirection="column" width="100%" height="100%">
       <Menubar contextLabel={contextLabel} />
       <box flexDirection="row" flexGrow={1} width="100%">
-        <Sidebar titles={titles} content={content} />
+        <Sidebar titles={titles} paneFocus={paneFocus} />
         <PrView
           state={props.state}
           contextLabel={contextLabel}
           titles={titles}
           content={content}
+          paneFocus={paneFocus}
         />
       </box>
-      <Footer bindings={repositoryFooterBindings(props.state.kind)} />
+      <Footer
+        bindings={repositoryFooterBindings(props.state.kind, focusedPane())}
+      />
     </box>
   );
 }

@@ -14,10 +14,12 @@ import type {
   PullRequestPatch,
   PullRequestList,
   PullRequestListOptions,
+  PullRequestListState,
   PullRequestSummary,
 } from "./types";
 
 const defaultListLimit = 100;
+const defaultListState: PullRequestListState = "open";
 const maxListLimit = 1000;
 const maxDiffBytes = 16 * 1024 * 1024;
 const cliTimeoutMs = 30_000;
@@ -43,6 +45,25 @@ function requestedListLimit(
     });
   }
   return Result.ok(Math.min(value ?? defaultListLimit, maxListLimit));
+}
+
+function requestedListState(
+  kind: ForgeKind,
+  value: PullRequestListState | undefined,
+): Result<PullRequestListState, ForgeOperationError> {
+  if (
+    value !== undefined &&
+    value !== "open" &&
+    value !== "closed" &&
+    value !== "all"
+  ) {
+    return Result.err({
+      kind,
+      code: ForgeOperationErrorCode.InvalidRequest,
+      diagnostic: "Pull request list state must be open, closed, or all",
+    });
+  }
+  return Result.ok(value ?? defaultListState);
 }
 
 export function executeForgeJson<T>(
@@ -76,19 +97,58 @@ export function parseForgeSchema<T>(
   return Result.ok(payload);
 }
 
-export function readForgeRepository(
+export function createCachedForgeRepositoryReader(
   args: readonly string[],
   decoder: (cause: unknown) => ResultType<ForgeRepository, ForgeOperationError>,
   kind: ForgeKind,
   executable: string,
   cwd: string,
+): (
   signal: AbortSignal | undefined,
-): Promise<ResultType<ForgeRepository, ForgeOperationError>> {
-  return executeForgeJson(kind, executable, cwd, args, decoder, signal);
+) => Promise<ResultType<ForgeRepository, ForgeOperationError>> {
+  let cached: ForgeRepository | undefined;
+  return async (signal) => {
+    if (cached !== undefined) {
+      return Result.ok(cached);
+    }
+
+    const result = await executeForgeJson(
+      kind,
+      executable,
+      cwd,
+      args,
+      decoder,
+      signal,
+    );
+    if (result.isOk()) {
+      cached = result.value;
+    }
+    return result;
+  };
+}
+
+export async function withForgeRepository<T>(
+  getRepository: (
+    signal: AbortSignal | undefined,
+  ) => Promise<ResultType<ForgeRepository, ForgeOperationError>>,
+  signal: AbortSignal | undefined,
+  operation: (
+    repository: ForgeRepository,
+  ) => Promise<ResultType<T, ForgeOperationError>>,
+): Promise<ResultType<T, ForgeOperationError>> {
+  const repository = await getRepository(signal);
+  if (repository.isErr()) {
+    return repository;
+  }
+  return operation(repository.value);
 }
 
 export async function loadForgePullRequestList(
-  command: (repository: ForgeRepository, limit: number) => readonly string[],
+  command: (
+    repository: ForgeRepository,
+    limit: number,
+    state: PullRequestListState,
+  ) => readonly string[],
   decoder: (
     cause: unknown,
   ) => ResultType<readonly PullRequestSummary[], ForgeOperationError>,
@@ -100,14 +160,18 @@ export async function loadForgePullRequestList(
   cwd: string,
   options: PullRequestListOptions,
 ): Promise<ResultType<PullRequestList, ForgeOperationError>> {
-  const repository = await getRepository(options.signal);
-  if (repository.isErr()) {
-    return repository;
-  }
-
   const limit = requestedListLimit(kind, options.limit);
   if (limit.isErr()) {
     return limit;
+  }
+  const state = requestedListState(kind, options.state);
+  if (state.isErr()) {
+    return state;
+  }
+
+  const repository = await getRepository(options.signal);
+  if (repository.isErr()) {
+    return repository;
   }
 
   return executeForgeList(
@@ -116,7 +180,7 @@ export async function loadForgePullRequestList(
     cwd,
     repository.value,
     limit.value,
-    command(repository.value, limit.value),
+    command(repository.value, limit.value, state.value),
     decoder,
     options.signal,
   );

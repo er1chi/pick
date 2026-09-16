@@ -1,14 +1,14 @@
 import { type } from "arktype";
 import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
-import * as schemaPrimitives from "./schema-primitives";
 import * as adapterHelpers from "./adapter-helpers";
 import { ApplicationContext } from "./types";
 import {
-  assemblePullRequestDetails,
+  assemblePullRequestOverview,
   available,
   createPullRequestSummary,
   incompatible,
+  invalidRequest,
   normalizeDate,
   normalizeGithubState,
   normalizeIdentifier,
@@ -17,9 +17,8 @@ import {
   normalizeRepository,
   normalizeTeam,
   normalizeUser,
-  notRequested,
-  sectionLength,
 } from "./normalization";
+import * as schemaPrimitives from "./schema-primitives";
 import type {
   ForgeAdapter,
   ForgeOperationError,
@@ -28,20 +27,25 @@ import type {
   ForgeTeam,
   PullRequestCheck,
   PullRequestCommit,
-  PullRequestComment,
-  PullRequestDetailCore,
   PullRequestDetails,
-  PullRequestDetailsOptions,
+  PullRequestComment,
+  PullRequestDiffResource,
   PullRequestFile,
   PullRequestLinkedIssue,
   PullRequestList,
   PullRequestListOptions,
+  PullRequestOverview,
   PullRequestPatch,
   PullRequestProject,
+  PullRequestResource,
+  PullRequestResourceKind,
+  PullRequestOverviewOptions,
+  PullRequestResourceOptions,
   PullRequestReview,
   PullRequestReviewComment,
   PullRequestReviewerRequests,
   PullRequestSummary,
+  PullRequestReviewsResource,
 } from "./types";
 
 const executableName = "gh";
@@ -81,14 +85,12 @@ const milestoneSchema = type({
 });
 const mergeCommitSchema = type({ oid: "string" });
 
-const coreSchema = type({
+const overviewSchema = type({
   number: schemaPrimitives.safeIntegerSchema,
-  title: "string",
   body: schemaPrimitives.optionalNullableString,
-  state: "string",
-  isDraft: type("boolean | null").optional(),
-  author: userSchema.or("null").optional(),
-  url: schemaPrimitives.optionalNullableString,
+});
+const detailsSchema = type({
+  number: schemaPrimitives.safeIntegerSchema,
   createdAt: schemaPrimitives.optionalDate,
   updatedAt: schemaPrimitives.optionalDate,
   closedAt: schemaPrimitives.optionalDate,
@@ -99,7 +101,6 @@ const coreSchema = type({
   headRefName: schemaPrimitives.optionalNullableString,
   headRefOid: schemaPrimitives.optionalNullableString,
   headRepository: repositorySchema.or("null").optional(),
-  isCrossRepository: type("boolean | null").optional(),
   additions: schemaPrimitives.optionalNumber,
   deletions: schemaPrimitives.optionalNumber,
   changedFiles: schemaPrimitives.optionalNumber,
@@ -180,7 +181,6 @@ const requestedReviewersSchema = type({
   teams: teamSchema.array(),
 });
 const checkSchema = type({
-  __typename: schemaPrimitives.optionalNullableString,
   name: schemaPrimitives.optionalNullableString,
   context: schemaPrimitives.optionalNullableString,
   status: schemaPrimitives.optionalNullableString,
@@ -235,10 +235,25 @@ const linkedIssuesResponseSchema = type({
   closingIssuesReferences: linkedIssueSchema.array(),
 });
 
+type GithubOverviewFields = Pick<PullRequestOverview, "number" | "body">;
+type GithubDetailsFields = PullRequestDetails;
+
 export class GithubService implements ForgeAdapter {
   public readonly kind = kind;
 
-  private constructor(private readonly cwd: string) {}
+  private readonly repositoryReader: (
+    signal: AbortSignal | undefined,
+  ) => Promise<ResultType<ForgeRepository, ForgeOperationError>>;
+
+  private constructor(private readonly cwd: string) {
+    this.repositoryReader = adapterHelpers.createCachedForgeRepositoryReader(
+      ["repo", "view", "--json", "nameWithOwner,url"],
+      normalizeGithubRepository,
+      kind,
+      executableName,
+      cwd,
+    );
+  }
 
   public static initialize(cwd: string) {
     return adapterHelpers.initializeForgeAdapter(
@@ -253,13 +268,13 @@ export class GithubService implements ForgeAdapter {
     options: PullRequestListOptions = {},
   ): Promise<ResultType<PullRequestList, ForgeOperationError>> {
     return adapterHelpers.loadForgePullRequestList(
-      (repository, limit) => [
+      (repository, limit, state) => [
         "pr",
         "list",
         "--repo",
         repository.fullName,
         "--state",
-        "all",
+        state,
         "--limit",
         String(limit + 1),
         "--json",
@@ -274,192 +289,118 @@ export class GithubService implements ForgeAdapter {
     );
   }
 
-  public async getPullRequestDetails(
+  public getPullRequestOverview(
     number: number,
-    options: PullRequestDetailsOptions = {},
-  ): Promise<ResultType<PullRequestDetails, ForgeOperationError>> {
-    const repository = await this.getRepository(options.signal);
-    if (repository.isErr()) {
-      return repository;
-    }
+    options: PullRequestOverviewOptions = {},
+  ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
+    return this.readGithubOverviewForSelection(number, options.signal);
+  }
 
-    const core = await this.getCore(repository.value, number, options.signal);
-    if (core.isErr()) {
-      return core;
-    }
+  public getPullRequestResource(
+    number: number,
+    resourceKind: PullRequestResourceKind,
+    options: PullRequestResourceOptions = {},
+  ): Promise<ResultType<PullRequestResource, ForgeOperationError>> {
+    return this.readGithubResourceForSelection(
+      number,
+      resourceKind,
+      options.signal,
+    );
+  }
 
-    const [
-      commits,
-      conversationComments,
-      reviewComments,
-      reviews,
-      requestedReviewers,
-      files,
-      checks,
-      projects,
-      linkedIssues,
-      patch,
-    ] = await Promise.all([
+  private readGithubOverviewForSelection(
+    number: number,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
+    return adapterHelpers.withForgeRepository(
+      this.repositoryReader,
+      signal,
+      (repository) => this.readGithubOverview(number, repository, signal),
+    );
+  }
+
+  private readGithubResourceForSelection(
+    number: number,
+    resourceKind: PullRequestResourceKind,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<PullRequestResource, ForgeOperationError>> {
+    return adapterHelpers.withForgeRepository(
+      this.repositoryReader,
+      signal,
+      (repository) =>
+        this.readGithubResource(number, resourceKind, repository, signal),
+    );
+  }
+
+  private async readGithubOverview(
+    number: number,
+    repository: ForgeRepository,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
+    const [fields, conversationComments] = await Promise.all([
+      this.getOverviewFields(repository, number, signal),
       this.readSection(
         [
           "api",
           "--paginate",
           "--slurp",
-          pathForApi(repository.value, ["pulls", String(number), "commits"]),
-        ],
-        commitPagesSchema,
-        normalizeCommits,
-        "GitHub paginated response did not match the schema",
-        options.signal,
-      ),
-      this.readSection(
-        [
-          "api",
-          "--paginate",
-          "--slurp",
-          pathForApi(repository.value, ["issues", String(number), "comments"]),
+          pathForApi(repository, ["issues", String(number), "comments"]),
         ],
         commentPagesSchema,
         normalizeConversationComments,
         "GitHub paginated response did not match the schema",
-        options.signal,
+        signal,
       ),
-      this.readSection(
-        [
-          "api",
-          "--paginate",
-          "--slurp",
-          pathForApi(repository.value, ["pulls", String(number), "comments"]),
-        ],
-        commentPagesSchema,
-        normalizeReviewComments,
-        "GitHub paginated response did not match the schema",
-        options.signal,
-      ),
-      this.readSection(
-        [
-          "api",
-          "--paginate",
-          "--slurp",
-          pathForApi(repository.value, ["pulls", String(number), "reviews"]),
-        ],
-        reviewPagesSchema,
-        normalizeReviews,
-        "GitHub paginated response did not match the schema",
-        options.signal,
-      ),
-      this.readSection(
-        [
-          "api",
-          pathForApi(repository.value, [
-            "pulls",
-            String(number),
-            "requested_reviewers",
-          ]),
-        ],
-        requestedReviewersSchema,
-        normalizeRequestedReviewers,
-        "GitHub response did not match the schema",
-        options.signal,
-      ),
-      this.readSection(
-        [
-          "api",
-          "--paginate",
-          "--slurp",
-          pathForApi(repository.value, ["pulls", String(number), "files"]),
-        ],
-        filePagesSchema,
-        normalizeFiles,
-        "GitHub paginated response did not match the schema",
-        options.signal,
-      ),
-      this.readSection(
-        [
-          "pr",
-          "view",
-          String(number),
-          "--repo",
-          repository.value.fullName,
-          "--json",
-          "statusCheckRollup",
-        ],
-        checksResponseSchema,
-        normalizeChecks,
-        "GitHub optional PR response did not match the schema",
-        options.signal,
-      ),
-      this.readSection(
-        [
-          "pr",
-          "view",
-          String(number),
-          "--repo",
-          repository.value.fullName,
-          "--json",
-          "projectItems,projectCards",
-        ],
-        projectsResponseSchema,
-        normalizeProjects,
-        "GitHub optional PR response did not match the schema",
-        options.signal,
-      ),
-      this.readSection(
-        [
-          "pr",
-          "view",
-          String(number),
-          "--repo",
-          repository.value.fullName,
-          "--json",
-          "closingIssuesReferences",
-        ],
-        linkedIssuesResponseSchema,
-        (cause) => normalizeLinkedIssues(cause, repository.value),
-        "GitHub optional PR response did not match the schema",
-        options.signal,
-      ),
-      options.includeDiff === false
-        ? Promise.resolve(notRequested<PullRequestPatch>())
-        : this.readPatch(number, repository.value, options.signal),
     ]);
+    if (fields.isErr()) {
+      return fields;
+    }
 
     return Result.ok(
-      buildDetails(
-        repository.value,
-        core.value,
-        commits,
+      assemblePullRequestOverview(
+        repository,
+        fields.value,
         conversationComments,
-        reviewComments,
-        reviews,
-        requestedReviewers,
-        files,
-        checks,
-        projects,
-        linkedIssues,
-        patch,
       ),
     );
   }
 
-  private async getRepository(
+  private async readGithubResource(
+    number: number,
+    resourceKind: PullRequestResourceKind,
+    repository: ForgeRepository,
     signal: AbortSignal | undefined,
-  ): Promise<ResultType<ForgeRepository, ForgeOperationError>> {
-    return adapterHelpers.readForgeRepository(
-      ["repo", "view", "--json", "nameWithOwner,url"],
-      normalizeGithubRepository,
+  ): Promise<ResultType<PullRequestResource, ForgeOperationError>> {
+    if (resourceKind === "details") {
+      return this.getDetailsResource(number, repository, signal);
+    }
+    if (resourceKind === "diff") {
+      return this.readGithubDiffResource(number, repository, signal);
+    }
+    if (resourceKind === "commits") {
+      return this.getCommitsResource(number, repository, signal);
+    }
+    if (resourceKind === "reviews") {
+      return this.getReviewsResource(number, repository, signal);
+    }
+    if (resourceKind === "checks") {
+      return this.getChecksResource(number, repository, signal);
+    }
+    if (resourceKind === "development") {
+      return this.getDevelopmentResource(number, repository, signal);
+    }
+
+    return invalidRequest(
       kind,
-      executableName,
-      this.cwd,
-      signal,
+      `Unknown pull request resource: ${resourceKind}`,
     );
   }
 
-  private async getCore(
+  private async getOverviewFields(
     repository: ForgeRepository,
     number: number,
     signal: AbortSignal | undefined,
-  ): Promise<ResultType<PullRequestDetailCore, ForgeOperationError>> {
+  ): Promise<ResultType<GithubOverviewFields, ForgeOperationError>> {
     return adapterHelpers.executeForgeJson(
       kind,
       executableName,
@@ -471,11 +412,205 @@ export class GithubService implements ForgeAdapter {
         "--repo",
         repository.fullName,
         "--json",
-        "number,title,body,state,isDraft,author,url,createdAt,updatedAt,closedAt,mergedAt,mergedBy,baseRefName,baseRefOid,headRefName,headRefOid,headRepository,isCrossRepository,additions,deletions,changedFiles,labels,assignees,milestone,maintainerCanModify,mergeable,mergeStateStatus,reviewDecision,mergeCommit",
+        "number,body",
       ],
-      (cause) => normalizeCore(cause, repository),
+      (cause) => normalizeOverviewFields(cause, number),
       signal,
     );
+  }
+
+  private async getDetailsResource(
+    number: number,
+    repository: ForgeRepository,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<PullRequestResource, ForgeOperationError>> {
+    const details = await adapterHelpers.executeForgeJson(
+      kind,
+      executableName,
+      this.cwd,
+      [
+        "pr",
+        "view",
+        String(number),
+        "--repo",
+        repository.fullName,
+        "--json",
+        "number,createdAt,updatedAt,closedAt,mergedAt,mergedBy,baseRefName,baseRefOid,headRefName,headRefOid,headRepository,additions,deletions,changedFiles,labels,assignees,milestone,maintainerCanModify,mergeable,mergeStateStatus,reviewDecision,mergeCommit",
+      ],
+      (cause) => normalizeDetailsFields(cause, repository, number),
+      signal,
+    );
+    return details.map((value) => ({
+      kind: "details" as const,
+      value: { details: value },
+    }));
+  }
+
+  private async readGithubDiffResource(
+    number: number,
+    repository: ForgeRepository,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<PullRequestResource, ForgeOperationError>> {
+    const [patch, files] = await Promise.all([
+      this.readPatch(number, repository, signal),
+      this.readSection(
+        [
+          "api",
+          "--paginate",
+          "--slurp",
+          pathForApi(repository, ["pulls", String(number), "files"]),
+        ],
+        filePagesSchema,
+        normalizeFiles,
+        "GitHub paginated response did not match the schema",
+        signal,
+      ),
+    ]);
+    const value: PullRequestDiffResource = { patch, files };
+    return Result.ok({ kind: "diff", value });
+  }
+
+  private async getCommitsResource(
+    number: number,
+    repository: ForgeRepository,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<PullRequestResource, ForgeOperationError>> {
+    const commits = await this.readSection(
+      [
+        "api",
+        "--paginate",
+        "--slurp",
+        pathForApi(repository, ["pulls", String(number), "commits"]),
+      ],
+      commitPagesSchema,
+      normalizeCommits,
+      "GitHub paginated response did not match the schema",
+      signal,
+    );
+    return Result.ok({ kind: "commits", value: { commits } });
+  }
+
+  private async getReviewsResource(
+    number: number,
+    repository: ForgeRepository,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<PullRequestResource, ForgeOperationError>> {
+    const [reviews, reviewComments, requestedReviewers] = await Promise.all([
+      this.readSection(
+        [
+          "api",
+          "--paginate",
+          "--slurp",
+          pathForApi(repository, ["pulls", String(number), "reviews"]),
+        ],
+        reviewPagesSchema,
+        normalizeReviews,
+        "GitHub paginated response did not match the schema",
+        signal,
+      ),
+      this.readSection(
+        [
+          "api",
+          "--paginate",
+          "--slurp",
+          pathForApi(repository, ["pulls", String(number), "comments"]),
+        ],
+        commentPagesSchema,
+        normalizeReviewComments,
+        "GitHub paginated response did not match the schema",
+        signal,
+      ),
+      this.readSection(
+        [
+          "api",
+          pathForApi(repository, [
+            "pulls",
+            String(number),
+            "requested_reviewers",
+          ]),
+        ],
+        requestedReviewersSchema,
+        normalizeRequestedReviewers,
+        "GitHub response did not match the schema",
+        signal,
+      ),
+    ]);
+    const value: PullRequestReviewsResource = {
+      reviews,
+      reviewComments,
+      requestedReviewers,
+    };
+    return Result.ok({ kind: "reviews", value });
+  }
+
+  private async getChecksResource(
+    number: number,
+    repository: ForgeRepository,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<PullRequestResource, ForgeOperationError>> {
+    const checks = await this.readSection(
+      [
+        "pr",
+        "view",
+        String(number),
+        "--repo",
+        repository.fullName,
+        "--json",
+        "statusCheckRollup",
+      ],
+      checksResponseSchema,
+      normalizeChecks,
+      "GitHub optional PR response did not match the schema",
+      signal,
+    );
+    return Result.ok({ kind: "checks", value: { checks } });
+  }
+
+  private async getDevelopmentResource(
+    number: number,
+    repository: ForgeRepository,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<PullRequestResource, ForgeOperationError>> {
+    const [projects, linkedIssues] = await Promise.all([
+      this.readSection(
+        [
+          "pr",
+          "view",
+          String(number),
+          "--repo",
+          repository.fullName,
+          "--json",
+          "projectItems,projectCards",
+        ],
+        projectsResponseSchema,
+        normalizeProjects,
+        "GitHub optional PR response did not match the schema",
+        signal,
+      ),
+      this.readSection(
+        [
+          "pr",
+          "view",
+          String(number),
+          "--repo",
+          repository.fullName,
+          "--json",
+          "closingIssuesReferences",
+        ],
+        linkedIssuesResponseSchema,
+        (cause) => normalizeLinkedIssues(cause, repository),
+        "GitHub optional PR response did not match the schema",
+        signal,
+      ),
+    ]);
+    return Result.ok({
+      kind: "development",
+      value: { projects, linkedIssues },
+    });
+  }
+
+  private getRepository(signal: AbortSignal | undefined) {
+    return this.repositoryReader(signal);
   }
 
   private async readSection<Raw, T>(
@@ -566,15 +701,43 @@ function normalizeList(
   return Result.ok(payload.map(normalizeSummary));
 }
 
-function normalizeCore(
+function normalizeOverviewFields(
   cause: unknown,
-  repository: ForgeRepository,
-): ResultType<PullRequestDetailCore, ForgeOperationError> {
-  const payload = coreSchema(cause);
+  expectedNumber: number,
+): ResultType<GithubOverviewFields, ForgeOperationError> {
+  const payload = overviewSchema(cause);
   if (payload instanceof type.errors) {
     return incompatible(
       kind,
-      `GitHub pull request response did not match the schema: ${payload.summary}`,
+      `GitHub pull request overview response did not match the schema: ${payload.summary}`,
+    );
+  }
+  if (payload.number !== expectedNumber) {
+    return incompatible(
+      kind,
+      `GitHub pull request overview number did not match ${expectedNumber}`,
+    );
+  }
+
+  return Result.ok({ number: payload.number, body: payload.body ?? null });
+}
+
+function normalizeDetailsFields(
+  cause: unknown,
+  repository: ForgeRepository,
+  expectedNumber: number,
+): ResultType<GithubDetailsFields, ForgeOperationError> {
+  const payload = detailsSchema(cause);
+  if (payload instanceof type.errors) {
+    return incompatible(
+      kind,
+      `GitHub pull request details response did not match the schema: ${payload.summary}`,
+    );
+  }
+  if (payload.number !== expectedNumber) {
+    return incompatible(
+      kind,
+      `GitHub pull request details number did not match ${expectedNumber}`,
     );
   }
 
@@ -592,16 +755,8 @@ function normalizeCore(
   }
 
   return Result.ok({
-    summary: createPullRequestSummary(
-      payload.number,
-      payload.title,
-      normalizeGithubState(payload.state, payload.mergedAt),
-      payload.isDraft ?? null,
-      normalizeUser(payload.author),
-      normalizeDate(payload.updatedAt),
-      payload.url ?? null,
-    ),
-    body: payload.body ?? null,
+    repository,
+    number: payload.number,
     createdAt: normalizeDate(payload.createdAt),
     updatedAt: normalizeDate(payload.updatedAt),
     closedAt: normalizeDate(payload.closedAt),
@@ -617,9 +772,13 @@ function normalizeCore(
       sha: payload.headRefOid ?? null,
       repository: normalizedHeadRepository.value,
     },
-    additions: payload.additions ?? null,
-    deletions: payload.deletions ?? null,
-    changedFiles: payload.changedFiles ?? null,
+    counts: {
+      additions: payload.additions ?? null,
+      deletions: payload.deletions ?? null,
+      changedFiles: payload.changedFiles ?? null,
+      conversationComments: null,
+      reviewComments: null,
+    },
     labels: (payload.labels ?? []).map(normalizeLabel),
     assignees: (payload.assignees ?? []).flatMap((user) => {
       const normalized = normalizeUser(user);
@@ -881,46 +1040,6 @@ function normalizeLinkedIssues(
     });
   }
   return Result.ok(issues);
-}
-
-function buildDetails(
-  repository: ForgeRepository,
-  core: PullRequestDetailCore,
-  commits: ForgeSection<readonly PullRequestCommit[]>,
-  conversationComments: ForgeSection<readonly PullRequestComment[]>,
-  reviewComments: ForgeSection<readonly PullRequestReviewComment[]>,
-  reviews: ForgeSection<readonly PullRequestReview[]>,
-  requestedReviewers: ForgeSection<PullRequestReviewerRequests>,
-  files: ForgeSection<readonly PullRequestFile[]>,
-  checks: ForgeSection<readonly PullRequestCheck[]>,
-  projects: ForgeSection<readonly PullRequestProject[]>,
-  linkedIssues: ForgeSection<readonly PullRequestLinkedIssue[]>,
-  patch: ForgeSection<PullRequestPatch>,
-): PullRequestDetails {
-  return assemblePullRequestDetails({
-    repository,
-    core,
-    counts: {
-      additions: core.additions,
-      deletions: core.deletions,
-      changedFiles: core.changedFiles,
-      commits: sectionLength(commits),
-      conversationComments: sectionLength(conversationComments),
-      reviewComments: sectionLength(reviewComments),
-    },
-    collections: {
-      commits,
-      conversationComments,
-      reviewComments,
-      reviews,
-      requestedReviewers,
-      files,
-      checks,
-      projects,
-      linkedIssues,
-      patch,
-    },
-  });
 }
 
 function normalizeCommentSide(

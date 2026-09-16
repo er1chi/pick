@@ -10,10 +10,13 @@ import {
   type ForgeInitializationError,
   type ForgeKind,
   type ForgeOperationError,
-  type PullRequestDetails,
-  type PullRequestDetailsOptions,
   type PullRequestList,
   type PullRequestListOptions,
+  type PullRequestOverview,
+  type PullRequestOverviewOptions,
+  type PullRequestResource,
+  type PullRequestResourceKind,
+  type PullRequestResourceOptions,
 } from "@/services/forge/types";
 
 interface AppContextBase<T extends ApplicationContext> {
@@ -61,10 +64,15 @@ interface ForgeContext {
   readonly getPullRequests: (
     options?: PullRequestListOptions,
   ) => Promise<ResultType<PullRequestList, ForgeContextError>>;
-  readonly getPullRequestDetails: (
+  readonly getPullRequestOverview: (
     number: number,
-    options?: PullRequestDetailsOptions,
-  ) => Promise<ResultType<PullRequestDetails, ForgeContextError>>;
+    options?: PullRequestOverviewOptions,
+  ) => Promise<ResultType<PullRequestOverview, ForgeContextError>>;
+  readonly getPullRequestResource: (
+    number: number,
+    resourceKind: PullRequestResourceKind,
+    options?: PullRequestResourceOptions,
+  ) => Promise<ResultType<PullRequestResource, ForgeContextError>>;
 }
 
 export enum RepositorySelectionErrorCode {
@@ -248,9 +256,13 @@ export function AppContextProvider(
   const forge: ForgeContext = {
     getPullRequests: (options) =>
       runWithActiveForge((service) => service.getPullRequests(options)),
-    getPullRequestDetails: (number, options) =>
+    getPullRequestOverview: (number, options) =>
       runWithActiveForge((service) =>
-        service.getPullRequestDetails(number, options),
+        service.getPullRequestOverview(number, options),
+      ),
+    getPullRequestResource: (number, resourceKind, options) =>
+      runWithActiveForge((service) =>
+        service.getPullRequestResource(number, resourceKind, options),
       ),
   };
 

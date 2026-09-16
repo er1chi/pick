@@ -32,6 +32,8 @@ export enum PullRequestState {
   Unknown = "unknown",
 }
 
+export type PullRequestListState = "open" | "closed" | "all";
+
 export type ForgeInitializationError =
   | {
       readonly kind: ForgeKind;
@@ -132,15 +134,6 @@ export interface PullRequestRef {
   readonly repository: ForgeRepository | null;
 }
 
-interface PullRequestCounts {
-  readonly additions: number | null;
-  readonly deletions: number | null;
-  readonly changedFiles: number | null;
-  readonly commits: number | null;
-  readonly conversationComments: number | null;
-  readonly reviewComments: number | null;
-}
-
 export interface PullRequestLabel {
   readonly id: string | null;
   readonly name: string;
@@ -189,18 +182,18 @@ export interface PullRequestComment {
   readonly url: string | null;
 }
 
+export interface PullRequestReviewComment extends PullRequestComment {
+  readonly location: PullRequestCommentLocation | null;
+  readonly replyToId: string | null;
+  readonly reviewId: string | null;
+}
+
 interface PullRequestCommentLocation {
   readonly path: string;
   readonly line: number | null;
   readonly startLine: number | null;
   readonly side: "additions" | "deletions" | "unknown";
   readonly commitSha: string | null;
-}
-
-export interface PullRequestReviewComment extends PullRequestComment {
-  readonly location: PullRequestCommentLocation | null;
-  readonly replyToId: string | null;
-  readonly reviewId: string | null;
 }
 
 export interface PullRequestReview {
@@ -298,32 +291,32 @@ export type ForgeSection<T> =
       readonly status: "not-requested";
     };
 
-export interface PullRequestCollections {
-  readonly commits: ForgeSection<readonly PullRequestCommit[]>;
+export interface PullRequestOverview {
+  readonly repository: ForgeRepository;
+  readonly number: number;
+  readonly body: string | null;
   readonly conversationComments: ForgeSection<readonly PullRequestComment[]>;
-  readonly reviewComments: ForgeSection<readonly PullRequestReviewComment[]>;
-  readonly reviews: ForgeSection<readonly PullRequestReview[]>;
-  readonly requestedReviewers: ForgeSection<PullRequestReviewerRequests>;
-  readonly files: ForgeSection<readonly PullRequestFile[]>;
-  readonly checks: ForgeSection<readonly PullRequestCheck[]>;
-  readonly projects: ForgeSection<readonly PullRequestProject[]>;
-  readonly linkedIssues: ForgeSection<readonly PullRequestLinkedIssue[]>;
-  readonly patch: ForgeSection<PullRequestPatch>;
 }
 
-interface PullRequestDetailMetadata {
-  readonly body: string | null;
+interface PullRequestDetailsCounts {
+  readonly additions: number | null;
+  readonly deletions: number | null;
+  readonly changedFiles: number | null;
+  readonly conversationComments: number | null;
+  readonly reviewComments: number | null;
+}
+
+export interface PullRequestDetails {
+  readonly repository: ForgeRepository;
+  readonly number: number;
   readonly createdAt: string | null;
   readonly updatedAt: string | null;
   readonly closedAt: string | null;
   readonly mergedAt: string | null;
   readonly mergedBy: ForgeUser | null;
-}
-
-interface PullRequestDetailPresentation {
-  readonly summary: PullRequestSummary;
   readonly base: PullRequestRef;
   readonly head: PullRequestRef;
+  readonly counts: PullRequestDetailsCounts;
   readonly labels: readonly PullRequestLabel[];
   readonly assignees: readonly ForgeUser[];
   readonly milestone: PullRequestMilestone | null;
@@ -331,35 +324,64 @@ interface PullRequestDetailPresentation {
   readonly mergeability: PullRequestMergeability;
 }
 
-export interface PullRequestDetailCore
-  extends PullRequestDetailMetadata, PullRequestDetailPresentation {
-  readonly additions: number | null;
-  readonly deletions: number | null;
-  readonly changedFiles: number | null;
+export interface PullRequestDiffResource {
+  readonly patch: ForgeSection<PullRequestPatch>;
+  readonly files: ForgeSection<readonly PullRequestFile[]>;
 }
 
-export interface PullRequestDetails
-  extends PullRequestDetailMetadata, PullRequestDetailPresentation {
-  readonly repository: ForgeRepository;
-  readonly counts: PullRequestCounts;
-  readonly collections: PullRequestCollections;
+interface PullRequestDetailsResource {
+  readonly details: PullRequestDetails;
 }
 
-export interface PullRequestDetailsBuildInput {
-  readonly repository: ForgeRepository;
-  readonly core: PullRequestDetailCore;
-  readonly counts: PullRequestDetails["counts"];
-  readonly collections: PullRequestCollections;
+interface PullRequestCommitsResource {
+  readonly commits: ForgeSection<readonly PullRequestCommit[]>;
 }
+
+export interface PullRequestReviewsResource {
+  readonly reviews: ForgeSection<readonly PullRequestReview[]>;
+  readonly reviewComments: ForgeSection<readonly PullRequestReviewComment[]>;
+  readonly requestedReviewers: ForgeSection<PullRequestReviewerRequests>;
+}
+
+interface PullRequestChecksResource {
+  readonly checks: ForgeSection<readonly PullRequestCheck[]>;
+}
+
+interface PullRequestDevelopmentResource {
+  readonly projects: ForgeSection<readonly PullRequestProject[]>;
+  readonly linkedIssues: ForgeSection<readonly PullRequestLinkedIssue[]>;
+}
+
+interface PullRequestResourceMap {
+  readonly details: PullRequestDetailsResource;
+  readonly diff: PullRequestDiffResource;
+  readonly commits: PullRequestCommitsResource;
+  readonly reviews: PullRequestReviewsResource;
+  readonly checks: PullRequestChecksResource;
+  readonly development: PullRequestDevelopmentResource;
+}
+
+export type PullRequestResourceKind = keyof PullRequestResourceMap;
+
+export type PullRequestResource = {
+  [K in PullRequestResourceKind]: {
+    readonly kind: K;
+    readonly value: PullRequestResourceMap[K];
+  };
+}[PullRequestResourceKind];
 
 export interface PullRequestListOptions {
   readonly signal?: AbortSignal;
   readonly limit?: number;
+  readonly state?: PullRequestListState;
 }
 
-export interface PullRequestDetailsOptions {
+export interface PullRequestOverviewOptions {
   readonly signal?: AbortSignal;
-  readonly includeDiff?: boolean;
+}
+
+export interface PullRequestResourceOptions {
+  readonly signal?: AbortSignal;
 }
 
 export interface ForgeAdapter {
@@ -369,10 +391,16 @@ export interface ForgeAdapter {
     options?: PullRequestListOptions,
   ): Promise<Result<PullRequestList, ForgeOperationError>>;
 
-  getPullRequestDetails(
+  getPullRequestOverview(
     number: number,
-    options?: PullRequestDetailsOptions,
-  ): Promise<Result<PullRequestDetails, ForgeOperationError>>;
+    options?: PullRequestOverviewOptions,
+  ): Promise<Result<PullRequestOverview, ForgeOperationError>>;
+
+  getPullRequestResource(
+    number: number,
+    resourceKind: PullRequestResourceKind,
+    options?: PullRequestResourceOptions,
+  ): Promise<Result<PullRequestResource, ForgeOperationError>>;
 }
 
 export type CliCheckError =

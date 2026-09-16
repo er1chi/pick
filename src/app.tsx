@@ -7,7 +7,8 @@ import { Default } from "@/features/default/default";
 import { Footer, type FooterBinding } from "@/features/footer/footer";
 import { Menubar } from "@/features/menubar/menubar";
 import { PrView } from "@/features/pr-view/pr-view";
-import { usePullRequestData } from "@/features/pr-view/use-pr-view-data";
+import { usePrTitles } from "@/features/pr-view/use-pr-titles";
+import { usePrViewContent } from "@/features/pr-view/use-pr-view-content";
 import { Sidebar } from "@/features/sidebar/sidebar";
 import {
   ApplicationContext,
@@ -41,12 +42,21 @@ function repositoryContextLabel(
 function repositoryFooterBindings(
   kind: RepositoryAppContextState["kind"],
 ): readonly FooterBinding[] {
-  const contextBinding =
-    kind === ApplicationContext.Local
-      ? { key: "R", label: "Refresh repository" }
-      : { key: "Enter", label: "Open pull request" };
+  if (kind === ApplicationContext.Local) {
+    return [
+      { key: "Ctrl+Q", label: "Quit" },
+      { key: "R", label: "Refresh repository" },
+    ];
+  }
 
-  return [{ key: "Ctrl+Q", label: "Quit" }, contextBinding];
+  return [
+    { key: "Ctrl+Q", label: "Quit" },
+    { key: "j/k", label: "Navigate" },
+    { key: "o/c/a", label: "Open/Closed/All" },
+    { key: "1–7", label: "Tabs" },
+    { key: "r", label: "Reload visible" },
+    { key: "R", label: "Reload list" },
+  ];
 }
 
 function notifyCliInitializationError(error: ForgeInitializationError) {
@@ -62,17 +72,19 @@ function notifyCliInitializationError(error: ForgeInitializationError) {
 
 function RepositoryShell(props: { readonly state: RepositoryAppContextState }) {
   const contextLabel = repositoryContextLabel(props.state.kind);
-  const pullRequestView = usePullRequestData();
+  const titles = usePrTitles();
+  const content = usePrViewContent(titles);
 
   return (
     <box flexDirection="column" width="100%" height="100%">
       <Menubar contextLabel={contextLabel} />
       <box flexDirection="row" flexGrow={1} width="100%">
-        <Sidebar view={pullRequestView} />
+        <Sidebar titles={titles} content={content} />
         <PrView
           state={props.state}
           contextLabel={contextLabel}
-          view={pullRequestView}
+          titles={titles}
+          content={content}
         />
       </box>
       <Footer bindings={repositoryFooterBindings(props.state.kind)} />

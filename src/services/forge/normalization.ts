@@ -13,10 +13,9 @@ import type {
   ForgeUnsupportedReason,
   ForgeUser,
   PullRequestComment,
-  PullRequestDetails,
-  PullRequestDetailsBuildInput,
   PullRequestLabel,
   PullRequestMilestone,
+  PullRequestOverview,
   PullRequestSummary,
 } from "./types";
 
@@ -119,34 +118,12 @@ export function normalizeTeam(
   };
 }
 
-export function assemblePullRequestDetails(
-  input: PullRequestDetailsBuildInput,
-): PullRequestDetails {
-  return {
-    repository: input.repository,
-    summary: input.core.summary,
-    body: input.core.body,
-    createdAt: input.core.createdAt,
-    updatedAt: input.core.updatedAt,
-    closedAt: input.core.closedAt,
-    mergedAt: input.core.mergedAt,
-    mergedBy: input.core.mergedBy,
-    base: input.core.base,
-    head: input.core.head,
-    counts: input.counts,
-    labels: input.core.labels,
-    assignees: input.core.assignees,
-    milestone: input.core.milestone,
-    maintainerCanModify: input.core.maintainerCanModify,
-    mergeability: input.core.mergeability,
-    collections: input.collections,
-  };
-}
-
-export function sectionLength<T>(
-  section: ForgeSection<readonly T[]>,
-): number | null {
-  return section.status === "available" ? section.value.length : null;
+export function assemblePullRequestOverview(
+  repository: ForgeRepository,
+  fields: Pick<PullRequestOverview, "number" | "body">,
+  conversationComments: ForgeSection<readonly PullRequestComment[]>,
+): PullRequestOverview {
+  return { repository, ...fields, conversationComments };
 }
 
 export function addCommentTruncation(
@@ -244,10 +221,6 @@ export function byteLength(value: string): number {
 
 export function available<T>(value: T, truncated = false): ForgeSection<T> {
   return { status: "available", value, truncated };
-}
-
-export function notRequested<T>(): ForgeSection<T> {
-  return { status: "not-requested" };
 }
 
 export function unsupported<T>(

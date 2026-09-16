@@ -9,11 +9,24 @@ import type {
   ForgeInitializationError,
   ForgeKind,
   ForgeOperationError,
-  PullRequestDetails,
-  PullRequestDetailsOptions,
   PullRequestList,
   PullRequestListOptions,
+  PullRequestListState,
+  PullRequestOverview,
+  PullRequestOverviewOptions,
+  PullRequestResource,
+  PullRequestResourceKind,
+  PullRequestResourceOptions,
 } from "./types";
+
+const resourceKinds: readonly PullRequestResourceKind[] = [
+  "details",
+  "diff",
+  "commits",
+  "reviews",
+  "checks",
+  "development",
+];
 
 export class ForgeService {
   private constructor(private readonly adapter: ForgeAdapter) {}
@@ -49,21 +62,65 @@ export class ForgeService {
         ),
       );
     }
+    if (!isPullRequestListState(options?.state)) {
+      return Promise.resolve(
+        invalidRequest(
+          this.kind,
+          "Pull request list state must be open, closed, or all",
+        ),
+      );
+    }
 
     return this.adapter.getPullRequests(options);
   }
 
-  public getPullRequestDetails(
+  public getPullRequestOverview(
     number: number,
-    options?: PullRequestDetailsOptions,
-  ): Promise<Result<PullRequestDetails, ForgeOperationError>> {
+    options?: PullRequestOverviewOptions,
+  ): Promise<Result<PullRequestOverview, ForgeOperationError>> {
     const validation = validatePullRequestNumber(this.kind, number);
     if (validation.isErr()) {
       return Promise.resolve(validation);
     }
 
-    return this.adapter.getPullRequestDetails(validation.value, options);
+    return this.adapter.getPullRequestOverview(validation.value, options);
   }
+
+  public getPullRequestResource(
+    number: number,
+    resourceKind: PullRequestResourceKind,
+    options?: PullRequestResourceOptions,
+  ): Promise<Result<PullRequestResource, ForgeOperationError>> {
+    const validation = validatePullRequestNumber(this.kind, number);
+    if (validation.isErr()) {
+      return Promise.resolve(validation);
+    }
+    if (!resourceKinds.includes(resourceKind)) {
+      return Promise.resolve(
+        invalidRequest(
+          this.kind,
+          `Unknown pull request resource: ${resourceKind}`,
+        ),
+      );
+    }
+
+    return this.adapter.getPullRequestResource(
+      validation.value,
+      resourceKind,
+      options,
+    );
+  }
+}
+
+function isPullRequestListState(
+  value: PullRequestListState | undefined,
+): value is PullRequestListState | undefined {
+  return (
+    value === undefined ||
+    value === "open" ||
+    value === "closed" ||
+    value === "all"
+  );
 }
 
 function normalizeInitializationError(

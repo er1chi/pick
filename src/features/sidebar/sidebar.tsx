@@ -3,13 +3,12 @@ import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type {
   ForgeOperationError,
-  PullRequestListState,
   PullRequestSummary,
 } from "@/services/forge/types";
 import { SelectableRow } from "@/features/shared/selectable-row";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
-import { For, Show, createEffect, createSignal } from "solid-js";
+import { For, Show, createEffect, createSignal, on } from "solid-js";
 
 export interface SidebarProps {
   readonly titles: PrTitles;
@@ -34,6 +33,11 @@ function listIsTruncated(titles: PrTitles): boolean {
   return state.status === "ready" && state.value.truncated;
 }
 
+function listIsPending(titles: PrTitles): boolean {
+  const state = titles.list();
+  return state.status === "loading" && state.value === undefined;
+}
+
 function stateMarker(summary: PullRequestSummary): string {
   switch (summary.state) {
     case "open":
@@ -49,22 +53,15 @@ function stateMarker(summary: PullRequestSummary): string {
   }
 }
 
-function filterLabel(filter: PullRequestListState): string {
-  switch (filter) {
-    case "open":
-      return "Open";
-    case "closed":
-      return "Closed";
-    case "all":
-      return "All";
-  }
-}
-
 export function Sidebar(props: SidebarProps) {
   const [sidebarBox, setSidebarBox] = createSignal<BoxRenderable | undefined>();
   const [scrollBox, setScrollBox] = createSignal<
     ScrollBoxRenderable | undefined
   >();
+
+  function keepSidebarFocused(): void {
+    sidebarBox()?.focus();
+  }
 
   useBindings(() => ({
     target: sidebarBox,
@@ -79,23 +76,38 @@ export function Sidebar(props: SidebarProps) {
       },
       {
         name: "pr-list.filter-open",
-        run: () => props.titles.setFilter("open"),
+        run: () => {
+          props.titles.setFilter("open");
+          keepSidebarFocused();
+        },
       },
       {
         name: "pr-list.filter-closed",
-        run: () => props.titles.setFilter("closed"),
+        run: () => {
+          props.titles.setFilter("closed");
+          keepSidebarFocused();
+        },
       },
       {
         name: "pr-list.filter-all",
-        run: () => props.titles.setFilter("all"),
+        run: () => {
+          props.titles.setFilter("all");
+          keepSidebarFocused();
+        },
       },
       {
         name: "pr-list.filter-previous",
-        run: () => props.titles.cycleFilter(-1),
+        run: () => {
+          props.titles.cycleFilter(-1);
+          keepSidebarFocused();
+        },
       },
       {
         name: "pr-list.filter-next",
-        run: () => props.titles.cycleFilter(1),
+        run: () => {
+          props.titles.cycleFilter(1);
+          keepSidebarFocused();
+        },
       },
       {
         name: "pr.retry",
@@ -169,6 +181,19 @@ export function Sidebar(props: SidebarProps) {
     }
   });
 
+  createEffect(
+    on(
+      [
+        () => props.titles.filter(),
+        () => props.titles.list().status,
+        sidebarBox,
+      ],
+      () => {
+        keepSidebarFocused();
+      },
+    ),
+  );
+
   return (
     <box
       ref={setSidebarBox}
@@ -195,22 +220,20 @@ export function Sidebar(props: SidebarProps) {
         </text>
       </box>
       <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1}>
-        <text fg={colors.muted}>Filter:</text>
         <text fg={props.titles.filter() === "open" ? colors.blue : colors.dim}>
-          <strong>[O] Open</strong>
+          <strong>[O]pen</strong>
         </text>
         <text
           fg={props.titles.filter() === "closed" ? colors.blue : colors.dim}
         >
-          <strong>[C] Closed</strong>
+          <strong>[C]losed</strong>
         </text>
         <text fg={props.titles.filter() === "all" ? colors.blue : colors.dim}>
-          <strong>[A] All</strong>
+          <strong>[A]ll</strong>
         </text>
       </box>
-      <text fg={colors.dim}>Current: {filterLabel(props.titles.filter())}</text>
       <Show
-        when={props.titles.list().status !== "loading"}
+        when={!listIsPending(props.titles)}
         fallback={<text fg={colors.muted}>Loading pull requests…</text>}
       >
         <Show

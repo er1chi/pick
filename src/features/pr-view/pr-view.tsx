@@ -618,16 +618,16 @@ export function PrView(props: PrViewProps) {
       flexGrow={1}
       flexShrink={1}
       minWidth={0}
+      height="100%"
+      overflow="hidden"
       gap={1}
       paddingLeft={2}
       paddingRight={1}
-      border={["left"]}
+      border
       borderColor={colors.border}
       focusedBorderColor={colors.blue}
+      title="[1] Main"
     >
-      <text fg={focused() ? colors.blue : colors.foreground}>
-        <strong>Pull Requests</strong>
-      </text>
       <text fg={colors.foreground}>
         <strong>{repositoryName()}</strong>
       </text>

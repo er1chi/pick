@@ -158,20 +158,11 @@ export function Sidebar(props: SidebarProps) {
       overflow="hidden"
       height="100%"
       backgroundColor={colors.selected}
-      border={["left"]}
+      border
       borderColor={colors.border}
       focusedBorderColor={colors.blue}
+      title="[0] Sidebar"
     >
-      <box
-        width="100%"
-        height={1}
-        paddingLeft={1}
-        backgroundColor={colors.border}
-      >
-        <text fg={focused() ? colors.blue : colors.foreground}>
-          <strong>Pull Requests</strong>
-        </text>
-      </box>
       <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1}>
         <text fg={props.titles.filter() === "open" ? colors.blue : colors.dim}>
           <strong>[O]pen</strong>

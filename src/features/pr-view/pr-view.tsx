@@ -33,6 +33,8 @@ import {
   type PullRequestSummary,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
+import { formatTimestamp } from "@/utils/format-timestamp";
+import { moveInList } from "@/utils/navigation";
 import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { useBindings } from "@opentui/keymap/solid";
@@ -196,28 +198,40 @@ function sectionHeading(label: string, status: string): JSX.Element {
   );
 }
 
+function isEmptyAvailableConversation(
+  section: ForgeSection<readonly PullRequestComment[]>,
+): boolean {
+  return (
+    section.status === "available" &&
+    section.value.length === 0 &&
+    !section.truncated
+  );
+}
+
 function renderComments(
   section: ForgeSection<readonly PullRequestComment[]>,
 ): JSX.Element {
   return (
-    <box flexDirection="column" gap={0}>
-      {sectionHeading("Conversation", arrayStatus(section))}
-      <Show when={section.status === "available" && section.value.length > 0}>
-        <For each={arrayItems(section)}>
-          {(comment) => (
-            <box flexDirection="column" gap={0}>
-              <text fg={colors.muted}>
-                {comment.author?.login ?? "Unknown author"} ·{" "}
-                {nullable(comment.createdAt)}
-              </text>
-              <text fg={colors.foreground}>
-                {comment.body ?? "(empty comment)"}
-              </text>
-            </box>
-          )}
-        </For>
-      </Show>
-    </box>
+    <Show when={!isEmptyAvailableConversation(section)}>
+      <box flexDirection="column" gap={0}>
+        {sectionHeading("Conversation", arrayStatus(section))}
+        <Show when={section.status === "available" && section.value.length > 0}>
+          <For each={arrayItems(section)}>
+            {(comment) => (
+              <box flexDirection="column" gap={0}>
+                <text fg={colors.muted}>
+                  {comment.author?.login ?? "Unknown author"} ·{" "}
+                  {formatTimestamp(comment.createdAt)}
+                </text>
+                <text fg={colors.foreground}>
+                  {comment.body ?? "(empty comment)"}
+                </text>
+              </box>
+            )}
+          </For>
+        </Show>
+      </box>
+    </Show>
   );
 }
 
@@ -261,8 +275,9 @@ function renderDetails(details: PullRequestDetails): JSX.Element {
         {nullable(details.counts.reviewComments)}
       </text>
       <text fg={colors.muted}>
-        Created {nullable(details.createdAt)} · Updated{" "}
-        {nullable(details.updatedAt)} · Merged {nullable(details.mergedAt)}
+        Created {formatTimestamp(details.createdAt)} · Updated{" "}
+        {formatTimestamp(details.updatedAt)} · Merged{" "}
+        {formatTimestamp(details.mergedAt)}
       </text>
       <text fg={colors.muted}>
         Mergeable {mergeabilityLabel(details.mergeability.mergeable)} · state{" "}
@@ -359,7 +374,7 @@ function renderCommits(
             <text fg={colors.muted}>
               {commit.sha.slice(0, 12)} ·{" "}
               {commit.author?.login ?? "Unknown author"} ·{" "}
-              {nullable(commit.committedAt)}
+              {formatTimestamp(commit.committedAt)}
             </text>
             <text fg={colors.foreground}>{commit.message}</text>
           </box>
@@ -395,7 +410,7 @@ function renderReviews(
           <box flexDirection="column" gap={0}>
             <text fg={colors.muted}>
               {review.state} · {review.author?.login ?? "Unknown author"} ·{" "}
-              {nullable(review.submittedAt)}
+              {formatTimestamp(review.submittedAt)}
             </text>
             <text fg={colors.foreground}>
               {review.body ?? "(empty review)"}
@@ -585,6 +600,20 @@ export function PrView(props: PrViewProps) {
         run: () => props.content.selectTab(tab),
       })),
       {
+        name: "pr-view.tab-previous",
+        run: () =>
+          props.content.selectTab(
+            moveInList(pullRequestTabs, props.content.activeTab(), -1),
+          ),
+      },
+      {
+        name: "pr-view.tab-next",
+        run: () =>
+          props.content.selectTab(
+            moveInList(pullRequestTabs, props.content.activeTab(), 1),
+          ),
+      },
+      {
         name: "pr-view.retry",
         run: () => props.content.retry(),
       },
@@ -598,6 +627,8 @@ export function PrView(props: PrViewProps) {
         key: String(index + 1),
         cmd: `pr-view.tab-${tab}`,
       })),
+      { key: "h", cmd: "pr-view.tab-previous" },
+      { key: "l", cmd: "pr-view.tab-next" },
       { key: "r", cmd: "pr-view.retry" },
       { key: "0", cmd: "pr-view.focus-sidebar" },
     ],
@@ -705,7 +736,7 @@ export function PrView(props: PrViewProps) {
           {renderResourceTab(props.content)}
         </Show>
         <text fg={colors.dim}>
-          0 list · 1–7 tabs · r reloads the visible tab.
+          0 list · h/l or 1–7 switch tabs · r reloads the visible tab.
         </text>
       </Show>
     </box>

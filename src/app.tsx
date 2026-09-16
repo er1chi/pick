@@ -65,7 +65,8 @@ function repositoryFooterBindings(
   return [
     { key: "Ctrl+Q", label: "Quit" },
     { key: "0", label: "List" },
-    { key: "1–7", label: "Tabs" },
+    { key: "h/l", label: "Prev/next tab" },
+    { key: "1–7", label: "Jump to tab" },
     { key: "r", label: "Reload visible" },
   ];
 }

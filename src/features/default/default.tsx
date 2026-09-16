@@ -80,8 +80,6 @@ export function Default() {
       case RepositorySelectionErrorCode.ContextInitializationFailed:
         toast.error(`Could not initialize ${repositoryName}.`);
         return;
-      case RepositorySelectionErrorCode.TransitionInProgress:
-        return;
     }
   }
 

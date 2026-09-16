@@ -1,11 +1,8 @@
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
-import {
-  ForgeContextErrorCode,
-  type ForgeContextError,
-} from "@/context/app-context";
 import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type {
+  ForgeOperationError,
   PullRequestListState,
   PullRequestSummary,
 } from "@/services/forge/types";
@@ -23,10 +20,8 @@ function listItems(titles: PrTitles): readonly PullRequestSummary[] {
   return titles.list().value?.items ?? [];
 }
 
-function errorDescription(error: ForgeContextError): string {
-  return error.code === ForgeContextErrorCode.NoActiveForge
-    ? "No active remote repository."
-    : error.diagnostic;
+function errorDescription(error: ForgeOperationError): string {
+  return error.diagnostic;
 }
 
 function listError(titles: PrTitles): string | undefined {

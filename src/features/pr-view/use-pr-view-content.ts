@@ -1,16 +1,13 @@
-import {
-  useAppContext,
-  type AppContextState,
-  type ForgeContextError,
-} from "@/context/app-context";
+import { useAppContext } from "@/context/app-context";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
+import type { ForgeService } from "@/services/forge/forge-service";
 import { idleLoadState, isCancelled } from "@/features/pr-view/load-state";
 import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
 import {
-  ApplicationContext,
   ForgeOperationErrorCode,
   type ForgeKind,
+  type ForgeOperationError,
   type ForgeSection,
   type PullRequestList,
   type PullRequestOverview,
@@ -50,7 +47,7 @@ export type OverviewLoadState =
   | {
       readonly status: "error";
       readonly value: PullRequestOverview | undefined;
-      readonly error: ForgeContextError;
+      readonly error: ForgeOperationError;
     };
 
 type ResourceLoadState =
@@ -72,7 +69,7 @@ type ResourceLoadState =
   | {
       readonly status: "error";
       readonly value: PullRequestResource | undefined;
-      readonly error: ForgeContextError;
+      readonly error: ForgeOperationError;
     };
 
 export interface PrViewContent {
@@ -84,6 +81,7 @@ export interface PrViewContent {
 }
 
 interface Selection {
+  readonly forge: ForgeService;
   readonly contextKey: string;
   readonly repositoryName: string;
   readonly number: number;
@@ -93,18 +91,22 @@ interface Selection {
 
 interface OverviewInFlight {
   readonly controller: AbortController;
-  readonly promise: Promise<ResultType<PullRequestOverview, ForgeContextError>>;
+  readonly promise: Promise<
+    ResultType<PullRequestOverview, ForgeOperationError>
+  >;
   readonly background: boolean;
 }
 
 interface ResourceInFlight {
   readonly controller: AbortController;
-  readonly promise: Promise<ResultType<PullRequestResource, ForgeContextError>>;
+  readonly promise: Promise<
+    ResultType<PullRequestResource, ForgeOperationError>
+  >;
 }
 
 interface CancellableRequest<T> {
   readonly controller: AbortController;
-  readonly promise: Promise<ResultType<T, ForgeContextError>>;
+  readonly promise: Promise<ResultType<T, ForgeOperationError>>;
 }
 
 const overviewDebounceMs = 150;
@@ -114,7 +116,7 @@ function operationError(
   cause: unknown,
   kind: ForgeKind,
   fallback: string,
-): ForgeContextError {
+): ForgeOperationError {
   return {
     code: ForgeOperationErrorCode.IncompatibleResponse,
     kind,
@@ -163,14 +165,8 @@ function listValue(
   return state.value;
 }
 
-function activeForgeKind(state: AppContextState): ForgeKind {
-  return state.kind === ApplicationContext.Forgejo
-    ? ApplicationContext.Forgejo
-    : ApplicationContext.GitHub;
-}
-
 function createCancellableRequest<T>(
-  execute: (signal: AbortSignal) => Promise<ResultType<T, ForgeContextError>>,
+  execute: (signal: AbortSignal) => Promise<ResultType<T, ForgeOperationError>>,
   kind: ForgeKind,
   fallback: string,
 ): CancellableRequest<T> {
@@ -178,7 +174,7 @@ function createCancellableRequest<T>(
   const promise = Promise.resolve()
     .then(() => execute(controller.signal))
     .catch((cause: unknown) =>
-      Result.err<never, ForgeContextError>(
+      Result.err<never, ForgeOperationError>(
         operationError(cause, kind, fallback),
       ),
     );
@@ -236,11 +232,7 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
 
   function currentSelection(): Selection | undefined {
     const state = appContext.state();
-    if (
-      (state.kind !== ApplicationContext.GitHub &&
-        state.kind !== ApplicationContext.Forgejo) ||
-      state.forgeError !== undefined
-    ) {
+    if (state.forge === undefined) {
       return undefined;
     }
 
@@ -258,6 +250,7 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
       repositoryName,
     ].join(":");
     return {
+      forge: state.forge,
       contextKey,
       repositoryName,
       number,
@@ -306,8 +299,8 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
 
     const baseRequest = createCancellableRequest(
       (signal) =>
-        appContext.forge.getPullRequestOverview(selection.number, { signal }),
-      activeForgeKind(appContext.state()),
+        selection.forge.getPullRequestOverview(selection.number, { signal }),
+      selection.forge.kind,
       "Could not load pull request overview",
     );
     return trackRequest(overviewInFlight, selection.selectionKey, {
@@ -333,10 +326,10 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
 
     const request = createCancellableRequest(
       (signal) =>
-        appContext.forge.getPullRequestResource(selection.number, tab, {
+        selection.forge.getPullRequestResource(selection.number, tab, {
           signal,
         }),
-      activeForgeKind(appContext.state()),
+      selection.forge.kind,
       `Could not load ${tab}`,
     );
     return trackRequest(resourceInFlight, key, request);

@@ -1,12 +1,7 @@
+import { useAppContext } from "@/context/app-context";
 import {
-  useAppContext,
-  type AppContextState,
-  type ForgeContextError,
-} from "@/context/app-context";
-import {
-  ApplicationContext,
   ForgeOperationErrorCode,
-  type ForgeKind,
+  type ForgeOperationError,
   type PullRequestList,
   type PullRequestListState,
 } from "@/services/forge/types";
@@ -33,7 +28,7 @@ type PullRequestTitlesLoadState =
   | {
       readonly status: "error";
       readonly value: PullRequestList | undefined;
-      readonly error: ForgeContextError;
+      readonly error: ForgeOperationError;
     };
 
 export interface PrTitles {
@@ -44,16 +39,6 @@ export interface PrTitles {
   readonly cycleFilter: (offset: number) => void;
   readonly moveHighlight: (offset: number) => void;
   readonly retry: () => void;
-}
-
-function remoteKind(state: AppContextState): ForgeKind | undefined {
-  if (
-    state.kind !== ApplicationContext.GitHub &&
-    state.kind !== ApplicationContext.Forgejo
-  ) {
-    return undefined;
-  }
-  return state.forgeError === undefined ? state.kind : undefined;
 }
 
 export function usePrTitles(): PrTitles {
@@ -88,8 +73,8 @@ export function usePrTitles(): PrTitles {
       setHighlightedNumber(null);
     }
 
-    const kind = remoteKind(state);
-    if (kind === undefined) {
+    const forge = state.forge;
+    if (forge === undefined) {
       setList(idleLoadState());
       return;
     }
@@ -102,7 +87,7 @@ export function usePrTitles(): PrTitles {
       error: undefined,
     });
 
-    void appContext.forge
+    void forge
       .getPullRequests({
         signal: controller.signal,
         state: selectedFilter,
@@ -155,7 +140,7 @@ export function usePrTitles(): PrTitles {
           value: lastSuccessfulList,
           error: {
             code: ForgeOperationErrorCode.IncompatibleResponse,
-            kind,
+            kind: forge.kind,
             diagnostic,
           },
         });

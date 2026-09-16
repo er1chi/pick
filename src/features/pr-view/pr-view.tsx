@@ -1,9 +1,5 @@
 import { basename } from "node:path";
-import {
-  ForgeContextErrorCode,
-  type ForgeContextError,
-  type RepositoryAppContextState,
-} from "@/context/app-context";
+import type { RepositoryAppContextState } from "@/context/app-context";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import {
   pullRequestTabs,
@@ -16,6 +12,7 @@ import {
   ForgeInitializationErrorCode,
   ForgeOperationErrorCode,
   type ForgeInitializationError,
+  type ForgeOperationError,
   type ForgeSection,
   type PullRequestCheck,
   type PullRequestCommit,
@@ -100,10 +97,7 @@ function mergeabilityLabel(value: boolean | null): string {
   return value ? "yes" : "no";
 }
 
-function operationErrorDescription(error: ForgeContextError): string {
-  if (error.code === ForgeContextErrorCode.NoActiveForge) {
-    return "No active remote repository.";
-  }
+function operationErrorDescription(error: ForgeOperationError): string {
   switch (error.code) {
     case ForgeOperationErrorCode.InvalidRequest:
     case ForgeOperationErrorCode.CommandSpawnFailed:

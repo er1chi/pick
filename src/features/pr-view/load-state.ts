@@ -1,5 +1,7 @@
-import type { ForgeContextError } from "@/context/app-context";
-import { ForgeOperationErrorCode } from "@/services/forge/types";
+import {
+  ForgeOperationErrorCode,
+  type ForgeOperationError,
+} from "@/services/forge/types";
 
 export interface IdleLoadState {
   readonly status: "idle";
@@ -11,6 +13,6 @@ export function idleLoadState(): IdleLoadState {
   return { status: "idle", value: undefined, error: undefined };
 }
 
-export function isCancelled(error: ForgeContextError): boolean {
+export function isCancelled(error: ForgeOperationError): boolean {
   return error.code === ForgeOperationErrorCode.Cancelled;
 }

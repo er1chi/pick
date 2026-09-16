@@ -153,7 +153,7 @@ export function App() {
   });
 
   return (
-    <box width="100%" height="100%">
+    <box width="100%" height="100%" backgroundColor={colors.background}>
       <Show
         when={repositoryAppContextState(appContext.state())}
         fallback={<DefaultWelcome />}

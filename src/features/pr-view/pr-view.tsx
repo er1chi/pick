@@ -4,6 +4,7 @@ import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { PaneFocus } from "@/features/shared/pane-focus";
 import {
   pullRequestTabs,
+  type DetailsLoadState,
   type OverviewLoadState,
   type PrViewContent,
   type PullRequestTab,
@@ -43,7 +44,6 @@ import type { Accessor } from "solid-js";
 
 export interface PrViewProps {
   readonly state: RepositoryAppContextState;
-  readonly contextLabel: string;
   readonly titles: PrTitles;
   readonly content: PrViewContent;
   readonly paneFocus: PaneFocus;
@@ -169,12 +169,20 @@ function overviewError(state: OverviewLoadState): string | undefined {
     : undefined;
 }
 
+function detailsValue(state: DetailsLoadState): PullRequestDetails | undefined {
+  return state.value;
+}
+
+function detailsError(state: DetailsLoadState): string | undefined {
+  return state.status === "error"
+    ? operationErrorDescription(state.error)
+    : undefined;
+}
+
 function tabLabel(tab: PullRequestTab): string {
   switch (tab) {
     case "overview":
       return "Overview";
-    case "details":
-      return "Details";
     case "diff":
       return "Diff";
     case "commits":
@@ -259,64 +267,55 @@ function renderOverview(
   );
 }
 
-function renderDetails(details: PullRequestDetails): JSX.Element {
+function decisionLabel(section: ForgeSection<string | null>): string {
+  return sectionStatus(section, nullable);
+}
+
+function branchLine(details: PullRequestDetails): string {
+  return `${nullable(details.base.ref)} (${shortSha(details.base.sha)}) <- ${nullable(details.head.ref)} (${shortSha(details.head.sha)})`;
+}
+
+function totalDiffLine(details: PullRequestDetails): string {
+  return `Total diff (+${nullable(details.counts.additions)} -${nullable(details.counts.deletions)}) | ${nullable(details.counts.changedFiles)} files`;
+}
+
+function datesLine(details: PullRequestDetails): string {
+  return `Created ${formatTimestamp(details.createdAt)} | Updated ${formatTimestamp(details.updatedAt)} | Merged ${formatTimestamp(details.mergedAt)}`;
+}
+
+function mergeabilityLine(details: PullRequestDetails): string {
+  return `Mergeable ${mergeabilityLabel(details.mergeability.mergeable)} | state ${nullable(details.mergeability.mergeState)} | decision ${decisionLabel(details.mergeability.reviewDecision)}`;
+}
+
+function metadataRow(content: string, fg: string): JSX.Element {
   return (
-    <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
-      <text fg={colors.muted}>{details.repository.url ?? ""}</text>
-      <text fg={colors.muted}>
-        {nullable(details.base.ref)} ({shortSha(details.base.sha)}) ←{" "}
-        {nullable(details.head.ref)} ({shortSha(details.head.sha)})
-      </text>
-      <text fg={colors.muted}>
-        +{nullable(details.counts.additions)} -
-        {nullable(details.counts.deletions)} · files{" "}
-        {nullable(details.counts.changedFiles)} · comments{" "}
-        {nullable(details.counts.conversationComments)} · review comments{" "}
-        {nullable(details.counts.reviewComments)}
-      </text>
-      <text fg={colors.muted}>
-        Created {formatTimestamp(details.createdAt)} · Updated{" "}
-        {formatTimestamp(details.updatedAt)} · Merged{" "}
-        {formatTimestamp(details.mergedAt)}
-      </text>
-      <text fg={colors.muted}>
-        Mergeable {mergeabilityLabel(details.mergeability.mergeable)} · state{" "}
-        {nullable(details.mergeability.mergeState)} · decision{" "}
-        {sectionStatus(
-          details.mergeability.reviewDecision,
-          (value) => value ?? "no decision",
-        )}
-      </text>
-      <Show when={details.labels.length > 0}>
-        <text fg={colors.muted}>
-          Labels:{" "}
-          <For each={details.labels}>
-            {(label, index) => (
-              <>
-                {index() > 0 ? ", " : ""}
-                {label.name}
-              </>
-            )}
-          </For>
+    <box height={1} width="100%" flexGrow={0} flexShrink={0}>
+      <text fg={fg}>{content}</text>
+    </box>
+  );
+}
+
+function renderPersistentDetails(details: PullRequestDetails): JSX.Element {
+  return (
+    <box
+      flexDirection="column"
+      width="100%"
+      height={6}
+      flexGrow={0}
+      flexShrink={0}
+      overflow="hidden"
+    >
+      <box height={1} width="100%" flexGrow={0} flexShrink={0}>
+        <text fg={colors.foreground}>
+          <strong>{details.repository.fullName}</strong>
         </text>
-      </Show>
-      <Show when={details.assignees.length > 0}>
-        <text fg={colors.muted}>
-          Assignees:{" "}
-          <For each={details.assignees}>
-            {(user, index) => (
-              <>
-                {index() > 0 ? ", " : ""}
-                {user.login}
-              </>
-            )}
-          </For>
-        </text>
-      </Show>
-      <Show when={details.milestone !== null}>
-        <text fg={colors.muted}>Milestone: {details.milestone?.title}</text>
-      </Show>
-    </scrollbox>
+      </box>
+      {metadataRow(nullable(details.repository.url), colors.muted)}
+      {metadataRow(branchLine(details), colors.muted)}
+      {metadataRow(totalDiffLine(details), colors.muted)}
+      {metadataRow(datesLine(details), colors.muted)}
+      {metadataRow(mergeabilityLine(details), colors.muted)}
+    </box>
   );
 }
 
@@ -493,7 +492,7 @@ function renderDevelopment(
 function renderResource(resource: PullRequestResource): JSX.Element {
   switch (resource.kind) {
     case "details":
-      return renderDetails(resource.value.details);
+      return <></>;
     case "diff":
       return renderDiff(resource.value);
     case "commits":
@@ -591,6 +590,8 @@ export function PrView(props: PrViewProps) {
   };
   const currentOverview = () => overviewValue(props.content.overview());
   const overviewLoading = () => props.content.overview().status === "loading";
+  const currentDetails = () => detailsValue(props.content.details());
+  const detailsLoading = () => props.content.details().status === "loading";
 
   useBindings(() => ({
     target: contentBox,
@@ -659,11 +660,25 @@ export function PrView(props: PrViewProps) {
       focusedBorderColor={colors.blue}
       title="[1] Main"
     >
-      <text fg={colors.foreground}>
-        <strong>{repositoryName()}</strong>
-      </text>
-      <text fg={colors.muted}>{currentState().cwd}</text>
-      <text fg={colors.muted}>Context: {props.contextLabel}</text>
+      <Show when={currentDetails() === undefined}>
+        <text fg={colors.foreground}>
+          <strong>{repositoryName()}</strong>
+        </text>
+      </Show>
+      <Show keyed when={currentDetails()}>
+        {(details: PullRequestDetails) => renderPersistentDetails(details)}
+      </Show>
+      <Show when={detailsLoading() && currentDetails() === undefined}>
+        <text fg={colors.muted}>Loading details…</text>
+      </Show>
+      <Show when={detailsError(props.content.details())}>
+        {(error: Accessor<string>) => (
+          <box flexDirection="column">
+            <text fg={colors.yellow}>Could not load pull request details.</text>
+            <text fg={colors.dim}>{error()}</text>
+          </box>
+        )}
+      </Show>
       <Show when={currentState().kind === ApplicationContext.Local}>
         <box flexDirection="column">
           <text fg={colors.yellow}>Status: Local Git repository</text>
@@ -736,7 +751,7 @@ export function PrView(props: PrViewProps) {
           {renderResourceTab(props.content)}
         </Show>
         <text fg={colors.dim}>
-          0 list · h/l or 1–7 switch tabs · r reloads the visible tab.
+          0 list · h/l or 1–6 switch tabs · r reloads the visible tab.
         </text>
       </Show>
     </box>

@@ -10,17 +10,19 @@ import {
   type ForgeOperationError,
   type ForgeSection,
   type PullRequestList,
+  type PullRequestDetails,
   type PullRequestOverview,
   type PullRequestResource,
   type PullRequestResourceKind,
 } from "@/services/forge/types";
 import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 
-export type PullRequestTab = "overview" | PullRequestResourceKind;
+export type PullRequestTab =
+  | "overview"
+  | Exclude<PullRequestResourceKind, "details">;
 
 export const pullRequestTabs: readonly PullRequestTab[] = [
   "overview",
-  "details",
   "diff",
   "commits",
   "reviews",
@@ -50,6 +52,28 @@ export type OverviewLoadState =
       readonly error: ForgeOperationError;
     };
 
+export type DetailsLoadState =
+  | {
+      readonly status: "idle";
+      readonly value: undefined;
+      readonly error: undefined;
+    }
+  | {
+      readonly status: "loading";
+      readonly value: PullRequestDetails | undefined;
+      readonly error: undefined;
+    }
+  | {
+      readonly status: "ready";
+      readonly value: PullRequestDetails;
+      readonly error: undefined;
+    }
+  | {
+      readonly status: "error";
+      readonly value: PullRequestDetails | undefined;
+      readonly error: ForgeOperationError;
+    };
+
 type ResourceLoadState =
   | {
       readonly status: "idle";
@@ -75,6 +99,7 @@ type ResourceLoadState =
 export interface PrViewContent {
   readonly activeTab: Accessor<PullRequestTab>;
   readonly overview: Accessor<OverviewLoadState>;
+  readonly details: Accessor<DetailsLoadState>;
   readonly resource: Accessor<ResourceLoadState>;
   readonly selectTab: (tab: PullRequestTab) => void;
   readonly retry: () => void;
@@ -87,6 +112,13 @@ interface Selection {
   readonly number: number;
   readonly cacheKey: string;
   readonly selectionKey: string;
+}
+
+interface SelectedPullRequestValue {
+  readonly repository: {
+    readonly fullName: string;
+  };
+  readonly number: number;
 }
 
 interface OverviewInFlight {
@@ -132,6 +164,12 @@ function overviewHasFailure(overview: PullRequestOverview): boolean {
   return sectionFailed(overview.conversationComments);
 }
 
+function detailsFromResource(
+  resource: PullRequestResource,
+): PullRequestDetails | undefined {
+  return resource.kind === "details" ? resource.value.details : undefined;
+}
+
 function resourceHasFailure(resource: PullRequestResource): boolean {
   switch (resource.kind) {
     case "details":
@@ -163,6 +201,18 @@ function listValue(
   state: ReturnType<PrTitles["list"]>,
 ): PullRequestList | undefined {
   return state.value;
+}
+
+function valueForSelection<T extends SelectedPullRequestValue>(
+  state: { readonly status: string; readonly value: T | undefined },
+  selection: Selection,
+): T | undefined {
+  const value = state.value;
+  return state.status === "ready" &&
+    value?.repository.fullName === selection.repositoryName &&
+    value.number === selection.number
+    ? value
+    : undefined;
 }
 
 function createCancellableRequest<T>(
@@ -210,10 +260,12 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
   const [activeTab, setActiveTab] = createSignal<PullRequestTab>("overview");
   const [overview, setOverview] =
     createSignal<OverviewLoadState>(idleLoadState());
+  const [details, setDetails] = createSignal<DetailsLoadState>(idleLoadState());
   const [resource, setResource] =
     createSignal<ResourceLoadState>(idleLoadState());
 
   const overviewCache = new Map<string, PullRequestOverview>();
+  const detailsCache = new Map<string, PullRequestDetails>();
   const resourceCache = new Map<string, PullRequestResource>();
   const overviewInFlight = new Map<string, OverviewInFlight>();
   const resourceInFlight = new Map<string, ResourceInFlight>();
@@ -221,12 +273,14 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
   let activeSelectionKey: string | undefined;
   let activeResourceKey: string | undefined;
   let overviewGeneration = 0;
+  let detailsGeneration = 0;
   let resourceGeneration = 0;
   let activeFilter = titles.filter();
   let prefetchGeneration = 0;
   let overviewTimer: ReturnType<typeof setTimeout> | undefined;
   let prefetchTimer: ReturnType<typeof setTimeout> | undefined;
   let foregroundOverviewController: AbortController | undefined;
+  let foregroundDetailsController: AbortController | undefined;
   let foregroundResourceController: AbortController | undefined;
   let prefetchController: AbortController | undefined;
 
@@ -410,13 +464,7 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     foregroundOverviewController?.abort();
     const request = startOverviewRequest(selection, false, force);
     foregroundOverviewController = request.controller;
-    const previous = overview();
-    const previousValue =
-      previous.status === "ready" &&
-      previous.value.repository.fullName === selection.repositoryName &&
-      previous.value.number === selection.number
-        ? previous.value
-        : undefined;
+    const previousValue = valueForSelection(overview(), selection);
     setOverview({ status: "loading", value: previousValue, error: undefined });
 
     void request.promise.then((result) => {
@@ -446,6 +494,63 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
       if (activeTab() === "overview" && !overviewHasFailure(result.value)) {
         schedulePrefetch(selection);
       }
+    });
+  }
+
+  function showCachedDetails(cached: PullRequestDetails): void {
+    setDetails({ status: "ready", value: cached, error: undefined });
+  }
+
+  function loadDetails(selection: Selection, force: boolean): void {
+    const cached = force ? undefined : detailsCache.get(selection.cacheKey);
+    if (cached !== undefined) {
+      showCachedDetails(cached);
+      return;
+    }
+
+    const generation = ++detailsGeneration;
+    foregroundDetailsController?.abort();
+    const request = startResourceRequest(selection, "details", force);
+    foregroundDetailsController = request.controller;
+    const previousValue = valueForSelection(details(), selection);
+    setDetails({ status: "loading", value: previousValue, error: undefined });
+
+    void request.promise.then((result) => {
+      if (
+        generation !== detailsGeneration ||
+        activeSelectionKey !== selection.selectionKey ||
+        request.controller.signal.aborted
+      ) {
+        return;
+      }
+      foregroundDetailsController = undefined;
+      if (result.isErr()) {
+        if (!isCancelled(result.error)) {
+          setDetails({
+            status: "error",
+            value: previousValue,
+            error: result.error,
+          });
+        }
+        return;
+      }
+
+      const value = detailsFromResource(result.value);
+      if (value === undefined) {
+        setDetails({
+          status: "error",
+          value: previousValue,
+          error: operationError(
+            undefined,
+            selection.forge.kind,
+            "Could not load pull request details",
+          ),
+        });
+        return;
+      }
+
+      setDetails({ status: "ready", value, error: undefined });
+      detailsCache.set(selection.cacheKey, value);
     });
   }
 
@@ -527,9 +632,12 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     cancelPrefetch();
     foregroundOverviewController?.abort();
     foregroundOverviewController = undefined;
+    foregroundDetailsController?.abort();
+    foregroundDetailsController = undefined;
     foregroundResourceController?.abort();
     foregroundResourceController = undefined;
     overviewGeneration += 1;
+    detailsGeneration += 1;
     resourceGeneration += 1;
     activeResourceKey = undefined;
     setResource(idleLoadState());
@@ -537,20 +645,40 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
 
     if (selection === undefined) {
       setOverview(idleLoadState());
+      setDetails(idleLoadState());
       return;
     }
 
-    const cached = overviewCache.get(selection.cacheKey);
-    if (cached !== undefined) {
-      showCachedOverview(selection, cached);
+    const cachedOverview = overviewCache.get(selection.cacheKey);
+    const cachedDetails = detailsCache.get(selection.cacheKey);
+    if (cachedOverview !== undefined) {
+      showCachedOverview(selection, cachedOverview);
+    } else {
+      setOverview({ status: "loading", value: undefined, error: undefined });
+    }
+    if (cachedDetails !== undefined) {
+      showCachedDetails(cachedDetails);
+    } else {
+      setDetails({ status: "loading", value: undefined, error: undefined });
+    }
+    if (cachedOverview !== undefined && cachedDetails !== undefined) {
+      return;
+    }
+    if (cachedOverview !== undefined || cachedDetails !== undefined) {
+      if (cachedOverview === undefined) {
+        loadOverview(selection, false);
+      }
+      if (cachedDetails === undefined) {
+        loadDetails(selection, false);
+      }
       return;
     }
 
-    setOverview({ status: "loading", value: undefined, error: undefined });
     overviewTimer = setTimeout(() => {
       overviewTimer = undefined;
       if (activeSelectionKey === selection.selectionKey) {
         loadOverview(selection, false);
+        loadDetails(selection, false);
       }
     }, overviewDebounceMs);
   });
@@ -594,6 +722,7 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     if (tab === "overview") {
       cancelPrefetch();
       loadOverview(selection, true);
+      loadDetails(selection, true);
       return;
     }
     loadResource(selection, tab, true);
@@ -603,6 +732,7 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     clearOverviewTimer();
     cancelPrefetch();
     foregroundOverviewController?.abort();
+    foregroundDetailsController?.abort();
     foregroundResourceController?.abort();
     prefetchController?.abort();
     for (const request of overviewInFlight.values()) {
@@ -614,12 +744,14 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     overviewInFlight.clear();
     resourceInFlight.clear();
     overviewCache.clear();
+    detailsCache.clear();
     resourceCache.clear();
   });
 
   return {
     activeTab,
     overview,
+    details,
     resource,
     selectTab,
     retry,

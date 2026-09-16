@@ -66,7 +66,7 @@ function repositoryFooterBindings(
     { key: "Ctrl+Q", label: "Quit" },
     { key: "0", label: "List" },
     { key: "h/l", label: "Prev/next tab" },
-    { key: "1–7", label: "Jump to tab" },
+    { key: "1–6", label: "Jump to tab" },
     { key: "r", label: "Reload visible" },
   ];
 }
@@ -101,7 +101,6 @@ function RepositoryShell(props: { readonly state: RepositoryAppContextState }) {
         <Sidebar titles={titles} paneFocus={paneFocus} />
         <PrView
           state={props.state}
-          contextLabel={contextLabel}
           titles={titles}
           content={content}
           paneFocus={paneFocus}

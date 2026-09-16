@@ -1,5 +1,32 @@
 import { basename } from "node:path";
 import type { RepositoryAppContextState } from "@/context/app-context";
+import {
+  availablePatchText,
+  checkLine,
+  collectionAvailability,
+  commentBody,
+  commentMetaLine,
+  commitMessage,
+  commitMetaLine,
+  fileLine,
+  isRenderableCollection,
+  isRenderablePatch,
+  isRenderableReviewerRequests,
+  linkedIssueLine,
+  operationErrorDescription,
+  overviewMetaLine,
+  patchAvailability,
+  persistentMetadataLines,
+  presentRepositoryName,
+  presentText,
+  projectLine,
+  pullRequestTitleLine,
+  reviewBody,
+  reviewCommentMetaLine,
+  reviewMetaLine,
+  reviewerAvailability,
+  reviewerNames,
+} from "@/features/pr-view/pr-view-display";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { PaneFocus } from "@/features/shared/pane-focus";
 import {
@@ -12,9 +39,7 @@ import {
 import {
   ApplicationContext,
   ForgeInitializationErrorCode,
-  ForgeOperationErrorCode,
   type ForgeInitializationError,
-  type ForgeOperationError,
   type ForgeSection,
   type PullRequestCheck,
   type PullRequestCommit,
@@ -30,11 +55,9 @@ import {
   type PullRequestReview,
   type PullRequestReviewComment,
   type PullRequestReviewerRequests,
-  type PullRequestState,
   type PullRequestSummary,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
-import { formatTimestamp } from "@/utils/format-timestamp";
 import { moveInList } from "@/utils/navigation";
 import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
@@ -47,6 +70,12 @@ export interface PrViewProps {
   readonly titles: PrTitles;
   readonly content: PrViewContent;
   readonly paneFocus: PaneFocus;
+}
+
+interface PersistentHeaderProps {
+  readonly repositoryName: string;
+  readonly titleLine: string | undefined;
+  readonly details: PullRequestDetails | undefined;
 }
 
 function serviceName(
@@ -71,90 +100,8 @@ function forgeInitializationError(
   return state.kind === ApplicationContext.Local ? undefined : state.forgeError;
 }
 
-function stateLabel(state: PullRequestState): string {
-  switch (state) {
-    case "open":
-      return "Open";
-    case "closed":
-      return "Closed";
-    case "merged":
-      return "Merged";
-    case "unknown":
-      return "Unknown";
-    default:
-      return "Unknown";
-  }
-}
-
-function nullable(value: string | number | null | undefined): string {
-  return value === null || value === undefined || value === ""
-    ? "—"
-    : String(value);
-}
-
-function shortSha(value: string | null): string {
-  return value === null ? "—" : value.slice(0, 12);
-}
-
-function mergeabilityLabel(value: boolean | null): string {
-  if (value === null) {
-    return "unknown";
-  }
-  return value ? "yes" : "no";
-}
-
-function operationErrorDescription(error: ForgeOperationError): string {
-  switch (error.code) {
-    case ForgeOperationErrorCode.InvalidRequest:
-    case ForgeOperationErrorCode.CommandSpawnFailed:
-    case ForgeOperationErrorCode.CommandFailed:
-    case ForgeOperationErrorCode.InvalidJson:
-    case ForgeOperationErrorCode.IncompatibleResponse:
-    case ForgeOperationErrorCode.OutputLimitExceeded:
-    case ForgeOperationErrorCode.Cancelled:
-    case ForgeOperationErrorCode.TimedOut:
-      return error.diagnostic;
-  }
-}
-
-function sectionStatus<T>(
-  section: ForgeSection<T>,
-  describeAvailable: (value: T) => string,
-): string {
-  switch (section.status) {
-    case "available":
-      return `${describeAvailable(section.value)}${section.truncated ? " (partial)" : ""}`;
-    case "unsupported":
-      return `unsupported — ${section.reason.diagnostic}`;
-    case "failed":
-      return `failed — ${operationErrorDescription(section.error)}`;
-    case "not-requested":
-      return "not requested";
-  }
-}
-
 function arrayItems<T>(section: ForgeSection<readonly T[]>): readonly T[] {
   return section.status === "available" ? section.value : [];
-}
-
-function arrayStatus<T>(section: ForgeSection<readonly T[]>): string {
-  return sectionStatus(section, (value) =>
-    value.length === 0 ? "empty" : `${value.length} available`,
-  );
-}
-
-function reviewerStatus(
-  section: ForgeSection<PullRequestReviewerRequests>,
-): string {
-  return sectionStatus(section, (value) =>
-    value.users.length === 0 && value.teams.length === 0
-      ? "empty"
-      : `${value.users.length} users, ${value.teams.length} teams`,
-  );
-}
-
-function patchStatus(section: ForgeSection<PullRequestPatch>): string {
-  return sectionStatus(section, (value) => `${value.byteLength} bytes`);
 }
 
 function overviewValue(
@@ -206,40 +153,50 @@ function sectionHeading(label: string, status: string): JSX.Element {
   );
 }
 
-function isEmptyAvailableConversation(
-  section: ForgeSection<readonly PullRequestComment[]>,
-): boolean {
+function renderMutedLine(line: string | undefined): JSX.Element {
   return (
-    section.status === "available" &&
-    section.value.length === 0 &&
-    !section.truncated
+    <Show when={line}>
+      {(value: Accessor<string>) => <text fg={colors.muted}>{value()}</text>}
+    </Show>
+  );
+}
+
+function renderStackedItem(
+  meta: string | undefined,
+  body: string | undefined,
+): JSX.Element {
+  return (
+    <box flexDirection="column" gap={0}>
+      {renderMutedLine(meta)}
+      <Show when={body}>
+        {(value: Accessor<string>) => (
+          <text fg={colors.foreground}>{value()}</text>
+        )}
+      </Show>
+    </box>
+  );
+}
+
+function renderCollectionSection<T>(
+  label: string,
+  section: ForgeSection<readonly T[]>,
+  renderItem: (item: T) => JSX.Element,
+): JSX.Element {
+  return (
+    <Show when={isRenderableCollection(section)}>
+      <box flexDirection="column" gap={0}>
+        {sectionHeading(label, collectionAvailability(section))}
+        <For each={arrayItems(section)}>{renderItem}</For>
+      </box>
+    </Show>
   );
 }
 
 function renderComments(
   section: ForgeSection<readonly PullRequestComment[]>,
 ): JSX.Element {
-  return (
-    <Show when={!isEmptyAvailableConversation(section)}>
-      <box flexDirection="column" gap={0}>
-        {sectionHeading("Conversation", arrayStatus(section))}
-        <Show when={section.status === "available" && section.value.length > 0}>
-          <For each={arrayItems(section)}>
-            {(comment) => (
-              <box flexDirection="column" gap={0}>
-                <text fg={colors.muted}>
-                  {comment.author?.login ?? "Unknown author"} ·{" "}
-                  {formatTimestamp(comment.createdAt)}
-                </text>
-                <text fg={colors.foreground}>
-                  {comment.body ?? "(empty comment)"}
-                </text>
-              </box>
-            )}
-          </For>
-        </Show>
-      </box>
-    </Show>
+  return renderCollectionSection("Conversation", section, (comment) =>
+    renderStackedItem(commentMetaLine(comment), commentBody(comment)),
   );
 }
 
@@ -249,72 +206,64 @@ function renderOverview(
 ): JSX.Element {
   return (
     <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
-      <text fg={colors.muted}>
-        {stateLabel(summary.state)}
-        {summary.isDraft === true ? " · Draft" : ""}
-        {summary.author === null ? "" : ` · by ${summary.author.login}`}
-      </text>
-      <Show when={overview.body !== null && overview.body.trim().length > 0}>
-        <box flexDirection="column" gap={1}>
-          <text fg={colors.foreground}>
-            <strong>Description</strong>
-          </text>
-          <text fg={colors.muted}>{overview.body}</text>
-        </box>
+      {renderMutedLine(overviewMetaLine(summary))}
+      <Show when={presentText(overview.body)}>
+        {(body: Accessor<string>) => (
+          <box flexDirection="column" gap={1}>
+            <text fg={colors.foreground}>
+              <strong>Description</strong>
+            </text>
+            <text fg={colors.muted}>{body()}</text>
+          </box>
+        )}
       </Show>
       {renderComments(overview.conversationComments)}
     </scrollbox>
   );
 }
 
-function decisionLabel(section: ForgeSection<string | null>): string {
-  return sectionStatus(section, nullable);
-}
-
-function branchLine(details: PullRequestDetails): string {
-  return `${nullable(details.base.ref)} (${shortSha(details.base.sha)}) <- ${nullable(details.head.ref)} (${shortSha(details.head.sha)})`;
-}
-
-function totalDiffLine(details: PullRequestDetails): string {
-  return `Total diff (+${nullable(details.counts.additions)} -${nullable(details.counts.deletions)}) | ${nullable(details.counts.changedFiles)} files`;
-}
-
-function datesLine(details: PullRequestDetails): string {
-  return `Created ${formatTimestamp(details.createdAt)} | Updated ${formatTimestamp(details.updatedAt)} | Merged ${formatTimestamp(details.mergedAt)}`;
-}
-
-function mergeabilityLine(details: PullRequestDetails): string {
-  return `Mergeable ${mergeabilityLabel(details.mergeability.mergeable)} | state ${nullable(details.mergeability.mergeState)} | decision ${decisionLabel(details.mergeability.reviewDecision)}`;
-}
-
-function metadataRow(content: string, fg: string): JSX.Element {
+function headerRow(content: JSX.Element): JSX.Element {
   return (
     <box height={1} width="100%" flexGrow={0} flexShrink={0}>
-      <text fg={fg}>{content}</text>
+      {content}
     </box>
   );
 }
 
-function renderPersistentDetails(details: PullRequestDetails): JSX.Element {
+function PersistentHeader(props: PersistentHeaderProps): JSX.Element {
+  const metadataLines = () =>
+    props.details === undefined
+      ? []
+      : [...persistentMetadataLines(props.details)];
+  const rowCount = () =>
+    1 + (props.titleLine === undefined ? 0 : 1) + metadataLines().length;
+
   return (
     <box
       flexDirection="column"
       width="100%"
-      height={6}
+      height={rowCount()}
       flexGrow={0}
       flexShrink={0}
       overflow="hidden"
     >
-      <box height={1} width="100%" flexGrow={0} flexShrink={0}>
+      {headerRow(
         <text fg={colors.foreground}>
-          <strong>{details.repository.fullName}</strong>
-        </text>
-      </box>
-      {metadataRow(nullable(details.repository.url), colors.muted)}
-      {metadataRow(branchLine(details), colors.muted)}
-      {metadataRow(totalDiffLine(details), colors.muted)}
-      {metadataRow(datesLine(details), colors.muted)}
-      {metadataRow(mergeabilityLine(details), colors.muted)}
+          <strong>{props.repositoryName}</strong>
+        </text>,
+      )}
+      <Show when={props.titleLine}>
+        {(title: Accessor<string>) =>
+          headerRow(
+            <text fg={colors.foreground}>
+              <strong>{title()}</strong>
+            </text>,
+          )
+        }
+      </Show>
+      <For each={metadataLines()}>
+        {(line) => headerRow(<text fg={colors.muted}>{line}</text>)}
+      </For>
     </box>
   );
 }
@@ -322,33 +271,21 @@ function renderPersistentDetails(details: PullRequestDetails): JSX.Element {
 function renderPatchSection(
   section: ForgeSection<PullRequestPatch>,
 ): JSX.Element {
-  const patchText =
-    section.status === "available" ? section.value.text : undefined;
   return (
-    <box flexDirection="column" gap={0}>
-      {sectionHeading("Raw patch", patchStatus(section))}
-      <Show when={patchText !== undefined}>
-        <text fg={colors.muted}>{patchText}</text>
-      </Show>
-    </box>
+    <Show when={isRenderablePatch(section)}>
+      <box flexDirection="column" gap={0}>
+        {sectionHeading("Raw patch", patchAvailability(section))}
+        {renderMutedLine(availablePatchText(section))}
+      </box>
+    </Show>
   );
 }
 
 function renderFilesSection(
   section: ForgeSection<readonly PullRequestFile[]>,
 ): JSX.Element {
-  return (
-    <box flexDirection="column" gap={0}>
-      {sectionHeading("Files", arrayStatus(section))}
-      <For each={arrayItems(section)}>
-        {(file) => (
-          <text fg={colors.muted}>
-            {file.status} {file.path} (+{nullable(file.additions)} -
-            {nullable(file.deletions)})
-          </text>
-        )}
-      </For>
-    </box>
+  return renderCollectionSection("Files", section, (file) =>
+    renderMutedLine(fileLine(file)),
   );
 }
 
@@ -366,34 +303,27 @@ function renderCommits(
 ): JSX.Element {
   return (
     <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
-      {sectionHeading("Commits", arrayStatus(section))}
-      <For each={arrayItems(section)}>
-        {(commit) => (
-          <box flexDirection="column" gap={0}>
-            <text fg={colors.muted}>
-              {commit.sha.slice(0, 12)} ·{" "}
-              {commit.author?.login ?? "Unknown author"} ·{" "}
-              {formatTimestamp(commit.committedAt)}
-            </text>
-            <text fg={colors.foreground}>{commit.message}</text>
-          </box>
-        )}
-      </For>
+      {renderCollectionSection(
+        "Commits",
+        section,
+        (commit: PullRequestCommit) =>
+          renderStackedItem(commitMetaLine(commit), commitMessage(commit)),
+      )}
     </scrollbox>
   );
 }
 
-function reviewerNames(
+function renderRequestedReviewers(
   section: ForgeSection<PullRequestReviewerRequests>,
-): string {
-  if (section.status !== "available") {
-    return "";
-  }
-  const names = [
-    ...section.value.users.map((user) => user.login),
-    ...section.value.teams.map((team) => team.name),
-  ];
-  return names.join(", ") || "None";
+): JSX.Element {
+  return (
+    <Show when={isRenderableReviewerRequests(section)}>
+      <box flexDirection="column" gap={0}>
+        {sectionHeading("Requested reviewers", reviewerAvailability(section))}
+        {renderMutedLine(reviewerNames(section))}
+      </box>
+    </Show>
+  );
 }
 
 function renderReviews(
@@ -403,41 +333,13 @@ function renderReviews(
 ): JSX.Element {
   return (
     <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
-      {sectionHeading("Submitted reviews", arrayStatus(reviews))}
-      <For each={arrayItems(reviews)}>
-        {(review) => (
-          <box flexDirection="column" gap={0}>
-            <text fg={colors.muted}>
-              {review.state} · {review.author?.login ?? "Unknown author"} ·{" "}
-              {formatTimestamp(review.submittedAt)}
-            </text>
-            <text fg={colors.foreground}>
-              {review.body ?? "(empty review)"}
-            </text>
-          </box>
-        )}
-      </For>
-      {sectionHeading("Inline comments", arrayStatus(reviewComments))}
-      <For each={arrayItems(reviewComments)}>
-        {(comment) => (
-          <box flexDirection="column" gap={0}>
-            <text fg={colors.muted}>
-              {comment.author?.login ?? "Unknown author"} ·{" "}
-              {comment.location?.path ?? "General"}
-            </text>
-            <text fg={colors.foreground}>
-              {comment.body ?? "(empty comment)"}
-            </text>
-          </box>
-        )}
-      </For>
-      {sectionHeading(
-        "Requested reviewers",
-        reviewerStatus(requestedReviewers),
+      {renderCollectionSection("Submitted reviews", reviews, (review) =>
+        renderStackedItem(reviewMetaLine(review), reviewBody(review)),
       )}
-      <Show when={reviewerNames(requestedReviewers).length > 0}>
-        <text fg={colors.muted}>{reviewerNames(requestedReviewers)}</text>
-      </Show>
+      {renderCollectionSection("Inline comments", reviewComments, (comment) =>
+        renderStackedItem(reviewCommentMetaLine(comment), commentBody(comment)),
+      )}
+      {renderRequestedReviewers(requestedReviewers)}
     </scrollbox>
   );
 }
@@ -447,15 +349,9 @@ function renderChecks(
 ): JSX.Element {
   return (
     <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
-      {sectionHeading("Checks", arrayStatus(section))}
-      <For each={arrayItems(section)}>
-        {(check) => (
-          <text fg={colors.muted}>
-            {check.name}: {check.status} {check.conclusion ?? ""}{" "}
-            {check.link ?? ""}
-          </text>
-        )}
-      </For>
+      {renderCollectionSection("Checks", section, (check) =>
+        renderMutedLine(checkLine(check)),
+      )}
     </scrollbox>
   );
 }
@@ -466,25 +362,12 @@ function renderDevelopment(
 ): JSX.Element {
   return (
     <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
-      {sectionHeading("Projects", arrayStatus(projects))}
-      <For each={arrayItems(projects)}>
-        {(project) => (
-          <text fg={colors.muted}>
-            {project.title}{" "}
-            {project.number === null ? "" : `#${project.number}`}{" "}
-            {project.state ?? ""}
-          </text>
-        )}
-      </For>
-      {sectionHeading("Closing issues", arrayStatus(linkedIssues))}
-      <For each={arrayItems(linkedIssues)}>
-        {(issue) => (
-          <text fg={colors.muted}>
-            {issue.repository?.fullName ?? ""}#{issue.number}{" "}
-            {issue.title ?? "(untitled)"} {stateLabel(issue.state)}
-          </text>
-        )}
-      </For>
+      {renderCollectionSection("Projects", projects, (project) =>
+        renderMutedLine(projectLine(project)),
+      )}
+      {renderCollectionSection("Closing issues", linkedIssues, (issue) =>
+        renderMutedLine(linkedIssueLine(issue)),
+      )}
     </scrollbox>
   );
 }
@@ -592,6 +475,25 @@ export function PrView(props: PrViewProps) {
   const overviewLoading = () => props.content.overview().status === "loading";
   const currentDetails = () => detailsValue(props.content.details());
   const detailsLoading = () => props.content.details().status === "loading";
+  const headerRepositoryName = () =>
+    presentRepositoryName(
+      currentDetails()?.repository.fullName,
+      repositoryName(),
+    );
+  const titleLine = () => {
+    const item = summary();
+    if (item === undefined) {
+      return undefined;
+    }
+    return pullRequestTitleLine(item.title, item.number);
+  };
+  const headerKey = () => {
+    const number = props.titles.highlightedNumber();
+    const details = currentDetails();
+    const detailsKey =
+      details === undefined ? "pending" : `ready:${details.number}`;
+    return `${number ?? "none"}:${detailsKey}:${titleLine() ?? ""}:${headerRepositoryName()}`;
+  };
 
   useBindings(() => ({
     target: contentBox,
@@ -660,13 +562,14 @@ export function PrView(props: PrViewProps) {
       focusedBorderColor={colors.blue}
       title="[1] Main"
     >
-      <Show when={currentDetails() === undefined}>
-        <text fg={colors.foreground}>
-          <strong>{repositoryName()}</strong>
-        </text>
-      </Show>
-      <Show keyed when={currentDetails()}>
-        {(details: PullRequestDetails) => renderPersistentDetails(details)}
+      <Show keyed when={headerKey()}>
+        {() => (
+          <PersistentHeader
+            repositoryName={headerRepositoryName()}
+            titleLine={titleLine()}
+            details={currentDetails()}
+          />
+        )}
       </Show>
       <Show when={detailsLoading() && currentDetails() === undefined}>
         <text fg={colors.muted}>Loading details…</text>
@@ -704,15 +607,6 @@ export function PrView(props: PrViewProps) {
         }
       >
         {renderTabs(props.content)}
-        <Show keyed when={summary()}>
-          {(item: PullRequestSummary) => (
-            <text fg={colors.foreground}>
-              <strong>
-                {item.title} #{item.number}
-              </strong>
-            </text>
-          )}
-        </Show>
         <Show when={overviewLoading()}>
           <text fg={colors.muted}>Loading overview…</text>
         </Show>

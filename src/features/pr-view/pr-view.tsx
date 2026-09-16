@@ -59,10 +59,10 @@ import {
 } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { moveInList } from "@/utils/navigation";
-import type { BoxRenderable } from "@opentui/core";
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { useBindings } from "@opentui/keymap/solid";
-import { For, Show, createEffect, createSignal } from "solid-js";
+import { For, Show, createEffect, createSignal, on } from "solid-js";
 import type { Accessor } from "solid-js";
 
 export interface PrViewProps {
@@ -205,7 +205,7 @@ function renderOverview(
   overview: PullRequestOverview,
 ): JSX.Element {
   return (
-    <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
+    <box flexDirection="column" gap={0}>
       {renderMutedLine(overviewMetaLine(summary))}
       <Show when={presentText(overview.body)}>
         {(body: Accessor<string>) => (
@@ -218,7 +218,7 @@ function renderOverview(
         )}
       </Show>
       {renderComments(overview.conversationComments)}
-    </scrollbox>
+    </box>
   );
 }
 
@@ -291,25 +291,21 @@ function renderFilesSection(
 
 function renderDiff(resource: PullRequestDiffResource): JSX.Element {
   return (
-    <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
+    <box flexDirection="column" gap={0}>
       {renderFilesSection(resource.files)}
       {renderPatchSection(resource.patch)}
-    </scrollbox>
+    </box>
   );
 }
 
 function renderCommits(
   section: ForgeSection<readonly PullRequestCommit[]>,
 ): JSX.Element {
-  return (
-    <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
-      {renderCollectionSection(
-        "Commits",
-        section,
-        (commit: PullRequestCommit) =>
-          renderStackedItem(commitMetaLine(commit), commitMessage(commit)),
-      )}
-    </scrollbox>
+  return renderCollectionSection(
+    "Commits",
+    section,
+    (commit: PullRequestCommit) =>
+      renderStackedItem(commitMetaLine(commit), commitMessage(commit)),
   );
 }
 
@@ -332,7 +328,7 @@ function renderReviews(
   requestedReviewers: ForgeSection<PullRequestReviewerRequests>,
 ): JSX.Element {
   return (
-    <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
+    <box flexDirection="column" gap={0}>
       {renderCollectionSection("Submitted reviews", reviews, (review) =>
         renderStackedItem(reviewMetaLine(review), reviewBody(review)),
       )}
@@ -340,19 +336,15 @@ function renderReviews(
         renderStackedItem(reviewCommentMetaLine(comment), commentBody(comment)),
       )}
       {renderRequestedReviewers(requestedReviewers)}
-    </scrollbox>
+    </box>
   );
 }
 
 function renderChecks(
   section: ForgeSection<readonly PullRequestCheck[]>,
 ): JSX.Element {
-  return (
-    <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
-      {renderCollectionSection("Checks", section, (check) =>
-        renderMutedLine(checkLine(check)),
-      )}
-    </scrollbox>
+  return renderCollectionSection("Checks", section, (check) =>
+    renderMutedLine(checkLine(check)),
   );
 }
 
@@ -361,14 +353,14 @@ function renderDevelopment(
   linkedIssues: ForgeSection<readonly PullRequestLinkedIssue[]>,
 ): JSX.Element {
   return (
-    <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="top">
+    <box flexDirection="column" gap={0}>
       {renderCollectionSection("Projects", projects, (project) =>
         renderMutedLine(projectLine(project)),
       )}
       {renderCollectionSection("Closing issues", linkedIssues, (issue) =>
         renderMutedLine(linkedIssueLine(issue)),
       )}
-    </scrollbox>
+    </box>
   );
 }
 
@@ -405,7 +397,7 @@ function resourceError(content: PrViewContent): string | undefined {
 
 function renderTabs(content: PrViewContent): JSX.Element {
   return (
-    <box flexDirection="row" gap={2}>
+    <box flexDirection="row" gap={2} width="100%" flexGrow={0} flexShrink={0}>
       <For each={pullRequestTabs}>
         {(tab, index) => (
           <text fg={content.activeTab() === tab ? colors.blue : colors.muted}>
@@ -459,6 +451,9 @@ function renderResourceTab(content: PrViewContent): JSX.Element {
 
 export function PrView(props: PrViewProps) {
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
+  const [bodyScroll, setBodyScroll] = createSignal<
+    ScrollBoxRenderable | undefined
+  >();
   const focused = () => props.paneFocus.pane() === "content";
   const currentState = () => props.state;
   const localName = () => basename(currentState().cwd) || currentState().cwd;
@@ -538,10 +533,29 @@ export function PrView(props: PrViewProps) {
   }));
 
   createEffect(() => {
-    if (focused()) {
-      contentBox()?.focus();
+    if (!focused()) {
+      return;
     }
+    const scroll = bodyScroll();
+    if (scroll !== undefined) {
+      scroll.focus();
+      return;
+    }
+    contentBox()?.focus();
   });
+
+  createEffect(
+    on(
+      () => props.content.activeTab(),
+      () => {
+        const scroll = bodyScroll();
+        if (scroll !== undefined) {
+          scroll.scrollTop = 0;
+        }
+      },
+      { defer: true },
+    ),
+  );
 
   return (
     <box
@@ -607,46 +621,58 @@ export function PrView(props: PrViewProps) {
         }
       >
         {renderTabs(props.content)}
-        <Show when={overviewLoading()}>
-          <text fg={colors.muted}>Loading overview…</text>
-        </Show>
-        <Show when={props.content.activeTab() === "overview"}>
-          <Show when={overviewError(props.content.overview())}>
-            {(error: Accessor<string>) => (
-              <box flexDirection="column">
-                <text fg={colors.yellow}>
-                  Could not load pull request overview.
-                </text>
-                <text fg={colors.dim}>{error()}</text>
-                <text fg={colors.muted}>Press r to retry.</text>
-              </box>
-            )}
+        <scrollbox
+          ref={setBodyScroll}
+          flexGrow={1}
+          flexShrink={1}
+          minHeight={0}
+          width="100%"
+          stickyScroll
+          stickyStart="top"
+        >
+          <Show when={overviewLoading()}>
+            <text fg={colors.muted}>Loading overview…</text>
           </Show>
-          <Show keyed when={currentOverview()}>
-            {(overview: PullRequestOverview) => (
-              <Show keyed when={summary()}>
-                {(item: PullRequestSummary) => renderOverview(item, overview)}
-              </Show>
-            )}
+          <Show when={props.content.activeTab() === "overview"}>
+            <Show when={overviewError(props.content.overview())}>
+              {(error: Accessor<string>) => (
+                <box flexDirection="column">
+                  <text fg={colors.yellow}>
+                    Could not load pull request overview.
+                  </text>
+                  <text fg={colors.dim}>{error()}</text>
+                  <text fg={colors.muted}>Press r to retry.</text>
+                </box>
+              )}
+            </Show>
+            <Show keyed when={currentOverview()}>
+              {(overview: PullRequestOverview) => (
+                <Show keyed when={summary()}>
+                  {(item: PullRequestSummary) => renderOverview(item, overview)}
+                </Show>
+              )}
+            </Show>
+            <Show
+              when={
+                currentOverview() === undefined &&
+                !overviewLoading() &&
+                overviewError(props.content.overview()) === undefined
+              }
+            >
+              <text fg={colors.muted}>
+                Highlight a pull request to preview it.
+              </text>
+            </Show>
           </Show>
-          <Show
-            when={
-              currentOverview() === undefined &&
-              !overviewLoading() &&
-              overviewError(props.content.overview()) === undefined
-            }
-          >
-            <text fg={colors.muted}>
-              Highlight a pull request to preview it.
-            </text>
+          <Show when={props.content.activeTab() !== "overview"}>
+            {renderResourceTab(props.content)}
           </Show>
-        </Show>
-        <Show when={props.content.activeTab() !== "overview"}>
-          {renderResourceTab(props.content)}
-        </Show>
-        <text fg={colors.dim}>
-          0 list · h/l or 1–6 switch tabs · r reloads the visible tab.
-        </text>
+        </scrollbox>
+        <box height={1} width="100%" flexGrow={0} flexShrink={0}>
+          <text fg={colors.dim}>
+            0 list · h/l or 1–6 switch tabs · r reloads the visible tab.
+          </text>
+        </box>
       </Show>
     </box>
   );

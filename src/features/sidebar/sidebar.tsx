@@ -5,14 +5,13 @@ import type {
   PullRequestSummary,
 } from "@/services/forge/types";
 import { SelectableRow } from "@/features/shared/selectable-row";
-import type { PaneFocus } from "@/features/shared/pane-focus";
 import { colors } from "@/theme";
 import { useBindings } from "@opentui/keymap/solid";
 import { For, Show, createEffect, createSignal, on } from "solid-js";
+import { PaneStore } from "@/context/active-pane-context";
 
 export interface SidebarProps {
   readonly titles: PrTitles;
-  readonly paneFocus: PaneFocus;
 }
 
 function listItems(titles: PrTitles): readonly PullRequestSummary[] {
@@ -54,11 +53,12 @@ function stateMarker(summary: PullRequestSummary): string {
 }
 
 export function Sidebar(props: SidebarProps) {
+  const [pane, setPane] = PaneStore.use();
   const [sidebarBox, setSidebarBox] = createSignal<BoxRenderable | undefined>();
   const [scrollBox, setScrollBox] = createSignal<
     ScrollBoxRenderable | undefined
   >();
-  const focused = () => props.paneFocus.pane() === "sidebar";
+  const focused = () => pane.active === "sidebar";
 
   useBindings(() => ({
     target: sidebarBox,
@@ -97,11 +97,11 @@ export function Sidebar(props: SidebarProps) {
       },
       {
         name: "pr-list.activate",
-        run: () => props.paneFocus.focus("content"),
+        run: () => setPane({ active: "content" }),
       },
       {
         name: "pr-list.focus",
-        run: () => props.paneFocus.focus("sidebar"),
+        run: () => setPane({ active: "content" }),
       },
     ],
     bindings: [
@@ -131,7 +131,7 @@ export function Sidebar(props: SidebarProps) {
   createEffect(
     on(
       [
-        () => props.paneFocus.pane(),
+        () => pane.active,
         () => props.titles.filter(),
         () => props.titles.list().status,
         sidebarBox,

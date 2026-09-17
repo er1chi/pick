@@ -28,7 +28,6 @@ import {
   reviewerNames,
 } from "@/features/pr-view/pr-view-display";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
-import type { PaneFocus } from "@/features/shared/pane-focus";
 import {
   pullRequestTabs,
   type DetailsLoadState,
@@ -64,12 +63,12 @@ import type { JSX } from "@opentui/solid";
 import { useBindings } from "@opentui/keymap/solid";
 import { For, Show, createEffect, createSignal, on } from "solid-js";
 import type { Accessor } from "solid-js";
+import { PaneStore } from "@/context/active-pane-context";
 
 export interface PrViewProps {
   readonly state: RepositoryAppContextState;
   readonly titles: PrTitles;
   readonly content: PrViewContent;
-  readonly paneFocus: PaneFocus;
 }
 
 interface PersistentHeaderProps {
@@ -450,11 +449,12 @@ function renderResourceTab(content: PrViewContent): JSX.Element {
 }
 
 export function PrView(props: PrViewProps) {
+  const [pane, setPane] = PaneStore.use();
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
   const [bodyScroll, setBodyScroll] = createSignal<
     ScrollBoxRenderable | undefined
   >();
-  const focused = () => props.paneFocus.pane() === "content";
+  const focused = () => pane.active === "content";
   const currentState = () => props.state;
   const localName = () => basename(currentState().cwd) || currentState().cwd;
   const repositoryName = () =>
@@ -517,7 +517,7 @@ export function PrView(props: PrViewProps) {
       },
       {
         name: "pr-view.focus-sidebar",
-        run: () => props.paneFocus.focus("sidebar"),
+        run: () => setPane({ active: "sidebar" }),
       },
     ],
     bindings: [

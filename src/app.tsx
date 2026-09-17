@@ -10,7 +10,6 @@ import { PrView } from "@/features/pr-view/pr-view";
 import { usePrTitles } from "@/features/pr-view/use-pr-titles";
 import { usePrViewContent } from "@/features/pr-view/use-pr-view-content";
 import { Sidebar } from "@/features/sidebar/sidebar";
-import type { PaneFocus, RepositoryPane } from "@/features/shared/pane-focus";
 import {
   ApplicationContext,
   ForgeInitializationErrorCode,
@@ -19,8 +18,10 @@ import {
 import { colors } from "@/theme";
 import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
-import { createEffect, createSignal, onMount, Show } from "solid-js";
+import { createEffect, onMount, Show } from "solid-js";
 import type { Accessor } from "solid-js";
+import { PaneStore } from "./context/active-pane-context";
+import type { RepositoryPane } from "./types";
 
 function repositoryAppContextState(
   state: AppContextState,
@@ -83,31 +84,20 @@ function notifyCliInitializationError(error: ForgeInitializationError) {
 }
 
 function RepositoryShell(props: { readonly state: RepositoryAppContextState }) {
+  const [pane] = PaneStore.use();
   const contextLabel = repositoryContextLabel(props.state.kind);
   const titles = usePrTitles();
   const content = usePrViewContent(titles);
-  const [focusedPane, setFocusedPane] = createSignal<RepositoryPane>("sidebar");
-  const paneFocus: PaneFocus = {
-    pane: focusedPane,
-    focus: (pane) => {
-      setFocusedPane(pane);
-    },
-  };
 
   return (
     <box flexDirection="column" width="100%" height="100%">
       <Menubar contextLabel={contextLabel} />
       <box flexDirection="row" flexGrow={1} width="100%">
-        <Sidebar titles={titles} paneFocus={paneFocus} />
-        <PrView
-          state={props.state}
-          titles={titles}
-          content={content}
-          paneFocus={paneFocus}
-        />
+        <Sidebar titles={titles} />
+        <PrView state={props.state} titles={titles} content={content} />
       </box>
       <Footer
-        bindings={repositoryFooterBindings(props.state.kind, focusedPane())}
+        bindings={repositoryFooterBindings(props.state.kind, pane.active)}
       />
     </box>
   );

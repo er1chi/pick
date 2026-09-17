@@ -8,6 +8,7 @@ import {
   initializeAppContext,
 } from "@/context/app-context";
 import { createAppKeymap } from "@/shared/keymap";
+import { PaneStore } from "@/context/active-pane-context";
 
 const renderer = await createCliRenderer({
   clearOnShutdown: true,
@@ -20,11 +21,13 @@ const appContext = await initializeAppContext();
 await render(
   () => (
     <AppContextProvider value={appContext}>
-      <KeymapProvider keymap={keymap}>
-        <DialogProvider>
-          <App />
-        </DialogProvider>
-      </KeymapProvider>
+      <PaneStore.Provider>
+        <KeymapProvider keymap={keymap}>
+          <DialogProvider>
+            <App />
+          </DialogProvider>
+        </KeymapProvider>
+      </PaneStore.Provider>
     </AppContextProvider>
   ),
   renderer,

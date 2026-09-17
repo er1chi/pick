@@ -22,24 +22,28 @@ interface ExistingForgeState {
   readonly forgeError: undefined;
 }
 
-interface ForgeErrorState {
+interface NoForge {
   readonly forge: undefined;
+}
+
+interface ForgeErrorState extends NoForge {
   readonly forgeError: ForgeInitializationError;
 }
 
 type RemoteAppContextState = AppContextBase<ForgeKind> &
   (ExistingForgeState | ForgeErrorState);
+
 type LocalAppContextState = (
   | AppContextBase<ApplicationContext.Default>
   | AppContextBase<ApplicationContext.Local>
-) & {
-  readonly forge: undefined;
-};
+) &
+  NoForge;
+
 export type AppContextState = LocalAppContextState | RemoteAppContextState;
 
 export type RepositoryAppContextState = Exclude<
   AppContextState,
-  AppContextBase<ApplicationContext.Default> & { readonly forge: undefined }
+  AppContextBase<ApplicationContext.Default> & NoForge
 >;
 
 export enum RepositorySelectionErrorCode {

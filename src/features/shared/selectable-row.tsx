@@ -10,12 +10,14 @@ export interface SelectableRowProps {
 }
 
 // Sidebar rows must stay exactly one visual line, so collapse embedded
-// newlines/tabs before handing the text to the renderer.
+// newlines/tabs before handing the text to the renderer. Leading spaces are
+// meaningful indentation for tree rows, so only trailing junk is removed;
+// callers that must stay flush provide labels without leading whitespace.
 function sanitizeLine(text: string): string {
   return text
     .replace(/\s*[\r\n]+\s*/g, " ")
     .replace(/\t/g, " ")
-    .trim();
+    .trimEnd();
 }
 
 // Truncate only the end. The renderer's own overflow handling is a backstop,

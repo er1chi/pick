@@ -48,6 +48,7 @@ import {
 import { colors } from "@/theme";
 import { formatPresentTimestamp } from "@/utils/format-timestamp";
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { useBindings } from "@opentui/keymap/solid";
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
@@ -68,10 +69,30 @@ export interface PrViewProps {
   readonly content: PrViewContent;
 }
 
+// The main pane gives up the fixed sidebar (32), its own border (2), and its
+// horizontal padding (3) from the terminal width. Header and metadata lines are
+// bounded by that budget so they truncate at the end instead of wrapping.
+const MAIN_PANE_CHROME = 37;
+// The top context row shares its width with the fixed close affordance.
+const CLOSE_BUTTON_WIDTH = "[x] Close PR".length;
+
+function endTruncate(text: string, maxWidth: number): string {
+  const characters = Array.from(text);
+  if (characters.length <= maxWidth) {
+    return text;
+  }
+  let kept = "";
+  for (let index = 0; index < maxWidth - 1; index += 1) {
+    kept += characters[index] ?? "";
+  }
+  return maxWidth > 0 ? `${kept}…` : "";
+}
+
 interface PersistentHeaderProps {
   readonly repositoryName: string;
   readonly titleLine: string | undefined;
   readonly details: PullRequestDetails | undefined;
+  readonly maxWidth: number;
 }
 
 function serviceName(
@@ -124,11 +145,33 @@ function sectionHeading(label: string, status: string): JSX.Element {
   );
 }
 
-function renderMutedLine(line: string | undefined): JSX.Element {
+/**
+ * Metadata and other incidental lines must occupy exactly one visual row, so
+ * they are bounded to a one-row box and truncated at the end instead of
+ * wrapping into adjacent rows.
+ */
+function renderMutedLine(
+  line: string | undefined,
+  maxWidth?: number,
+): JSX.Element {
   return (
     <Show when={line}>
-      {(value: Accessor<string>) => <text fg={colors.muted}>{value()}</text>}
+      {(value: Accessor<string>) =>
+        oneLine(
+          <text fg={colors.muted} wrapMode="none" truncate>
+            {maxWidth === undefined ? value() : endTruncate(value(), maxWidth)}
+          </text>,
+        )
+      }
     </Show>
+  );
+}
+
+function oneLine(content: JSX.Element): JSX.Element {
+  return (
+    <box width="100%" height={1} flexGrow={0} flexShrink={0} overflow="hidden">
+      {content}
+    </box>
   );
 }
 
@@ -195,7 +238,7 @@ function renderOverview(
 
 function headerRow(content: JSX.Element): JSX.Element {
   return (
-    <box height={1} width="100%" flexGrow={0} flexShrink={0}>
+    <box height={1} width="100%" flexGrow={0} flexShrink={0} overflow="hidden">
       {content}
     </box>
   );
@@ -219,21 +262,27 @@ function PersistentHeader(props: PersistentHeaderProps): JSX.Element {
       overflow="hidden"
     >
       {headerRow(
-        <text fg={colors.foreground}>
-          <strong>{props.repositoryName}</strong>
+        <text fg={colors.foreground} wrapMode="none" truncate>
+          <strong>{endTruncate(props.repositoryName, props.maxWidth)}</strong>
         </text>,
       )}
       <Show when={props.titleLine}>
         {(title: Accessor<string>) =>
           headerRow(
-            <text fg={colors.foreground}>
-              <strong>{title()}</strong>
+            <text fg={colors.foreground} wrapMode="none" truncate>
+              <strong>{endTruncate(title(), props.maxWidth)}</strong>
             </text>,
           )
         }
       </Show>
       <For each={metadataLines()}>
-        {(line) => headerRow(<text fg={colors.muted}>{line}</text>)}
+        {(line) =>
+          headerRow(
+            <text fg={colors.muted} wrapMode="none" truncate>
+              {endTruncate(line, props.maxWidth)}
+            </text>,
+          )
+        }
       </For>
     </box>
   );
@@ -459,7 +508,9 @@ const lockedNotice =
 interface SelectedDiffProps {
   readonly content: PrViewContent;
   readonly path: string;
+  readonly commit: PullRequestCommit | undefined;
   readonly revealLocked: boolean;
+  readonly maxWidth: number;
   readonly setDiffScroll: (element: ScrollBoxRenderable) => void;
 }
 
@@ -504,46 +555,60 @@ function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
   };
 
   return (
-    <box
-      flexDirection="column"
+    <scrollbox
+      ref={props.setDiffScroll}
       flexGrow={1}
       flexShrink={1}
       minHeight={0}
       width="100%"
     >
-      <text fg={colors.dim}>
-        {fromCommit()
-          ? `Commit diff · ${props.path}`
-          : `Pull request diff · ${props.path}`}
-      </text>
-      <Show
-        when={notice()}
-        fallback={
-          <scrollbox
-            ref={props.setDiffScroll}
-            flexGrow={1}
-            minHeight={0}
-            width="100%"
-          >
-            <For each={fileDiffs()}>
-              {(fileDiff) => (
-                <box flexDirection="column" width="100%">
-                  <text fg={colors.foreground}>{fileDiffName(fileDiff)}</text>
-                  <Show
-                    when={props.revealLocked || !isLockFile(fileDiff.name)}
-                    fallback={<text fg={colors.dim}>{lockedNotice}</text>}
-                  >
-                    <SplitFileDiff fileDiff={fileDiff} />
-                  </Show>
-                </box>
+      <box flexDirection="column" width="100%" gap={1}>
+        <Show when={props.content.selectedCommit()} keyed>
+          {(sha: string) => (
+            <CommitContext
+              sha={sha}
+              commit={props.commit}
+              hasFile
+              maxWidth={props.maxWidth}
+            />
+          )}
+        </Show>
+        <box flexDirection="column" width="100%" gap={0}>
+          {headerRow(
+            <text fg={colors.dim} wrapMode="none" truncate>
+              {endTruncate(
+                fromCommit()
+                  ? `Commit diff · ${props.path}`
+                  : `Pull request diff · ${props.path}`,
+                props.maxWidth,
               )}
-            </For>
-          </scrollbox>
-        }
-      >
-        {(text: Accessor<string>) => <text fg={colors.muted}>{text()}</text>}
-      </Show>
-    </box>
+            </text>,
+          )}
+          <Show
+            when={notice()}
+            fallback={
+              <For each={fileDiffs()}>
+                {(fileDiff) => (
+                  <box flexDirection="column" width="100%">
+                    <text fg={colors.foreground}>{fileDiffName(fileDiff)}</text>
+                    <Show
+                      when={props.revealLocked || !isLockFile(fileDiff.name)}
+                      fallback={<text fg={colors.dim}>{lockedNotice}</text>}
+                    >
+                      <SplitFileDiff fileDiff={fileDiff} />
+                    </Show>
+                  </box>
+                )}
+              </For>
+            }
+          >
+            {(text: Accessor<string>) => (
+              <text fg={colors.muted}>{text()}</text>
+            )}
+          </Show>
+        </box>
+      </box>
+    </scrollbox>
   );
 }
 
@@ -561,6 +626,7 @@ interface CommitContextProps {
   readonly sha: string;
   readonly commit: PullRequestCommit | undefined;
   readonly hasFile: boolean;
+  readonly maxWidth: number;
 }
 
 function CommitContext(props: CommitContextProps): JSX.Element {
@@ -578,45 +644,49 @@ function CommitContext(props: CommitContextProps): JSX.Element {
       flexGrow={0}
       flexShrink={0}
     >
-      <text fg={colors.foreground}>
-        <strong>Commit {props.sha}</strong>
-      </text>
+      {oneLine(
+        <text fg={colors.foreground} wrapMode="none" truncate>
+          <strong>{endTruncate(`Commit ${props.sha}`, props.maxWidth)}</strong>
+        </text>,
+      )}
       <Show when={props.commit}>
         {(commit: Accessor<PullRequestCommit>) =>
-          renderMutedLine(commitMetaLine(commit()))
+          renderMutedLine(commitMetaLine(commit()), props.maxWidth)
         }
       </Show>
       <Show when={props.commit === undefined}>
-        <text fg={colors.dim}>Loading commit metadata…</text>
+        {oneLine(
+          <text fg={colors.dim} wrapMode="none" truncate>
+            {endTruncate("Loading commit metadata…", props.maxWidth)}
+          </text>,
+        )}
       </Show>
       <For each={commitMessageLines(props.commit)}>
         {(line) => <text fg={colors.foreground}>{line}</text>}
       </For>
-      <Show when={author()}>
-        {(value: Accessor<string>) => (
-          <text fg={colors.muted}>Author: {value()}</text>
-        )}
-      </Show>
-      <Show when={committer()}>
-        {(value: Accessor<string>) => (
-          <text fg={colors.muted}>Committer: {value()}</text>
-        )}
-      </Show>
-      <Show when={authoredAt()}>
-        {(value: Accessor<string>) => (
-          <text fg={colors.muted}>Authored: {value()}</text>
-        )}
-      </Show>
-      <Show when={committedAt()}>
-        {(value: Accessor<string>) => (
-          <text fg={colors.muted}>Committed: {value()}</text>
-        )}
-      </Show>
-      <Show when={url()}>
-        {(value: Accessor<string>) => <text fg={colors.muted}>{value()}</text>}
-      </Show>
+      {renderMutedLine(
+        author() === undefined ? undefined : `Author: ${author()}`,
+        props.maxWidth,
+      )}
+      {renderMutedLine(
+        committer() === undefined ? undefined : `Committer: ${committer()}`,
+        props.maxWidth,
+      )}
+      {renderMutedLine(
+        authoredAt() === undefined ? undefined : `Authored: ${authoredAt()}`,
+        props.maxWidth,
+      )}
+      {renderMutedLine(
+        committedAt() === undefined ? undefined : `Committed: ${committedAt()}`,
+        props.maxWidth,
+      )}
+      {renderMutedLine(url(), props.maxWidth)}
       <Show when={props.hasFile}>
-        <text fg={colors.dim}>The diff below is from this commit.</text>
+        {oneLine(
+          <text fg={colors.dim} wrapMode="none" truncate>
+            {endTruncate("The diff below is from this commit.", props.maxWidth)}
+          </text>,
+        )}
       </Show>
     </box>
   );
@@ -667,6 +737,11 @@ function NoPullRequest(props: {
 
 export function PrView(props: PrViewProps) {
   const [pane, setPane] = PaneStore.use();
+  const dimensions = useTerminalDimensions();
+  const contentWidth = () =>
+    Math.max(16, dimensions().width - MAIN_PANE_CHROME);
+  const contextTextWidth = () =>
+    Math.max(8, contentWidth() - CLOSE_BUTTON_WIDTH - 1);
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
   const [overviewScroll, setOverviewScroll] = createSignal<
     ScrollBoxRenderable | undefined
@@ -724,11 +799,14 @@ export function PrView(props: PrViewProps) {
   const contextBanner = (): string => {
     const commit = selectedCommit();
     const path = selectedFile();
-    if (commit !== undefined && path !== undefined) {
-      return `Context: Commit ${commit} · File ${path}`;
+    // The full SHA stays in the commit metadata below; the fixed context line
+    // only needs a short, stable reference.
+    const reference = commit === undefined ? undefined : commit.slice(0, 12);
+    if (reference !== undefined && path !== undefined) {
+      return `Context: Commit ${reference} · File ${path}`;
     }
-    if (commit !== undefined) {
-      return `Context: Commit ${commit}`;
+    if (reference !== undefined) {
+      return `Context: Commit ${reference}`;
     }
     if (path !== undefined) {
       return `Context: Pull request · File ${path}`;
@@ -845,12 +923,31 @@ export function PrView(props: PrViewProps) {
           flexGrow={0}
           flexShrink={0}
         >
-          <box flexDirection="row" width="100%" flexGrow={0} flexShrink={0}>
-            <text fg={colors.blue}>
-              <strong>{contextBanner()}</strong>
-            </text>
-            <box flexGrow={1} />
-            <text fg={colors.red}>[x] Close PR</text>
+          <box
+            flexDirection="row"
+            width="100%"
+            height={1}
+            flexGrow={0}
+            flexShrink={0}
+          >
+            <box
+              flexGrow={1}
+              flexShrink={1}
+              minWidth={0}
+              height={1}
+              overflow="hidden"
+            >
+              <text fg={colors.blue} wrapMode="none" truncate>
+                <strong>
+                  {endTruncate(contextBanner(), contextTextWidth())}
+                </strong>
+              </text>
+            </box>
+            <box flexShrink={0} height={1}>
+              <text fg={colors.red} wrapMode="none">
+                [x] Close PR
+              </text>
+            </box>
           </box>
           <Show keyed when={headerKey()}>
             {() => (
@@ -858,70 +955,103 @@ export function PrView(props: PrViewProps) {
                 repositoryName={headerRepositoryName()}
                 titleLine={titleLine()}
                 details={currentDetails()}
+                maxWidth={contentWidth()}
               />
             )}
           </Show>
           <Show when={detailsLoading() && currentDetails() === undefined}>
-            <text fg={colors.muted}>Loading details…</text>
+            {oneLine(
+              <text fg={colors.muted} wrapMode="none" truncate>
+                Loading details…
+              </text>,
+            )}
           </Show>
           <Show when={detailsError(props.content.details())}>
             {(error: Accessor<string>) => (
               <box flexDirection="column">
-                <text fg={colors.yellow}>
-                  Could not load pull request details.
-                </text>
-                <text fg={colors.dim}>{error()}</text>
+                {oneLine(
+                  <text fg={colors.yellow} wrapMode="none" truncate>
+                    Could not load pull request details.
+                  </text>,
+                )}
+                {oneLine(
+                  <text fg={colors.dim} wrapMode="none" truncate>
+                    {error()}
+                  </text>,
+                )}
               </box>
             )}
-          </Show>
-          <Show when={selectedCommit()}>
-            {(sha: Accessor<string>) => (
-              <CommitContext
-                sha={sha()}
-                commit={selectedCommitValue()}
-                hasFile={selectedFile() !== undefined}
-              />
-            )}
-          </Show>
-          <Show
-            when={
-              selectedCommit() !== undefined && selectedFile() === undefined
-            }
-          >
-            <text fg={colors.yellow}>
-              Select a file in the sidebar to view this commit's changes.
-            </text>
           </Show>
         </box>
         <Show
           when={selectedFile()}
           keyed
           fallback={
-            <scrollbox
-              ref={setOverviewScroll}
-              flexGrow={1}
-              flexShrink={1}
-              minHeight={0}
-              width="100%"
-              stickyScroll
-              stickyStart="top"
+            <Show
+              when={selectedCommit()}
+              keyed
+              fallback={
+                <scrollbox
+                  ref={setOverviewScroll}
+                  flexGrow={1}
+                  flexShrink={1}
+                  minHeight={0}
+                  width="100%"
+                  stickyScroll
+                  stickyStart="top"
+                >
+                  <OverviewScreen content={props.content} summary={summary} />
+                </scrollbox>
+              }
             >
-              <OverviewScreen content={props.content} summary={summary} />
-            </scrollbox>
+              {(sha: string) => (
+                <scrollbox
+                  ref={setOverviewScroll}
+                  flexGrow={1}
+                  flexShrink={1}
+                  minHeight={0}
+                  width="100%"
+                >
+                  <box flexDirection="column" width="100%" gap={1}>
+                    <CommitContext
+                      sha={sha}
+                      commit={selectedCommitValue()}
+                      hasFile={false}
+                      maxWidth={contentWidth()}
+                    />
+                    <text fg={colors.yellow}>
+                      Select a file in the sidebar to view this commit's
+                      changes.
+                    </text>
+                  </box>
+                </scrollbox>
+              )}
+            </Show>
           }
         >
           {(path: string) => (
             <SelectedDiffBody
               content={props.content}
               path={path}
+              commit={selectedCommitValue()}
               revealLocked={revealLocked()}
+              maxWidth={contentWidth()}
               setDiffScroll={setDiffScroll}
             />
           )}
         </Show>
-        <box height={1} width="100%" flexGrow={0} flexShrink={0}>
-          <text fg={colors.dim}>
-            j/k scroll · e lock files · r reload · x close PR
+        <box
+          height={1}
+          width="100%"
+          flexGrow={0}
+          flexShrink={0}
+          overflow="hidden"
+        >
+          <text fg={colors.dim} wrapMode="none" truncate>
+            {endTruncate(
+              "j/k scroll · e lock files · r reload · x close PR",
+              contentWidth(),
+            )}
           </text>
         </box>
       </Show>

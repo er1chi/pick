@@ -1,13 +1,16 @@
-import type { FileDiffMetadata } from "@pierre/diffs";
-import { createMemo, For } from "solid-js";
+import type { FileDiffMetadata, ThemedToken } from "@pierre/diffs";
+import { createMemo, createResource, For, Show, type Accessor } from "solid-js";
 import { colors } from "@/theme";
 import type { DisplayRow, DisplayRowKind } from "./utils/display-row";
+import { highlightSplitRows } from "./utils/highlight";
 import { splitRows, type SplitDisplayRow } from "./utils/split-rows";
 
 export interface SplitFileDiffProps {
   fileDiff: FileDiffMetadata;
   disableLineNumbers?: boolean;
 }
+
+const SPLIT_SEPARATOR = "│";
 
 function changeIndicator(kind: DisplayRowKind): string {
   switch (kind) {
@@ -53,7 +56,12 @@ function lineWidth(
   return width;
 }
 
-function columnText(
+/**
+ * Gutter text keeps the line number and change marker that make deletion and
+ * addition semantics visible. Code content is rendered separately so it can
+ * carry syntax colors.
+ */
+function gutterText(
   row: DisplayRow | undefined,
   line: number | undefined,
   width: number,
@@ -64,16 +72,37 @@ function columnText(
   }
   const marker = changeIndicator(row.kind);
   if (disableLineNumbers || line === undefined) {
-    return `${marker} ${row.text}`;
+    return `${marker} `;
   }
-  return `${String(line).padStart(width, " ")} ${marker} ${row.text}`;
+  return `${String(line).padStart(width, " ")} ${marker} `;
 }
 
-function SplitCell(props: { text: string; kind: DisplayRowKind | undefined }) {
+function SplitCell(props: {
+  row: DisplayRow | undefined;
+  line: number | undefined;
+  width: number;
+  disableLineNumbers: boolean;
+  tokens: readonly ThemedToken[] | undefined;
+}) {
+  const gutter = () =>
+    gutterText(props.row, props.line, props.width, props.disableLineNumbers);
+
   return (
-    <box flexGrow={1} flexBasis={0} height={1} overflow="hidden">
-      <text fg={kindColor(props.kind)} wrapMode="none" truncate>
-        {props.text}
+    <box flexGrow={1} flexBasis={0} minWidth={0} height={1} overflow="hidden">
+      <text fg={kindColor(props.row?.kind)} wrapMode="none">
+        <span>{gutter()}</span>
+        <Show
+          when={props.tokens}
+          fallback={<span>{props.row?.text ?? ""}</span>}
+        >
+          {(tokens: Accessor<readonly ThemedToken[]>) => (
+            <For each={tokens()}>
+              {(token) => (
+                <span style={{ fg: token.color }}>{token.content}</span>
+              )}
+            </For>
+          )}
+        </Show>
       </text>
     </box>
   );
@@ -84,6 +113,34 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
   const oldWidth = createMemo(() => lineWidth(rows(), "left"));
   const newWidth = createMemo(() => lineWidth(rows(), "right"));
   const disableLineNumbers = () => props.disableLineNumbers === true;
+
+  const highlightInput = createMemo(() => ({
+    fileDiff: props.fileDiff,
+    rows: rows(),
+  }));
+  const [highlight] = createResource(highlightInput, (input) =>
+    highlightSplitRows(input.fileDiff, input.rows),
+  );
+
+  const lineIndex = createMemo(() => {
+    const index = new Map<string, number>();
+    let next = 0;
+    for (const row of rows()) {
+      if (row.kind === "line") {
+        index.set(row.key, next);
+        next += 1;
+      }
+    }
+    return index;
+  });
+
+  const tokensFor = (rowKey: string, side: "left" | "right") => {
+    const index = lineIndex().get(rowKey);
+    if (index === undefined) {
+      return undefined;
+    }
+    return highlight()?.[side]?.[index];
+  };
 
   return (
     <box flexDirection="column" width="100%">
@@ -97,7 +154,7 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
               flexShrink={0}
               overflow="hidden"
             >
-              <text fg={colors.dim} wrapMode="none" truncate>
+              <text fg={colors.dim} wrapMode="none">
                 {row.text}
               </text>
             </box>
@@ -110,22 +167,23 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
               overflow="hidden"
             >
               <SplitCell
-                kind={row.left?.kind}
-                text={columnText(
-                  row.left,
-                  row.left?.oldLine,
-                  oldWidth(),
-                  disableLineNumbers(),
-                )}
+                row={row.left}
+                line={row.left?.oldLine}
+                width={oldWidth()}
+                disableLineNumbers={disableLineNumbers()}
+                tokens={tokensFor(row.key, "left")}
               />
+              <box width={1} height={1} flexShrink={0} overflow="hidden">
+                <text fg={colors.dim} wrapMode="none">
+                  {SPLIT_SEPARATOR}
+                </text>
+              </box>
               <SplitCell
-                kind={row.right?.kind}
-                text={columnText(
-                  row.right,
-                  row.right?.newLine,
-                  newWidth(),
-                  disableLineNumbers(),
-                )}
+                row={row.right}
+                line={row.right?.newLine}
+                width={newWidth()}
+                disableLineNumbers={disableLineNumbers()}
+                tokens={tokensFor(row.key, "right")}
               />
             </box>
           )

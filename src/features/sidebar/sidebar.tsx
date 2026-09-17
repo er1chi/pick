@@ -258,7 +258,14 @@ function FilesBox(props: SidebarProps): JSX.Element {
     return view.kind === "message" ? view.text : "No changed files.";
   };
 
-  const { model } = useFileTree({ paths: paths() });
+  // The model owns path grouping: empty directories stay as separate rows
+  // (no single-child flattening) and the initial expansion is explicit so the
+  // nested hierarchy comes from @pierre/trees rather than string parsing.
+  const { model } = useFileTree({
+    flattenEmptyDirectories: false,
+    initialExpansion: "closed",
+    paths: paths(),
+  });
   createEffect(() => model.resetPaths(paths()));
 
   const rows = useFileTreeSelector(
@@ -537,42 +544,64 @@ function CommitsBox(props: SidebarProps): JSX.Element {
   const [pane] = PaneStore.use();
   const [box, setBox] = createSignal<BoxRenderable>();
   const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
+  // Keyboard focus inside the list is local and never activates the commit on
+  // its own; `content.selectedCommit` only changes on an explicit Enter.
+  const [highlightedSha, setHighlightedSha] = createSignal<string>();
   const focused = () => pane.active === "commits";
   const opened = () => props.titles.openedNumber() !== null;
   const commits = createMemo<readonly PullRequestCommit[]>(() =>
     opened() ? props.content.commits() : [],
   );
 
+  // Keep exactly one row highlighted: start on the first row without selecting
+  // it, and recover when the list changes or drops the highlighted commit.
+  createEffect(() => {
+    const list = commits();
+    const current = highlightedSha();
+    if (list.length === 0) {
+      if (current !== undefined) {
+        setHighlightedSha(undefined);
+      }
+      return;
+    }
+    if (!list.some((commit) => commit.sha === current)) {
+      setHighlightedSha(list[0]?.sha);
+    }
+  });
+
   useScrollIntoView(() => {
-    const sha = props.content.selectedCommit();
+    const sha = highlightedSha();
     return sha === undefined ? undefined : `commit-${sha}`;
   }, scrollBox);
 
-  function moveSelection(offset: number): void {
+  function moveHighlight(offset: number): void {
     const list = commits();
     if (list.length === 0) {
       return;
     }
-    const current = props.content.selectedCommit();
-    if (current === undefined) {
-      props.content.selectCommit(list[0]?.sha);
-      return;
-    }
-    const index = list.findIndex((commit) => commit.sha === current);
+    const index = list.findIndex((commit) => commit.sha === highlightedSha());
     const next = Math.min(
       Math.max((index < 0 ? 0 : index) + offset, 0),
       list.length - 1,
     );
-    props.content.selectCommit(list[next]?.sha);
+    setHighlightedSha(list[next]?.sha);
+  }
+
+  function activateHighlighted(): void {
+    const sha = highlightedSha();
+    if (sha !== undefined) {
+      props.content.selectCommit(sha);
+    }
   }
 
   useBindings(() => ({
     target: box,
     bindings: [
-      { key: "j", cmd: () => moveSelection(1) },
-      { key: "down", cmd: () => moveSelection(1) },
-      { key: "k", cmd: () => moveSelection(-1) },
-      { key: "up", cmd: () => moveSelection(-1) },
+      { key: "j", cmd: () => moveHighlight(1) },
+      { key: "down", cmd: () => moveHighlight(1) },
+      { key: "k", cmd: () => moveHighlight(-1) },
+      { key: "up", cmd: () => moveHighlight(-1) },
+      { key: "return", cmd: activateHighlighted },
     ],
   }));
 
@@ -587,15 +616,25 @@ function CommitsBox(props: SidebarProps): JSX.Element {
       >
         <SidebarScrollBox scrollRef={setScrollBox}>
           <For each={commits()}>
-            {(commit) => (
-              <SelectableRow
-                id={`commit-${commit.sha}`}
-                selected={commit.sha === props.content.selectedCommit()}
-                label={commit.sha.slice(0, 7)}
-                detail={firstLine(commit.message)}
-                maxWidth={SIDEBAR_ROW_WIDTH}
-              />
-            )}
+            {(commit) => {
+              const highlighted = commit.sha === highlightedSha();
+              const active = commit.sha === props.content.selectedCommit();
+              return (
+                <box
+                  width="100%"
+                  flexShrink={0}
+                  backgroundColor={active ? colors.selected : undefined}
+                >
+                  <SelectableRow
+                    id={`commit-${commit.sha}`}
+                    selected={highlighted}
+                    label={commit.sha.slice(0, 7)}
+                    detail={firstLine(commit.message)}
+                    maxWidth={SIDEBAR_ROW_WIDTH}
+                  />
+                </box>
+              );
+            }}
           </For>
         </SidebarScrollBox>
       </EmptyGate>

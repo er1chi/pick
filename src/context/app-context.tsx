@@ -10,6 +10,7 @@ import {
   type ForgeInitializationError,
   type ForgeKind,
 } from "@/services/forge/types";
+import { readGitRemoteOutput } from "@/services/local/local";
 
 interface AppContextBase<T extends ApplicationContext> {
   readonly cwd: string;
@@ -74,55 +75,6 @@ function isGithubRemoteUrl(url: string): boolean {
   return Result.try(() => new URL(url))
     .map(({ hostname }) => hostname.toLowerCase() === "github.com")
     .unwrapOr(false);
-}
-
-enum GitRemoteErrorCode {
-  GitUnavailable = "git-unavailable",
-  GitCommandFailed = "git-command-failed",
-}
-
-type GitRemoteError =
-  | {
-      readonly code: GitRemoteErrorCode.GitUnavailable;
-    }
-  | {
-      readonly code: GitRemoteErrorCode.GitCommandFailed;
-      readonly exitCode: number;
-    };
-
-async function readGitRemoteOutput(
-  cwd: string,
-): Promise<Result<string, GitRemoteError>> {
-  const execution = await Result.tryPromise({
-    try: async () => {
-      const subprocess = Bun.spawn(["git", "remote", "-v"], {
-        cwd,
-        stdin: "ignore",
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-
-      const [stdout, , exitCode] = await Promise.all([
-        new Response(subprocess.stdout).text(),
-        new Response(subprocess.stderr).text(),
-        subprocess.exited,
-      ]);
-
-      return { stdout, exitCode };
-    },
-    catch: (): GitRemoteError => ({
-      code: GitRemoteErrorCode.GitUnavailable,
-    }),
-  });
-
-  return execution.andThen(({ stdout, exitCode }) =>
-    exitCode === 0
-      ? Result.ok(stdout)
-      : Result.err<never, GitRemoteError>({
-          code: GitRemoteErrorCode.GitCommandFailed,
-          exitCode,
-        }),
-  );
 }
 
 export async function initializeAppContext(

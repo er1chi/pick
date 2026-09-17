@@ -20,7 +20,3 @@ export function formatPresentTimestamp(
 
   return localDateTime.format(date);
 }
-
-export function formatTimestamp(value: string | null | undefined): string {
-  return formatPresentTimestamp(value) ?? "—";
-}

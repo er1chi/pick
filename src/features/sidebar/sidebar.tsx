@@ -1,5 +1,6 @@
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import { useBindings } from "@opentui/keymap/solid";
+import { parsePatchFiles } from "@pierre/diffs";
 import type { FileTree as FileTreeModel } from "@pierre/trees";
 import { PaneStore } from "@/context/active-pane-context";
 import { SelectableRow } from "@/features/shared/selectable-row";
@@ -15,22 +16,17 @@ import {
 } from "@/packages/pierre/solid/trees";
 import type {
   ForgeOperationError,
+  ForgeSection,
   PullRequestCommit,
-  PullRequestFile,
   PullRequestSummary,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
-import {
-  For,
-  Show,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-} from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import type { JSX, Setter } from "solid-js";
 
 const SIDEBAR_WIDTH = 32;
+// The sidebar border consumes one column on each side.
+const SIDEBAR_ROW_WIDTH = SIDEBAR_WIDTH - 2;
 
 export interface SidebarProps {
   readonly titles: PrTitles;
@@ -65,9 +61,73 @@ function firstLine(text: string): string {
   return line?.trim() ?? text;
 }
 
-function diffFiles(content: PrViewContent): readonly PullRequestFile[] {
-  const section = content.diff()?.files;
-  return section?.status === "available" ? section.value : [];
+type FilesView =
+  | { readonly kind: "list"; readonly paths: readonly string[] }
+  | { readonly kind: "message"; readonly text: string };
+
+type SectionProblem = Exclude<ForgeSection<unknown>, { status: "available" }>;
+
+function sectionProblemMessage(section: SectionProblem, label: string): string {
+  switch (section.status) {
+    case "unsupported":
+      return section.reason.diagnostic;
+    case "failed":
+      return `Could not load ${label}: ${errorDescription(section.error)}`;
+    case "not-requested":
+      return `${label} are not available.`;
+  }
+}
+
+// When a commit is selected the Files box shows only that commit's patch, so
+// the tree is rebuilt from the patch text rather than the PR-level file list.
+function commitPatchFiles(content: PrViewContent): FilesView {
+  const state = content.commitPatch();
+  if (state.status === "idle" || state.status === "loading") {
+    return { kind: "message", text: "Loading commit files…" };
+  }
+  if (state.status === "error") {
+    return {
+      kind: "message",
+      text: `Could not load commit files: ${errorDescription(state.error)}`,
+    };
+  }
+  const section = state.value;
+  if (section.status === "available") {
+    const paths = parsePatchFiles(section.value.text)
+      .flatMap((entry) => entry.files)
+      .map((file) => file.name);
+    return paths.length === 0
+      ? { kind: "message", text: "This commit has no changed files." }
+      : { kind: "list", paths };
+  }
+  return {
+    kind: "message",
+    text: sectionProblemMessage(section, "commit files"),
+  };
+}
+
+function pullRequestFiles(content: PrViewContent): FilesView {
+  const state = content.diffState();
+  if (state.status === "idle" || state.status === "loading") {
+    return { kind: "message", text: "Loading changed files…" };
+  }
+  if (state.status === "error") {
+    return {
+      kind: "message",
+      text: `Could not load changed files: ${errorDescription(state.error)}`,
+    };
+  }
+  const section = state.value.files;
+  if (section.status === "available") {
+    const paths = section.value.map((file) => file.path);
+    return paths.length === 0
+      ? { kind: "message", text: "No changed files." }
+      : { kind: "list", paths };
+  }
+  return {
+    kind: "message",
+    text: sectionProblemMessage(section, "changed files"),
+  };
 }
 
 function toggleFocusedDirectory(model: FileTreeModel): void {
@@ -81,6 +141,8 @@ interface SidebarBoxProps {
   readonly title: string;
   readonly active: boolean;
   readonly boxRef: Setter<BoxRenderable | undefined>;
+  readonly grow?: number;
+  readonly height?: number;
   readonly children: JSX.Element;
 }
 
@@ -91,9 +153,10 @@ function SidebarBox(props: SidebarBoxProps): JSX.Element {
       focusable
       focused={props.active}
       flexDirection="column"
-      flexGrow={1}
+      flexGrow={props.grow ?? 1}
       flexShrink={1}
       minHeight={0}
+      height={props.height}
       width="100%"
       overflow="hidden"
       border
@@ -178,8 +241,22 @@ function FilesBox(props: SidebarProps): JSX.Element {
   const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
   const focused = () => pane.active === "files";
   const opened = () => props.titles.openedNumber() !== null;
-  const files = createMemo(() => (opened() ? diffFiles(props.content) : []));
-  const paths = createMemo(() => files().map((file) => file.path));
+  const filesView = createMemo<FilesView>(() => {
+    if (!opened()) {
+      return { kind: "list", paths: [] };
+    }
+    return props.content.selectedCommit() === undefined
+      ? pullRequestFiles(props.content)
+      : commitPatchFiles(props.content);
+  });
+  const paths = createMemo(() => {
+    const view = filesView();
+    return view.kind === "list" ? view.paths : [];
+  });
+  const emptyText = () => {
+    const view = filesView();
+    return view.kind === "message" ? view.text : "No changed files.";
+  };
 
   const { model } = useFileTree({ paths: paths() });
   createEffect(() => model.resetPaths(paths()));
@@ -190,27 +267,52 @@ function FilesBox(props: SidebarProps): JSX.Element {
     areVisibleRowsEqual,
   );
 
+  // Keep a keyboard anchor without selecting it: opening a PR must not default
+  // the content selection to the first file.
   createEffect(() => {
-    const unsubscribe = model.subscribe(() => {
-      if (!opened()) {
-        return;
-      }
-      const item = model.getFocusedItem();
-      if (item !== null && !item.isDirectory()) {
-        props.content.selectFile(item.getPath());
-      }
-    });
-    onCleanup(unsubscribe);
+    if (!opened() || rows().length === 0 || model.getFocusedItem() !== null) {
+      return;
+    }
+    model.focusFirstItem();
   });
 
-  createEffect(() => {
-    if (!opened() || rows().length === 0) {
+  function focusedFilePath(): string | undefined {
+    const item = model.getFocusedItem();
+    return item !== null && !item.isDirectory() ? item.getPath() : undefined;
+  }
+
+  function selectFocusedFile(): void {
+    const path = focusedFilePath();
+    if (path !== undefined) {
+      props.content.selectFile(path);
+    }
+  }
+
+  // Opening a PR must not default to the first file, so selection only happens
+  // on explicit navigation. The first move also selects whatever file is
+  // already focused after the content selection was cleared.
+  function moveFocus(offset: number): void {
+    const focusedFile = focusedFilePath();
+    if (
+      props.content.selectedFile() === undefined &&
+      focusedFile !== undefined
+    ) {
+      props.content.selectFile(focusedFile);
       return;
     }
     if (model.getFocusedItem() === null) {
-      model.focusFirstItem();
+      if (offset > 0) {
+        model.focusFirstItem();
+      } else {
+        model.focusLastItem();
+      }
+    } else if (offset > 0) {
+      model.focusNextItem();
+    } else {
+      model.focusPreviousItem();
     }
-  });
+    selectFocusedFile();
+  }
 
   useScrollIntoView(() => {
     const path = props.content.selectedFile();
@@ -222,10 +324,10 @@ function FilesBox(props: SidebarProps): JSX.Element {
   useBindings(() => ({
     target: box,
     bindings: [
-      { key: "j", cmd: () => model.focusNextItem() },
-      { key: "down", cmd: () => model.focusNextItem() },
-      { key: "k", cmd: () => model.focusPreviousItem() },
-      { key: "up", cmd: () => model.focusPreviousItem() },
+      { key: "j", cmd: () => moveFocus(1) },
+      { key: "down", cmd: () => moveFocus(1) },
+      { key: "k", cmd: () => moveFocus(-1) },
+      { key: "up", cmd: () => moveFocus(-1) },
       { key: "return", cmd: () => toggleFocusedDirectory(model) },
       { key: "right", cmd: () => toggleFocusedDirectory(model) },
       { key: "left", cmd: () => model.focusParentItem() },
@@ -237,7 +339,7 @@ function FilesBox(props: SidebarProps): JSX.Element {
       <EmptyGate
         opened={opened()}
         hasItems={rows().length > 0}
-        emptyText="No changed files."
+        emptyText={emptyText()}
       >
         <SidebarScrollBox scrollRef={setScrollBox}>
           <For each={rows()}>
@@ -246,6 +348,7 @@ function FilesBox(props: SidebarProps): JSX.Element {
                 id={`file-${row.path}`}
                 selected={row.isFocused}
                 label={`${fileTreeRowPrefix(row)}${fileTreeRowLabel(row)}`}
+                maxWidth={SIDEBAR_ROW_WIDTH}
               />
             )}
           </For>
@@ -298,7 +401,12 @@ function PullRequestsBox(props: SidebarProps): JSX.Element {
       },
       {
         name: "pr-list.open",
-        run: () => props.titles.openHighlighted(),
+        run: () => {
+          // Reopening, even the same PR, starts from a cleared selection so
+          // the main view returns to the PR-level context.
+          props.content.clearSelection();
+          props.titles.openHighlighted();
+        },
       },
       {
         name: "pr-list.close",
@@ -328,8 +436,31 @@ function PullRequestsBox(props: SidebarProps): JSX.Element {
 
   useFocusWhenActive(focused, box);
 
+  // The box is content-sized so it never claims an equal flex share. Rows are
+  // counted here so the scrollbox still has a definite height to scroll in
+  // when a constrained terminal forces the box to shrink.
+  function bodyRowCount(): number {
+    if (listIsPending(props.titles)) {
+      return 1;
+    }
+    if (listError(props.titles) !== undefined) {
+      return 3;
+    }
+    const count = listItems(props.titles).length;
+    if (count === 0) {
+      return 1;
+    }
+    return count + (listIsTruncated(props.titles) ? 1 : 0);
+  }
+
   return (
-    <SidebarBox title="[1] Pull Requests" active={focused()} boxRef={setBox}>
+    <SidebarBox
+      title="[2] Pull Requests"
+      active={focused()}
+      boxRef={setBox}
+      grow={0}
+      height={3 + bodyRowCount()}
+    >
       <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1}>
         <text fg={props.titles.filter() === "open" ? colors.blue : colors.dim}>
           <strong>[O]pen</strong>
@@ -345,22 +476,32 @@ function PullRequestsBox(props: SidebarProps): JSX.Element {
       </box>
       <Show
         when={!listIsPending(props.titles)}
-        fallback={<text fg={colors.muted}>Loading pull requests…</text>}
+        fallback={
+          <text fg={colors.muted} wrapMode="none">
+            Loading pull requests…
+          </text>
+        }
       >
         <Show
           when={listError(props.titles) === undefined}
           fallback={
             <box flexDirection="column" paddingLeft={1} paddingRight={1}>
-              <text fg={colors.yellow}>Could not load pull requests.</text>
-              <text fg={colors.dim}>{listError(props.titles)}</text>
-              <text fg={colors.muted}>Press R to retry.</text>
+              <text fg={colors.yellow} wrapMode="none">
+                Could not load pull requests.
+              </text>
+              <text fg={colors.dim} wrapMode="none">
+                {listError(props.titles)}
+              </text>
+              <text fg={colors.muted} wrapMode="none">
+                Press R to retry.
+              </text>
             </box>
           }
         >
           <Show
             when={listItems(props.titles).length > 0}
             fallback={
-              <text fg={colors.muted}>
+              <text fg={colors.muted} wrapMode="none">
                 No pull requests found for this repository.
               </text>
             }
@@ -375,11 +516,14 @@ function PullRequestsBox(props: SidebarProps): JSX.Element {
                     }
                     label={`#${summary.number}`}
                     detail={firstLine(summary.title)}
+                    maxWidth={SIDEBAR_ROW_WIDTH}
                   />
                 )}
               </For>
               <Show when={listIsTruncated(props.titles)}>
-                <text fg={colors.dim}>More pull requests are available.</text>
+                <text fg={colors.dim} wrapMode="none">
+                  More pull requests are available.
+                </text>
               </Show>
             </SidebarScrollBox>
           </Show>
@@ -399,23 +543,6 @@ function CommitsBox(props: SidebarProps): JSX.Element {
     opened() ? props.content.commits() : [],
   );
 
-  const selectedIndex = createMemo(() => {
-    const sha = props.content.selectedCommit();
-    const index = commits().findIndex((commit) => commit.sha === sha);
-    return index < 0 ? 0 : index;
-  });
-
-  createEffect(() => {
-    if (!opened()) {
-      return;
-    }
-    const list = commits();
-    if (list.length === 0 || props.content.selectedCommit() !== undefined) {
-      return;
-    }
-    props.content.selectCommit(list[0]?.sha);
-  });
-
   useScrollIntoView(() => {
     const sha = props.content.selectedCommit();
     return sha === undefined ? undefined : `commit-${sha}`;
@@ -426,8 +553,14 @@ function CommitsBox(props: SidebarProps): JSX.Element {
     if (list.length === 0) {
       return;
     }
+    const current = props.content.selectedCommit();
+    if (current === undefined) {
+      props.content.selectCommit(list[0]?.sha);
+      return;
+    }
+    const index = list.findIndex((commit) => commit.sha === current);
     const next = Math.min(
-      Math.max(selectedIndex() + offset, 0),
+      Math.max((index < 0 ? 0 : index) + offset, 0),
       list.length - 1,
     );
     props.content.selectCommit(list[next]?.sha);
@@ -446,7 +579,7 @@ function CommitsBox(props: SidebarProps): JSX.Element {
   useFocusWhenActive(focused, box);
 
   return (
-    <SidebarBox title="[2] Commits" active={focused()} boxRef={setBox}>
+    <SidebarBox title="[1] Commits" active={focused()} boxRef={setBox}>
       <EmptyGate
         opened={opened()}
         hasItems={commits().length > 0}
@@ -460,6 +593,7 @@ function CommitsBox(props: SidebarProps): JSX.Element {
                 selected={commit.sha === props.content.selectedCommit()}
                 label={commit.sha.slice(0, 7)}
                 detail={firstLine(commit.message)}
+                maxWidth={SIDEBAR_ROW_WIDTH}
               />
             )}
           </For>
@@ -476,17 +610,17 @@ export function Sidebar(props: SidebarProps) {
   useBindings(() => ({
     commands: [
       { name: "pane.files", run: () => setPane({ active: "files" }) },
+      { name: "pane.commits", run: () => setPane({ active: "commits" }) },
       {
         name: "pane.pull-requests",
         run: () => setPane({ active: "pull-requests" }),
       },
-      { name: "pane.commits", run: () => setPane({ active: "commits" }) },
       { name: "pane.content", run: () => setPane({ active: "content" }) },
     ],
     bindings: [
       { key: "0", cmd: "pane.files" },
-      { key: "1", cmd: "pane.pull-requests" },
-      { key: "2", cmd: "pane.commits" },
+      { key: "1", cmd: "pane.commits" },
+      { key: "2", cmd: "pane.pull-requests" },
       { key: "3", cmd: "pane.content" },
     ],
   }));
@@ -504,8 +638,8 @@ export function Sidebar(props: SidebarProps) {
       gap={0}
     >
       <FilesBox titles={props.titles} content={props.content} />
-      <PullRequestsBox titles={props.titles} content={props.content} />
       <CommitsBox titles={props.titles} content={props.content} />
+      <PullRequestsBox titles={props.titles} content={props.content} />
     </box>
   );
 }

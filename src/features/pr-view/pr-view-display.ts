@@ -6,9 +6,7 @@ import {
   type PullRequestComment,
   type PullRequestCommit,
   type PullRequestDetails,
-  type PullRequestFile,
   type PullRequestLinkedIssue,
-  type PullRequestPatch,
   type PullRequestProject,
   type PullRequestRef,
   type PullRequestReview,
@@ -77,12 +75,6 @@ export function isRenderableReviewerRequests(
   return isRenderableSection(section, isEmptyReviewerRequests);
 }
 
-export function isRenderablePatch(
-  section: ForgeSection<PullRequestPatch>,
-): boolean {
-  return isRenderableSection(section, isEmptyPatch);
-}
-
 export function collectionAvailability<T>(
   section: ForgeSection<readonly T[]>,
 ): string {
@@ -98,12 +90,6 @@ export function reviewerAvailability(
   );
 }
 
-export function patchAvailability(
-  section: ForgeSection<PullRequestPatch>,
-): string {
-  return sectionAvailability(section, (value) => `${value.byteLength} bytes`);
-}
-
 export function reviewerNames(
   section: ForgeSection<PullRequestReviewerRequests>,
 ): string | undefined {
@@ -111,18 +97,6 @@ export function reviewerNames(
     return undefined;
   }
   return joinPresent(reviewerNameList(section.value), ", ");
-}
-
-export function availablePatchText(
-  section: ForgeSection<PullRequestPatch>,
-): string | undefined {
-  if (section.status !== "available") {
-    return undefined;
-  }
-  if (presentText(section.value.text) === undefined) {
-    return undefined;
-  }
-  return section.value.text;
 }
 
 export function overviewMetaLine(
@@ -193,18 +167,6 @@ export function commitMetaLine(commit: PullRequestCommit): string | undefined {
 
 export function commitMessage(commit: PullRequestCommit): string | undefined {
   return presentText(commit.message);
-}
-
-export function fileLine(file: PullRequestFile): string | undefined {
-  const counts = countsText(file.additions, file.deletions);
-  return joinPresent(
-    [
-      presentText(file.status),
-      presentText(file.path),
-      counts === undefined ? undefined : `(${counts})`,
-    ],
-    " ",
-  );
 }
 
 export function checkLine(check: PullRequestCheck): string | undefined {
@@ -432,10 +394,6 @@ function isEmptyCollection<T>(value: readonly T[]): boolean {
 
 function isEmptyReviewerRequests(value: PullRequestReviewerRequests): boolean {
   return reviewerNameList(value).length === 0;
-}
-
-function isEmptyPatch(value: PullRequestPatch): boolean {
-  return presentText(value.text) === undefined;
 }
 
 function isRenderableSection<T>(

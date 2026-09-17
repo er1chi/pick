@@ -53,7 +53,7 @@ function repositoryFooterBindings(
   }
 
   const base: readonly FooterBinding[] = [
-    { key: "0/1/2/3", label: "Files/PRs/Commits/Main" },
+    { key: "0/1/2/3", label: "Files/Commits/PRs/Main" },
     { key: "Ctrl+Q", label: "Quit" },
   ];
 
@@ -68,21 +68,20 @@ function repositoryFooterBindings(
         { key: "R", label: "Reload list" },
       ];
     case "files":
-    case "commits":
       return [
         ...base,
-        { key: "j/k", label: "Navigate" },
-        { key: "Enter", label: "Open PR" },
-        { key: "x", label: "Close PR" },
+        { key: "j/k", label: "Navigate/select file" },
+        { key: "Enter", label: "Toggle folder" },
       ];
+    case "commits":
+      return [...base, { key: "j/k", label: "Navigate/select commit" }];
     case "content":
       return [
         ...base,
-        { key: "h/l", label: "PR tabs" },
         { key: "j/k", label: "Scroll" },
-        { key: "Enter", label: "Open PR" },
+        { key: "r", label: "Retry" },
+        { key: "e", label: "Reveal lock files" },
         { key: "x", label: "Close PR" },
-        { key: "r", label: "Reload tab" },
       ];
   }
 }

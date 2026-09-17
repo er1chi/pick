@@ -1,5 +1,7 @@
 import { basename } from "node:path";
 import type { RepositoryAppContextState } from "@/context/app-context";
+import { PaneStore } from "@/context/active-pane-context";
+import type { LoadState } from "@/features/pr-view/load-state";
 import {
   checkLine,
   collectionAvailability,
@@ -24,13 +26,7 @@ import {
   reviewerNames,
 } from "@/features/pr-view/pr-view-display";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
-import {
-  pullRequestTabs,
-  type DetailsLoadState,
-  type OverviewLoadState,
-  type PrViewContent,
-  type PullRequestTab,
-} from "@/features/pr-view/use-pr-view-content";
+import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import {
   ApplicationContext,
   ForgeInitializationErrorCode,
@@ -40,21 +36,21 @@ import {
   type PullRequestCommit,
   type PullRequestComment,
   type PullRequestDetails,
-  type PullRequestDiffResource,
   type PullRequestLinkedIssue,
   type PullRequestOverview,
+  type PullRequestPatch,
   type PullRequestProject,
-  type PullRequestResource,
   type PullRequestReview,
   type PullRequestReviewComment,
   type PullRequestReviewerRequests,
   type PullRequestSummary,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
-import { moveInList } from "@/utils/navigation";
+import { formatPresentTimestamp } from "@/utils/format-timestamp";
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { useBindings } from "@opentui/keymap/solid";
+import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import {
   For,
   Show,
@@ -64,12 +60,7 @@ import {
   on,
 } from "solid-js";
 import type { Accessor } from "solid-js";
-import { PaneStore } from "@/context/active-pane-context";
-import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
-import {
-  type DisplayRowKind,
-  flattenHunks,
-} from "@/packages/pierre/solid/diffs";
+import { SplitFileDiff } from "@/packages/pierre/solid/diffs";
 
 export interface PrViewProps {
   readonly state: RepositoryAppContextState;
@@ -109,43 +100,18 @@ function arrayItems<T>(section: ForgeSection<readonly T[]>): readonly T[] {
   return section.status === "available" ? section.value : [];
 }
 
-function overviewValue(
-  state: OverviewLoadState,
-): PullRequestOverview | undefined {
+function detailsValue(
+  state: LoadState<PullRequestDetails>,
+): PullRequestDetails | undefined {
   return state.value;
 }
 
-function overviewError(state: OverviewLoadState): string | undefined {
+function detailsError(
+  state: LoadState<PullRequestDetails>,
+): string | undefined {
   return state.status === "error"
     ? operationErrorDescription(state.error)
     : undefined;
-}
-
-function detailsValue(state: DetailsLoadState): PullRequestDetails | undefined {
-  return state.value;
-}
-
-function detailsError(state: DetailsLoadState): string | undefined {
-  return state.status === "error"
-    ? operationErrorDescription(state.error)
-    : undefined;
-}
-
-function tabLabel(tab: PullRequestTab): string {
-  switch (tab) {
-    case "overview":
-      return "Overview";
-    case "diff":
-      return "Files changed";
-    case "commits":
-      return "Commits";
-    case "reviews":
-      return "Reviews";
-    case "checks":
-      return "Checks";
-    case "development":
-      return "Development";
-  }
 }
 
 function sectionHeading(label: string, status: string): JSX.Element {
@@ -328,78 +294,102 @@ function renderDevelopment(
   );
 }
 
-function renderResource(resource: PullRequestResource): JSX.Element {
-  switch (resource.kind) {
-    case "details":
-      return <></>;
-    case "diff":
-      // Files changed and Commits are loaded independently and rendered by
-      // their dedicated panes; the shared resource never carries them here.
-      return <></>;
-    case "commits":
-      return <></>;
-    case "reviews":
-      return renderReviews(
-        resource.value.reviews,
-        resource.value.reviewComments,
-        resource.value.requestedReviewers,
-      );
-    case "checks":
-      return renderChecks(resource.value.checks);
-    case "development":
-      return renderDevelopment(
-        resource.value.projects,
-        resource.value.linkedIssues,
-      );
-  }
+interface ResourceSectionProps<T> {
+  readonly label: string;
+  readonly state: LoadState<T>;
+  readonly render: (value: T) => JSX.Element;
 }
 
-function resourceError(content: PrViewContent): string | undefined {
-  const state = content.resource();
-  return state.status === "error"
-    ? operationErrorDescription(state.error)
-    : undefined;
-}
+/**
+ * Renders one independent PR section. Loading and query-level errors are shown
+ * here; per-collection failure/unsupported states are handled by the section
+ * renderers through their ForgeSection values.
+ */
+function ResourceSection<T>(props: ResourceSectionProps<T>): JSX.Element {
+  const error = (): string | undefined =>
+    props.state.status === "error"
+      ? operationErrorDescription(props.state.error)
+      : undefined;
 
-function renderTabs(content: PrViewContent): JSX.Element {
   return (
-    <box flexDirection="row" gap={2} width="100%" flexGrow={0} flexShrink={0}>
-      <For each={pullRequestTabs}>
-        {(tab) => (
-          <text fg={content.activeTab() === tab ? colors.blue : colors.muted}>
-            <strong>{tabLabel(tab)}</strong>
-          </text>
-        )}
-      </For>
-      <box flexGrow={1} />
-      <text fg={colors.red}>[x] Close PR</text>
-    </box>
-  );
-}
-
-function renderResourceTab(content: PrViewContent): JSX.Element {
-  return (
-    <>
-      <Show when={content.resource().status === "loading"}>
-        <text fg={colors.muted}>
-          Loading {tabLabel(content.activeTab()).toLowerCase()}…
-        </text>
+    <box flexDirection="column" gap={0}>
+      <Show when={props.state.status === "loading"}>
+        <text fg={colors.muted}>Loading {props.label}…</text>
       </Show>
-      <Show when={resourceError(content)}>
-        {(error: Accessor<string>) => (
+      <Show when={error()}>
+        {(text: Accessor<string>) => (
           <box flexDirection="column">
-            <text fg={colors.yellow}>
-              Could not load {tabLabel(content.activeTab()).toLowerCase()}.
-            </text>
-            <text fg={colors.dim}>{error()}</text>
+            <text fg={colors.yellow}>Could not load {props.label}.</text>
+            <text fg={colors.dim}>{text()}</text>
             <text fg={colors.muted}>Press r to retry.</text>
           </box>
         )}
       </Show>
-      <Show keyed when={content.resource().value}>
-        {(value: PullRequestResource) => renderResource(value)}
+      <Show keyed when={props.state.value}>
+        {(value: T) => props.render(value)}
       </Show>
-    </>
+    </box>
+  );
+}
+
+interface OverviewScreenProps {
+  readonly content: PrViewContent;
+  readonly summary: Accessor<PullRequestSummary | undefined>;
+}
+
+function OverviewScreen(props: OverviewScreenProps): JSX.Element {
+  return (
+    <box flexDirection="column" gap={1} width="100%">
+      <ResourceSection
+        label="pull request overview"
+        state={props.content.overview()}
+        render={(overview) => (
+          <Show keyed when={props.summary()}>
+            {(item: PullRequestSummary) => renderOverview(item, overview)}
+          </Show>
+        )}
+      />
+      <ResourceSection
+        label="reviews"
+        state={props.content.reviews()}
+        render={(resource) =>
+          resource.kind === "reviews" ? (
+            renderReviews(
+              resource.value.reviews,
+              resource.value.reviewComments,
+              resource.value.requestedReviewers,
+            )
+          ) : (
+            <></>
+          )
+        }
+      />
+      <ResourceSection
+        label="checks"
+        state={props.content.checks()}
+        render={(resource) =>
+          resource.kind === "checks" ? (
+            renderChecks(resource.value.checks)
+          ) : (
+            <></>
+          )
+        }
+      />
+      <ResourceSection
+        label="development"
+        state={props.content.development()}
+        render={(resource) =>
+          resource.kind === "development" ? (
+            renderDevelopment(
+              resource.value.projects,
+              resource.value.linkedIssues,
+            )
+          ) : (
+            <></>
+          )
+        }
+      />
+    </box>
   );
 }
 
@@ -436,107 +426,83 @@ function parseFileDiffs(text: string | undefined): readonly FileDiffMetadata[] {
   return parsePatchFiles(text).flatMap((entry) => entry.files);
 }
 
-function patchText(
-  section: ForgeSection<{ readonly text: string }> | undefined,
-): string | undefined {
-  return section?.status === "available" ? section.value.text : undefined;
-}
-
-function fileDiffsForPath(
-  resource: PullRequestDiffResource | undefined,
+function fileDiffsForPatch(
+  section: ForgeSection<PullRequestPatch> | undefined,
   path: string | undefined,
 ): readonly FileDiffMetadata[] {
-  if (resource === undefined || path === undefined) {
+  if (path === undefined) {
     return [];
   }
-  const fileDiff = parseFileDiffs(patchText(resource.patch)).find(
+  const text = section?.status === "available" ? section.value.text : undefined;
+  const fileDiff = parseFileDiffs(text).find(
     (candidate) => candidate.name === path || candidate.prevName === path,
   );
   return fileDiff === undefined ? [] : [fileDiff];
 }
 
-function diffRowColor(kind: DisplayRowKind): string {
-  switch (kind) {
-    case "addition":
-      return colors.green;
-    case "deletion":
-      return colors.red;
-    case "hunk-header":
-      return colors.dim;
+function patchSectionNotice(
+  section: ForgeSection<PullRequestPatch>,
+): string | undefined {
+  switch (section.status) {
+    case "unsupported":
+      return section.reason.diagnostic;
+    case "failed":
+      return `Could not load patch: ${operationErrorDescription(section.error)}`;
     default:
-      return colors.foreground;
+      return undefined;
   }
-}
-
-function diffRowMarker(kind: DisplayRowKind): string {
-  switch (kind) {
-    case "addition":
-      return "+";
-    case "deletion":
-      return "-";
-    default:
-      return " ";
-  }
-}
-
-function DiffRows(props: { fileDiff: FileDiffMetadata }): JSX.Element {
-  return (
-    <For each={flattenHunks(props.fileDiff)}>
-      {(row) => (
-        <text fg={diffRowColor(row.kind)}>
-          {`${diffRowMarker(row.kind)}${row.text}`}
-        </text>
-      )}
-    </For>
-  );
 }
 
 const lockedNotice =
   "Lock file contents are hidden by default. Press e to show them.";
 
-function renderPatchFiles(
-  fileDiffs: readonly FileDiffMetadata[],
-  revealLocked: boolean,
-): JSX.Element {
-  return (
-    <For each={fileDiffs}>
-      {(fileDiff) => (
-        <box flexDirection="column" width="100%">
-          <text fg={colors.foreground}>{fileDiffName(fileDiff)}</text>
-          <Show
-            when={revealLocked || !isLockFile(fileDiff.name)}
-            fallback={<text fg={colors.dim}>{lockedNotice}</text>}
-          >
-            <DiffRows fileDiff={fileDiff} />
-          </Show>
-        </box>
-      )}
-    </For>
-  );
-}
-
-interface DetailPaneProps {
-  readonly header: Accessor<string>;
-  readonly notice: Accessor<string | undefined>;
-  readonly revealLocked: Accessor<boolean>;
-  readonly fileDiffs: Accessor<readonly FileDiffMetadata[]>;
-  readonly setDetailScroll: (element: ScrollBoxRenderable) => void;
-  readonly above: Accessor<JSX.Element | undefined>;
-}
-
-interface DetailPaneHostProps {
+interface SelectedDiffProps {
   readonly content: PrViewContent;
-  readonly revealLocked: Accessor<boolean>;
-  readonly setDetailScroll: (element: ScrollBoxRenderable) => void;
+  readonly path: string;
+  readonly revealLocked: boolean;
+  readonly setDiffScroll: (element: ScrollBoxRenderable) => void;
 }
 
-interface DetailView {
-  readonly header: Accessor<string>;
-  readonly notice: Accessor<string | undefined>;
-  readonly fileDiffs: Accessor<readonly FileDiffMetadata[]>;
-}
+function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
+  const fromCommit = () => props.content.selectedCommit() !== undefined;
+  const fileDiffs = createMemo(() =>
+    fromCommit()
+      ? fileDiffsForPatch(props.content.commitPatch().value, props.path)
+      : fileDiffsForPatch(props.content.diff()?.patch, props.path),
+  );
 
-function DetailPane(props: DetailPaneProps): JSX.Element {
+  const notice = (): string | undefined => {
+    if (fromCommit()) {
+      const state = props.content.commitPatch();
+      if (state.status === "loading") {
+        return "Loading commit diff…";
+      }
+      if (state.status === "error") {
+        return `Could not load commit diff: ${operationErrorDescription(state.error)}`;
+      }
+      if (state.value === undefined) {
+        return "Loading commit diff…";
+      }
+      const sectionNotice = patchSectionNotice(state.value);
+      if (sectionNotice !== undefined) {
+        return sectionNotice;
+      }
+    } else {
+      const diff = props.content.diff();
+      if (diff === undefined) {
+        return "Loading pull request diff…";
+      }
+      const sectionNotice = patchSectionNotice(diff.patch);
+      if (sectionNotice !== undefined) {
+        return sectionNotice;
+      }
+    }
+    if (fileDiffs().length === 0) {
+      return "No patch is available for the selected file.";
+    }
+    return undefined;
+  };
+
   return (
     <box
       flexDirection="column"
@@ -545,18 +511,33 @@ function DetailPane(props: DetailPaneProps): JSX.Element {
       minHeight={0}
       width="100%"
     >
-      <text fg={colors.dim}>{props.header()}</text>
+      <text fg={colors.dim}>
+        {fromCommit()
+          ? `Commit diff · ${props.path}`
+          : `Pull request diff · ${props.path}`}
+      </text>
       <Show
-        when={props.notice()}
+        when={notice()}
         fallback={
           <scrollbox
-            ref={props.setDetailScroll}
+            ref={props.setDiffScroll}
             flexGrow={1}
             minHeight={0}
             width="100%"
           >
-            {props.above()}
-            {renderPatchFiles(props.fileDiffs(), props.revealLocked())}
+            <For each={fileDiffs()}>
+              {(fileDiff) => (
+                <box flexDirection="column" width="100%">
+                  <text fg={colors.foreground}>{fileDiffName(fileDiff)}</text>
+                  <Show
+                    when={props.revealLocked || !isLockFile(fileDiff.name)}
+                    fallback={<text fg={colors.dim}>{lockedNotice}</text>}
+                  >
+                    <SplitFileDiff fileDiff={fileDiff} />
+                  </Show>
+                </box>
+              )}
+            </For>
           </scrollbox>
         }
       >
@@ -566,149 +547,79 @@ function DetailPane(props: DetailPaneProps): JSX.Element {
   );
 }
 
-function mainDetailPane(
-  props: DetailPaneHostProps,
-  view: DetailView,
-  above: Accessor<JSX.Element | undefined>,
-): JSX.Element {
-  return (
-    <DetailPane
-      header={view.header}
-      notice={view.notice}
-      revealLocked={props.revealLocked}
-      fileDiffs={view.fileDiffs}
-      setDetailScroll={props.setDetailScroll}
-      above={above}
-    />
-  );
-}
-
-function FilesChangedPane(props: DetailPaneHostProps): JSX.Element {
-  const diff = () => props.content.diff();
-  const diffState = () => props.content.diffState();
-  const fileDiffs = createMemo(() =>
-    fileDiffsForPath(diff(), props.content.selectedFile()),
-  );
-
-  const notice = (): string | undefined => {
-    const state = diffState();
-    if (state.status === "loading") {
-      return "Loading files changed…";
-    }
-    if (state.status === "error") {
-      return `Could not load files changed: ${operationErrorDescription(state.error)}`;
-    }
-    const patch = state.value?.patch;
-    if (patch?.status === "failed") {
-      return `Could not load files changed: ${operationErrorDescription(patch.error)}`;
-    }
-    if (patch?.status === "unsupported") {
-      return patch.reason.diagnostic;
-    }
-    if (props.content.selectedFile() === undefined) {
-      return "Select a file in the sidebar to view its changes.";
-    }
-    if (fileDiffs().length === 0) {
-      return "No patch is available for the selected file.";
-    }
-    return undefined;
-  };
-
-  const header = (): string => {
-    const path = props.content.selectedFile();
-    return path === undefined ? "Files changed" : `Files changed · ${path}`;
-  };
-
-  return mainDetailPane(props, { header, notice, fileDiffs }, () => undefined);
-}
-
-function CommitsPane(props: DetailPaneHostProps): JSX.Element {
-  const commits = (): readonly PullRequestCommit[] => props.content.commits();
-  const commitsState = () => props.content.commitsState();
-
-  const selectedCommit = createMemo(() => {
-    const sha = props.content.selectedCommit();
-    if (sha === undefined) {
-      return undefined;
-    }
-    return commits().find((commit) => commit.sha === sha);
-  });
-
-  const fileDiffs = createMemo(() =>
-    parseFileDiffs(patchText(props.content.commitPatch().value)),
-  );
-
-  const notice = (): string | undefined => {
-    const state = commitsState();
-    if (state.status === "loading") {
-      return "Loading commits…";
-    }
-    if (state.status === "error") {
-      return `Could not load commits: ${operationErrorDescription(state.error)}`;
-    }
-    const section = state.value;
-    if (section?.status === "failed") {
-      return `Could not load commits: ${operationErrorDescription(section.error)}`;
-    }
-    if (section?.status === "unsupported") {
-      return section.reason.diagnostic;
-    }
-    if (selectedCommit() === undefined) {
-      return "Select a commit in the sidebar to view it.";
-    }
-    const patch = props.content.commitPatch();
-    if (patch.status === "loading") {
-      return "Loading commit…";
-    }
-    if (patch.status === "error") {
-      return `Could not load commit: ${operationErrorDescription(patch.error)}`;
-    }
-    if (patch.value === undefined) {
-      return "Select a commit in the sidebar to view it.";
-    }
-    if (patch.value.status === "failed") {
-      return `Could not load commit: ${operationErrorDescription(patch.value.error)}`;
-    }
-    if (patch.value.status === "unsupported") {
-      return patch.value.reason.diagnostic;
-    }
-    return undefined;
-  };
-
-  const header = (): string => {
-    const commit = selectedCommit();
-    const meta = commit === undefined ? undefined : commitMetaLine(commit);
-    return meta === undefined ? "Commits" : `Commits · ${meta}`;
-  };
-
-  const commitDetail = () => {
-    const commit = selectedCommit();
-    if (commit === undefined) {
-      return undefined;
-    }
-    return (
-      <box flexDirection="column" width="100%">
-        <text fg={colors.foreground}>
-          <strong>{commitMessage(commit)}</strong>
-        </text>
-        <text fg={colors.muted}>{commitMetaLine(commit)}</text>
-        <text fg={colors.dim}>{commit.sha}</text>
-      </box>
-    );
-  };
-
-  return mainDetailPane(props, { header, notice, fileDiffs }, commitDetail);
-}
-
-function paneHint(tab: PullRequestTab): string {
-  switch (tab) {
-    case "diff":
-      return "j/k scroll · h/l tabs · e lock files · x close PR";
-    case "commits":
-      return "j/k scroll · h/l tabs · x close PR";
-    default:
-      return "h/l switch tabs · r reloads · x close PR";
+function commitMessageLines(
+  commit: PullRequestCommit | undefined,
+): readonly string[] {
+  const message = commit === undefined ? undefined : commitMessage(commit);
+  if (message === undefined) {
+    return [];
   }
+  return message.split(/\r?\n/);
+}
+
+interface CommitContextProps {
+  readonly sha: string;
+  readonly commit: PullRequestCommit | undefined;
+  readonly hasFile: boolean;
+}
+
+function CommitContext(props: CommitContextProps): JSX.Element {
+  const author = () => presentText(props.commit?.author?.login);
+  const committer = () => presentText(props.commit?.committer?.login);
+  const authoredAt = () => formatPresentTimestamp(props.commit?.authoredAt);
+  const committedAt = () => formatPresentTimestamp(props.commit?.committedAt);
+  const url = () => presentText(props.commit?.url);
+
+  return (
+    <box
+      flexDirection="column"
+      width="100%"
+      gap={0}
+      flexGrow={0}
+      flexShrink={0}
+    >
+      <text fg={colors.foreground}>
+        <strong>Commit {props.sha}</strong>
+      </text>
+      <Show when={props.commit}>
+        {(commit: Accessor<PullRequestCommit>) =>
+          renderMutedLine(commitMetaLine(commit()))
+        }
+      </Show>
+      <Show when={props.commit === undefined}>
+        <text fg={colors.dim}>Loading commit metadata…</text>
+      </Show>
+      <For each={commitMessageLines(props.commit)}>
+        {(line) => <text fg={colors.foreground}>{line}</text>}
+      </For>
+      <Show when={author()}>
+        {(value: Accessor<string>) => (
+          <text fg={colors.muted}>Author: {value()}</text>
+        )}
+      </Show>
+      <Show when={committer()}>
+        {(value: Accessor<string>) => (
+          <text fg={colors.muted}>Committer: {value()}</text>
+        )}
+      </Show>
+      <Show when={authoredAt()}>
+        {(value: Accessor<string>) => (
+          <text fg={colors.muted}>Authored: {value()}</text>
+        )}
+      </Show>
+      <Show when={committedAt()}>
+        {(value: Accessor<string>) => (
+          <text fg={colors.muted}>Committed: {value()}</text>
+        )}
+      </Show>
+      <Show when={url()}>
+        {(value: Accessor<string>) => <text fg={colors.muted}>{value()}</text>}
+      </Show>
+      <Show when={props.hasFile}>
+        <text fg={colors.dim}>The diff below is from this commit.</text>
+      </Show>
+    </box>
+  );
 }
 
 function NoPullRequest(props: {
@@ -718,7 +629,9 @@ function NoPullRequest(props: {
   return (
     <box flexDirection="column" gap={1}>
       <Show when={props.state.kind === ApplicationContext.Local}>
-        <text fg={colors.yellow}>Status: Local Git repository</text>
+        <text fg={colors.yellow}>
+          <strong>Context: Local Git repository</strong>
+        </text>
         <text fg={colors.muted}>
           Add a GitHub or Forgejo remote to initialize it.
         </text>
@@ -726,7 +639,9 @@ function NoPullRequest(props: {
       <Show when={forgeError()}>
         {(error: Accessor<ForgeInitializationError>) => (
           <>
-            <text fg={colors.yellow}>Status: CLI initialization error</text>
+            <text fg={colors.yellow}>
+              <strong>Context: CLI initialization error</strong>
+            </text>
             <text fg={colors.muted}>
               {initializationErrorDescription(error())}
             </text>
@@ -739,6 +654,9 @@ function NoPullRequest(props: {
           forgeError() === undefined
         }
       >
+        <text fg={colors.yellow}>
+          <strong>Context: No pull request open</strong>
+        </text>
         <text fg={colors.muted}>
           Select a pull request in the sidebar and press enter to open it.
         </text>
@@ -750,15 +668,12 @@ function NoPullRequest(props: {
 export function PrView(props: PrViewProps) {
   const [pane, setPane] = PaneStore.use();
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
-  const [bodyScroll, setBodyScroll] = createSignal<
+  const [overviewScroll, setOverviewScroll] = createSignal<
     ScrollBoxRenderable | undefined
   >();
-  const [detailScroll, setDetailScrollSignal] = createSignal<
+  const [diffScroll, setDiffScroll] = createSignal<
     ScrollBoxRenderable | undefined
   >();
-  const setDetailScroll = (element: ScrollBoxRenderable): void => {
-    setDetailScrollSignal(element);
-  };
   const [revealLocked, setRevealLocked] = createSignal(false);
   const focused = () => pane.active === "content";
   const currentState = () => props.state;
@@ -775,10 +690,17 @@ export function PrView(props: PrViewProps) {
       .list()
       .value?.items.find((item) => item.number === number);
   };
-  const currentOverview = () => overviewValue(props.content.overview());
-  const overviewLoading = () => props.content.overview().status === "loading";
   const currentDetails = () => detailsValue(props.content.details());
   const detailsLoading = () => props.content.details().status === "loading";
+  const selectedFile = () => props.content.selectedFile();
+  const selectedCommit = () => props.content.selectedCommit();
+  const selectedCommitValue = createMemo(() => {
+    const sha = selectedCommit();
+    if (sha === undefined) {
+      return undefined;
+    }
+    return props.content.commits().find((commit) => commit.sha === sha);
+  });
   const headerRepositoryName = () =>
     presentRepositoryName(
       currentDetails()?.repository.fullName,
@@ -799,38 +721,37 @@ export function PrView(props: PrViewProps) {
     return `${number ?? "none"}:${detailsKey}:${titleLine() ?? ""}:${headerRepositoryName()}`;
   };
 
-  const closeOpened = (): void => {
-    props.titles.closeOpened();
-    setPane({ active: "pull-requests" });
+  const contextBanner = (): string => {
+    const commit = selectedCommit();
+    const path = selectedFile();
+    if (commit !== undefined && path !== undefined) {
+      return `Context: Commit ${commit} · File ${path}`;
+    }
+    if (commit !== undefined) {
+      return `Context: Commit ${commit}`;
+    }
+    if (path !== undefined) {
+      return `Context: Pull request · File ${path}`;
+    }
+    return "Context: Pull request";
   };
 
-  const detailPaneProps = {
-    content: props.content,
-    revealLocked,
-    setDetailScroll,
+  const activeScroll = () =>
+    selectedFile() === undefined ? overviewScroll() : diffScroll();
+
+  const closeOpened = (): void => {
+    props.content.clearSelection();
+    props.titles.closeOpened();
+    setPane({ active: "pull-requests" });
   };
 
   useBindings(() => ({
     target: contentBox,
     commands: [
       {
-        name: "pr-view.tab-previous",
-        run: () =>
-          props.content.selectTab(
-            moveInList(pullRequestTabs, props.content.activeTab(), -1),
-          ),
-      },
-      {
-        name: "pr-view.tab-next",
-        run: () =>
-          props.content.selectTab(
-            moveInList(pullRequestTabs, props.content.activeTab(), 1),
-          ),
-      },
-      {
         name: "pr-view.scroll-down",
         run: () => {
-          const element = detailScroll() ?? bodyScroll();
+          const element = activeScroll();
           if (element !== undefined) {
             element.scrollTop += 1;
           }
@@ -839,7 +760,7 @@ export function PrView(props: PrViewProps) {
       {
         name: "pr-view.scroll-up",
         run: () => {
-          const element = detailScroll() ?? bodyScroll();
+          const element = activeScroll();
           if (element !== undefined) {
             element.scrollTop -= 1;
           }
@@ -861,8 +782,6 @@ export function PrView(props: PrViewProps) {
       },
     ],
     bindings: [
-      { key: "h", cmd: "pr-view.tab-previous" },
-      { key: "l", cmd: "pr-view.tab-next" },
       { key: "j", cmd: "pr-view.scroll-down" },
       { key: "k", cmd: "pr-view.scroll-up" },
       { key: "r", cmd: "pr-view.retry" },
@@ -875,7 +794,7 @@ export function PrView(props: PrViewProps) {
     if (!focused()) {
       return;
     }
-    const scroll = bodyScroll();
+    const scroll = activeScroll();
     if (scroll !== undefined) {
       scroll.focus();
       return;
@@ -885,10 +804,9 @@ export function PrView(props: PrViewProps) {
 
   createEffect(
     on(
-      () => props.content.activeTab(),
+      () => `${selectedFile() ?? ""}|${selectedCommit() ?? ""}`,
       () => {
-        setDetailScrollSignal(undefined);
-        const scroll = bodyScroll();
+        const scroll = activeScroll();
         if (scroll !== undefined) {
           scroll.scrollTop = 0;
         }
@@ -920,82 +838,91 @@ export function PrView(props: PrViewProps) {
         when={openedNumber() !== null}
         fallback={<NoPullRequest state={currentState()} />}
       >
-        <Show keyed when={headerKey()}>
-          {() => (
-            <PersistentHeader
-              repositoryName={headerRepositoryName()}
-              titleLine={titleLine()}
-              details={currentDetails()}
+        <box
+          flexDirection="column"
+          gap={0}
+          width="100%"
+          flexGrow={0}
+          flexShrink={0}
+        >
+          <box flexDirection="row" width="100%" flexGrow={0} flexShrink={0}>
+            <text fg={colors.blue}>
+              <strong>{contextBanner()}</strong>
+            </text>
+            <box flexGrow={1} />
+            <text fg={colors.red}>[x] Close PR</text>
+          </box>
+          <Show keyed when={headerKey()}>
+            {() => (
+              <PersistentHeader
+                repositoryName={headerRepositoryName()}
+                titleLine={titleLine()}
+                details={currentDetails()}
+              />
+            )}
+          </Show>
+          <Show when={detailsLoading() && currentDetails() === undefined}>
+            <text fg={colors.muted}>Loading details…</text>
+          </Show>
+          <Show when={detailsError(props.content.details())}>
+            {(error: Accessor<string>) => (
+              <box flexDirection="column">
+                <text fg={colors.yellow}>
+                  Could not load pull request details.
+                </text>
+                <text fg={colors.dim}>{error()}</text>
+              </box>
+            )}
+          </Show>
+          <Show when={selectedCommit()}>
+            {(sha: Accessor<string>) => (
+              <CommitContext
+                sha={sha()}
+                commit={selectedCommitValue()}
+                hasFile={selectedFile() !== undefined}
+              />
+            )}
+          </Show>
+          <Show
+            when={
+              selectedCommit() !== undefined && selectedFile() === undefined
+            }
+          >
+            <text fg={colors.yellow}>
+              Select a file in the sidebar to view this commit's changes.
+            </text>
+          </Show>
+        </box>
+        <Show
+          when={selectedFile()}
+          keyed
+          fallback={
+            <scrollbox
+              ref={setOverviewScroll}
+              flexGrow={1}
+              flexShrink={1}
+              minHeight={0}
+              width="100%"
+              stickyScroll
+              stickyStart="top"
+            >
+              <OverviewScreen content={props.content} summary={summary} />
+            </scrollbox>
+          }
+        >
+          {(path: string) => (
+            <SelectedDiffBody
+              content={props.content}
+              path={path}
+              revealLocked={revealLocked()}
+              setDiffScroll={setDiffScroll}
             />
           )}
         </Show>
-        <Show when={detailsLoading() && currentDetails() === undefined}>
-          <text fg={colors.muted}>Loading details…</text>
-        </Show>
-        <Show when={detailsError(props.content.details())}>
-          {(error: Accessor<string>) => (
-            <box flexDirection="column">
-              <text fg={colors.yellow}>
-                Could not load pull request details.
-              </text>
-              <text fg={colors.dim}>{error()}</text>
-            </box>
-          )}
-        </Show>
-        {renderTabs(props.content)}
-        <Show when={props.content.activeTab() === "diff"}>
-          <FilesChangedPane {...detailPaneProps} />
-        </Show>
-        <Show when={props.content.activeTab() === "commits"}>
-          <CommitsPane {...detailPaneProps} />
-        </Show>
-        <Show
-          when={
-            props.content.activeTab() !== "diff" &&
-            props.content.activeTab() !== "commits"
-          }
-        >
-          <scrollbox
-            ref={setBodyScroll}
-            flexGrow={1}
-            flexShrink={1}
-            minHeight={0}
-            width="100%"
-            stickyScroll
-            stickyStart="top"
-          >
-            <Show when={overviewLoading()}>
-              <text fg={colors.muted}>Loading overview…</text>
-            </Show>
-            <Show when={props.content.activeTab() === "overview"}>
-              <Show when={overviewError(props.content.overview())}>
-                {(error: Accessor<string>) => (
-                  <box flexDirection="column">
-                    <text fg={colors.yellow}>
-                      Could not load pull request overview.
-                    </text>
-                    <text fg={colors.dim}>{error()}</text>
-                    <text fg={colors.muted}>Press r to retry.</text>
-                  </box>
-                )}
-              </Show>
-              <Show keyed when={currentOverview()}>
-                {(overview: PullRequestOverview) => (
-                  <Show keyed when={summary()}>
-                    {(item: PullRequestSummary) =>
-                      renderOverview(item, overview)
-                    }
-                  </Show>
-                )}
-              </Show>
-            </Show>
-            <Show when={props.content.activeTab() !== "overview"}>
-              {renderResourceTab(props.content)}
-            </Show>
-          </scrollbox>
-        </Show>
         <box height={1} width="100%" flexGrow={0} flexShrink={0}>
-          <text fg={colors.dim}>{paneHint(props.content.activeTab())}</text>
+          <text fg={colors.dim}>
+            j/k scroll · e lock files · r reload · x close PR
+          </text>
         </box>
       </Show>
     </box>

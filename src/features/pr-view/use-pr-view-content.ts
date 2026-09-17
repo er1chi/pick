@@ -22,48 +22,42 @@ import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
 import { createEffect, createSignal, type Accessor } from "solid-js";
 
-export type PullRequestTab =
-  | "overview"
-  | Exclude<PullRequestResourceKind, "details">;
-
-export const pullRequestTabs: readonly PullRequestTab[] = [
-  "overview",
-  "diff",
-  "commits",
-  "reviews",
-  "checks",
-  "development",
-];
-
-export type OverviewLoadState = LoadState<PullRequestOverview>;
-export type DetailsLoadState = LoadState<PullRequestDetails>;
-export type DiffLoadState = LoadState<PullRequestDiffResource>;
-export type CommitsLoadState = LoadState<
-  ForgeSection<readonly PullRequestCommit[]>
->;
+type OverviewLoadState = LoadState<PullRequestOverview>;
+type DetailsLoadState = LoadState<PullRequestDetails>;
+type DiffLoadState = LoadState<PullRequestDiffResource>;
+type CommitsLoadState = LoadState<ForgeSection<readonly PullRequestCommit[]>>;
+type ResourceLoadState = LoadState<PullRequestResource>;
 
 export interface PrViewContent {
-  readonly activeTab: Accessor<PullRequestTab>;
   readonly overview: Accessor<OverviewLoadState>;
   readonly details: Accessor<DetailsLoadState>;
-  /** Eagerly loaded alongside overview/details whenever a PR is opened. */
   readonly diff: Accessor<PullRequestDiffResource | undefined>;
   readonly diffState: Accessor<DiffLoadState>;
-  /** Eagerly loaded alongside overview/details whenever a PR is opened. */
   readonly commits: Accessor<readonly PullRequestCommit[]>;
   readonly commitsState: Accessor<CommitsLoadState>;
-  /** The generic resource query, used by reviews/checks/development. */
-  readonly resource: Accessor<LoadState<PullRequestResource>>;
+  /** Reviews/checks/development are independent eager queries so the unified
+   * main screen can show every PR section concurrently. */
+  readonly reviews: Accessor<ResourceLoadState>;
+  readonly checks: Accessor<ResourceLoadState>;
+  readonly development: Accessor<ResourceLoadState>;
+  /** `undefined` until the user picks a file; never defaulted to the first. */
   readonly selectedFile: Accessor<string | undefined>;
   readonly selectFile: (path: string) => void;
+  /** `undefined` until the user picks a commit; never defaulted to the first. */
   readonly selectedCommit: Accessor<string | undefined>;
+  /**
+   * `selectCommit(sha)` clears the file selection and eagerly loads `sha`'s
+   * patch; `selectCommit(undefined)` returns to PR-level files and drops the
+   * commit patch.
+   */
   readonly selectCommit: (sha: string | undefined) => void;
   readonly commitPatch: Accessor<LoadState<ForgeSection<PullRequestPatch>>>;
-  readonly selectTab: (tab: PullRequestTab) => void;
+  /** Clears commit, file, and commit-patch state for the open PR. */
+  readonly clearSelection: () => void;
   readonly retry: () => void;
 }
 
-type GenericResourceTab = Extract<
+type EagerResourceTab = Extract<
   PullRequestResourceKind,
   "reviews" | "checks" | "development"
 >;
@@ -207,7 +201,7 @@ function commitsFetcher(
 
 function resourceFetcher(
   selection: Selection,
-  tab: GenericResourceTab,
+  tab: EagerResourceTab,
 ): Fetcher<PullRequestResource> {
   const { forge, number } = selection;
   return forgeFetcher(forge, `Could not load ${tab}`, (signal) =>
@@ -227,7 +221,6 @@ function commitPatchFetcher(
 
 export function usePrViewContent(titles: PrTitles): PrViewContent {
   const appContext = useAppContext();
-  const [activeTab, setActiveTab] = createSignal<PullRequestTab>("overview");
 
   const overview = createCachedQuery<PullRequestOverview>({
     isCacheable: (value) => !sectionFailed(value.conversationComments),
@@ -235,8 +228,6 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
   const details = createCachedQuery<PullRequestDetails>({
     isCacheable: () => true,
   });
-  // Diff and commits are eager, dedicated queries so Files and Commits can be
-  // shown together regardless of which main tab is active.
   const diff = createCachedQuery<PullRequestDiffResource>({
     isCacheable: (value) => !diffFailed(value),
   });
@@ -245,7 +236,13 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
       isCacheable: (section) => section.status !== "failed",
     },
   );
-  const resource = createCachedQuery<PullRequestResource>({
+  const reviews = createCachedQuery<PullRequestResource>({
+    isCacheable: (value) => !resourceFailed(value),
+  });
+  const checks = createCachedQuery<PullRequestResource>({
+    isCacheable: (value) => !resourceFailed(value),
+  });
+  const development = createCachedQuery<PullRequestResource>({
     isCacheable: (value) => !resourceFailed(value),
   });
   const commitPatch = createCachedQuery<ForgeSection<PullRequestPatch>>({
@@ -290,14 +287,26 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     commits.show(selection.cacheKey, commitsFetcher(selection), force);
   }
 
-  function loadResource(
-    selection: Selection,
-    tab: GenericResourceTab,
-    force = false,
-  ): void {
-    resource.show(
-      `${selection.cacheKey}:${tab}`,
-      resourceFetcher(selection, tab),
+  function loadReviews(selection: Selection, force = false): void {
+    reviews.show(
+      selection.cacheKey,
+      resourceFetcher(selection, "reviews"),
+      force,
+    );
+  }
+
+  function loadChecks(selection: Selection, force = false): void {
+    checks.show(
+      selection.cacheKey,
+      resourceFetcher(selection, "checks"),
+      force,
+    );
+  }
+
+  function loadDevelopment(selection: Selection, force = false): void {
+    development.show(
+      selection.cacheKey,
+      resourceFetcher(selection, "development"),
       force,
     );
   }
@@ -319,32 +328,25 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     return section?.status === "available" ? section.value : [];
   }
 
-  // The first changed file is the default selection, so the diff pane is never
-  // empty once the list arrives.
+  // Selection is only ever explicit: opening a PR starts with neither a file
+  // nor a commit selected.
   function selectedFile(): string | undefined {
-    const explicit = selectedFilePath();
-    if (explicit !== undefined) {
-      return explicit;
-    }
-    const files = diff.state().value?.files;
-    return files?.status === "available" ? files.value[0]?.path : undefined;
+    return selectedFilePath();
   }
 
-  // Default to the first commit so the commit pane has content without an
-  // explicit selection.
   function selectedCommit(): string | undefined {
-    return selectedCommitSha() ?? commitsValue()[0]?.sha;
+    return selectedCommitSha();
   }
 
   // The single source of truth for what should be loaded right now. `show`
   // ignores repeat calls for the same key, so this can run on every list or
-  // context change.
+  // context change. A key change means a different PR or repository: all
+  // selection and pending query state is dropped before the new key loads.
   createEffect(() => {
     const selection = currentSelection();
     const key = selection?.cacheKey;
     if (key !== selectedKey) {
       selectedKey = key;
-      setActiveTab("overview");
       setSelectedFilePath(undefined);
       setSelectedCommitSha(undefined);
       commitPatch.reset();
@@ -355,7 +357,10 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
       details.reset();
       diff.reset();
       commits.reset();
-      resource.reset();
+      reviews.reset();
+      checks.reset();
+      development.reset();
+      commitPatch.reset();
       return;
     }
 
@@ -363,24 +368,36 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     loadDetails(selection);
     loadDiff(selection);
     loadCommits(selection);
+    loadReviews(selection);
+    loadChecks(selection);
+    loadDevelopment(selection);
 
-    const tab = activeTab();
-    if (tab === "reviews" || tab === "checks" || tab === "development") {
-      loadResource(selection, tab);
+    // A selected commit's patch is independent of any screen, so it loads
+    // eagerly here and is dropped as soon as the commit is cleared.
+    const sha = selectedCommitSha();
+    if (sha !== undefined) {
+      loadCommitPatch(selection, sha);
     } else {
-      resource.reset();
-    }
-
-    if (tab === "commits") {
-      const sha = selectedCommit();
-      if (sha !== undefined) {
-        loadCommitPatch(selection, sha);
-      }
+      commitPatch.reset();
     }
   });
 
-  function selectTab(tab: PullRequestTab): void {
-    setActiveTab(tab);
+  // Selecting a commit always resets the file selection: the file tree then
+  // derives from that commit rather than the PR-level diff. `selectFile` only
+  // changes the file and keeps the current commit context.
+  function selectCommit(sha: string | undefined): void {
+    setSelectedCommitSha(sha);
+    setSelectedFilePath(undefined);
+  }
+
+  function selectFile(path: string): void {
+    setSelectedFilePath(path);
+  }
+
+  function clearSelection(): void {
+    setSelectedCommitSha(undefined);
+    setSelectedFilePath(undefined);
+    commitPatch.reset();
   }
 
   function retry(): void {
@@ -388,43 +405,35 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     if (selection === undefined) {
       return;
     }
-    const tab = activeTab();
-    switch (tab) {
-      case "overview":
-        loadOverview(selection, true);
-        loadDetails(selection, true);
-        return;
-      case "diff":
-        loadDiff(selection, true);
-        return;
-      case "commits": {
-        loadCommits(selection, true);
-        const sha = selectedCommit();
-        if (sha !== undefined) {
-          loadCommitPatch(selection, sha, true);
-        }
-        return;
-      }
-      default:
-        loadResource(selection, tab, true);
+    loadOverview(selection, true);
+    loadDetails(selection, true);
+    loadDiff(selection, true);
+    loadCommits(selection, true);
+    loadReviews(selection, true);
+    loadChecks(selection, true);
+    loadDevelopment(selection, true);
+    const sha = selectedCommitSha();
+    if (sha !== undefined) {
+      loadCommitPatch(selection, sha, true);
     }
   }
 
   return {
-    activeTab,
     overview: overview.state,
     details: details.state,
     diff: () => diff.state().value,
     diffState: diff.state,
     commits: commitsValue,
     commitsState: commits.state,
-    resource: resource.state,
+    reviews: reviews.state,
+    checks: checks.state,
+    development: development.state,
     selectedFile,
-    selectFile: (path) => setSelectedFilePath(path),
+    selectFile,
     selectedCommit,
-    selectCommit: (sha) => setSelectedCommitSha(sha),
+    selectCommit,
     commitPatch: commitPatch.state,
-    selectTab,
+    clearSelection,
     retry,
   };
 }

@@ -233,6 +233,20 @@ export class ForgejoService implements ForgeAdapter {
     );
   }
 
+  public getCommitPatch(
+    _sha: string,
+    _options: PullRequestResourceOptions = {},
+  ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
+    return Promise.resolve(
+      Result.ok(
+        unsupported<PullRequestPatch>(
+          ForgeUnsupportedReasonCode.CliDoesNotProvideJson,
+          "The Forgejo CLI does not expose a diff for an individual commit",
+        ),
+      ),
+    );
+  }
+
   public getPullRequestResource(
     number: number,
     resourceKind: PullRequestResourceKind,
@@ -425,16 +439,7 @@ export class ForgejoService implements ForgeAdapter {
       kind,
       executableName,
       this.cwd,
-      [
-        "--json",
-        "pr",
-        "view",
-        String(number),
-        "--repo",
-        repository,
-        "diff",
-        "--patch",
-      ],
+      ["--json", "pr", "view", String(number), "--repo", repository, "diff"],
       signal,
     );
   }

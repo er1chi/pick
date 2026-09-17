@@ -8,6 +8,6 @@ interface PaneState {
 export const PaneStore = createSimpleContext<PaneState>({
   name: "pane",
   init: {
-    active: "sidebar",
+    active: "pull-requests",
   },
 });

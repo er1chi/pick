@@ -257,6 +257,19 @@ export function invalidRequest<T>(
   });
 }
 
+export function validateCommitSha(
+  kind: ForgeKind,
+  sha: string,
+): Result<string, ForgeOperationError> {
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
+    return invalidRequest(
+      kind,
+      "Commit SHA must be 7 to 40 hexadecimal characters",
+    );
+  }
+  return Result.ok(sha);
+}
+
 export function validatePullRequestNumber(
   kind: ForgeKind,
   number: number,

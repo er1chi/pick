@@ -1,7 +1,11 @@
-import type { Result } from "better-result";
+import { Result } from "better-result";
 import { ForgejoService } from "./forgejo-service";
 import { GithubService } from "./github-service";
-import { invalidRequest, validatePullRequestNumber } from "./normalization";
+import {
+  invalidRequest,
+  validateCommitSha,
+  validatePullRequestNumber,
+} from "./normalization";
 import { ApplicationContext, ForgeInitializationErrorCode } from "./types";
 import type {
   CliCheckError,
@@ -9,11 +13,13 @@ import type {
   ForgeInitializationError,
   ForgeKind,
   ForgeOperationError,
+  ForgeSection,
   PullRequestList,
   PullRequestListOptions,
   PullRequestListState,
   PullRequestOverview,
   PullRequestOverviewOptions,
+  PullRequestPatch,
   PullRequestResource,
   PullRequestResourceKind,
   PullRequestResourceOptions,
@@ -53,37 +59,38 @@ export class ForgeService {
   public getPullRequests(
     options?: PullRequestListOptions,
   ): Promise<Result<PullRequestList, ForgeOperationError>> {
-    const limit = options?.limit;
-    if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
-      return Promise.resolve(
-        invalidRequest(
-          this.kind,
-          "Pull request list limit must be a positive safe integer",
-        ),
-      );
-    }
-    if (!isPullRequestListState(options?.state)) {
-      return Promise.resolve(
-        invalidRequest(
-          this.kind,
-          "Pull request list state must be open, closed, or all",
-        ),
-      );
-    }
+    const { kind, adapter } = this;
 
-    return this.adapter.getPullRequests(options);
+    return Result.gen(async function* () {
+      const limit = options?.limit;
+      if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
+        yield* invalidRequest<PullRequestList>(
+          kind,
+          "Pull request list limit must be a positive safe integer",
+        );
+      }
+      if (!isPullRequestListState(options?.state)) {
+        yield* invalidRequest<PullRequestList>(
+          kind,
+          "Pull request list state must be open, closed, or all",
+        );
+      }
+
+      const pullRequests = yield* Result.await(
+        adapter.getPullRequests(options),
+      );
+      return Result.ok(pullRequests);
+    });
   }
 
   public getPullRequestOverview(
     number: number,
     options?: PullRequestOverviewOptions,
   ): Promise<Result<PullRequestOverview, ForgeOperationError>> {
-    const validation = validatePullRequestNumber(this.kind, number);
-    if (validation.isErr()) {
-      return Promise.resolve(validation);
-    }
-
-    return this.adapter.getPullRequestOverview(validation.value, options);
+    return Result.andThenAsync(
+      validatePullRequestNumber(this.kind, number),
+      (value) => this.adapter.getPullRequestOverview(value, options),
+    );
   }
 
   public getPullRequestResource(
@@ -91,24 +98,35 @@ export class ForgeService {
     resourceKind: PullRequestResourceKind,
     options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestResource, ForgeOperationError>> {
-    const validation = validatePullRequestNumber(this.kind, number);
-    if (validation.isErr()) {
-      return Promise.resolve(validation);
-    }
-    if (!resourceKinds.includes(resourceKind)) {
-      return Promise.resolve(
-        invalidRequest(
-          this.kind,
-          `Unknown pull request resource: ${resourceKind}`,
-        ),
-      );
-    }
+    const { kind, adapter } = this;
 
-    return this.adapter.getPullRequestResource(
-      validation.value,
-      resourceKind,
-      options,
-    );
+    return Result.gen(async function* () {
+      const value = yield* validatePullRequestNumber(kind, number);
+      if (!resourceKinds.includes(resourceKind)) {
+        yield* invalidRequest<PullRequestResource>(
+          kind,
+          `Unknown pull request resource: ${resourceKind}`,
+        );
+      }
+
+      const resource = yield* Result.await(
+        adapter.getPullRequestResource(value, resourceKind, options),
+      );
+      return Result.ok(resource);
+    });
+  }
+
+  public getCommitPatch(
+    sha: string,
+    options?: PullRequestResourceOptions,
+  ): Promise<Result<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
+    const { kind, adapter } = this;
+
+    return Result.gen(async function* () {
+      const value = yield* validateCommitSha(kind, sha);
+      const patch = yield* Result.await(adapter.getCommitPatch(value, options));
+      return Result.ok(patch);
+    });
   }
 }
 

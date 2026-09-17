@@ -1,21 +1,17 @@
 import { basename } from "node:path";
 import type { RepositoryAppContextState } from "@/context/app-context";
 import {
-  availablePatchText,
   checkLine,
   collectionAvailability,
   commentBody,
   commentMetaLine,
   commitMessage,
   commitMetaLine,
-  fileLine,
   isRenderableCollection,
-  isRenderablePatch,
   isRenderableReviewerRequests,
   linkedIssueLine,
   operationErrorDescription,
   overviewMetaLine,
-  patchAvailability,
   persistentMetadataLines,
   presentRepositoryName,
   presentText,
@@ -45,10 +41,8 @@ import {
   type PullRequestComment,
   type PullRequestDetails,
   type PullRequestDiffResource,
-  type PullRequestFile,
   type PullRequestLinkedIssue,
   type PullRequestOverview,
-  type PullRequestPatch,
   type PullRequestProject,
   type PullRequestResource,
   type PullRequestReview,
@@ -61,9 +55,21 @@ import { moveInList } from "@/utils/navigation";
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { useBindings } from "@opentui/keymap/solid";
-import { For, Show, createEffect, createSignal, on } from "solid-js";
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+} from "solid-js";
 import type { Accessor } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
+import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import {
+  type DisplayRowKind,
+  flattenHunks,
+} from "@/packages/pierre/solid/diffs";
 
 export interface PrViewProps {
   readonly state: RepositoryAppContextState;
@@ -130,7 +136,7 @@ function tabLabel(tab: PullRequestTab): string {
     case "overview":
       return "Overview";
     case "diff":
-      return "Diff";
+      return "Files changed";
     case "commits":
       return "Commits";
     case "reviews":
@@ -267,47 +273,6 @@ function PersistentHeader(props: PersistentHeaderProps): JSX.Element {
   );
 }
 
-function renderPatchSection(
-  section: ForgeSection<PullRequestPatch>,
-): JSX.Element {
-  return (
-    <Show when={isRenderablePatch(section)}>
-      <box flexDirection="column" gap={0}>
-        {sectionHeading("Raw patch", patchAvailability(section))}
-        {renderMutedLine(availablePatchText(section))}
-      </box>
-    </Show>
-  );
-}
-
-function renderFilesSection(
-  section: ForgeSection<readonly PullRequestFile[]>,
-): JSX.Element {
-  return renderCollectionSection("Files", section, (file) =>
-    renderMutedLine(fileLine(file)),
-  );
-}
-
-function renderDiff(resource: PullRequestDiffResource): JSX.Element {
-  return (
-    <box flexDirection="column" gap={0}>
-      {renderFilesSection(resource.files)}
-      {renderPatchSection(resource.patch)}
-    </box>
-  );
-}
-
-function renderCommits(
-  section: ForgeSection<readonly PullRequestCommit[]>,
-): JSX.Element {
-  return renderCollectionSection(
-    "Commits",
-    section,
-    (commit: PullRequestCommit) =>
-      renderStackedItem(commitMetaLine(commit), commitMessage(commit)),
-  );
-}
-
 function renderRequestedReviewers(
   section: ForgeSection<PullRequestReviewerRequests>,
 ): JSX.Element {
@@ -368,9 +333,11 @@ function renderResource(resource: PullRequestResource): JSX.Element {
     case "details":
       return <></>;
     case "diff":
-      return renderDiff(resource.value);
+      // Files changed and Commits are loaded independently and rendered by
+      // their dedicated panes; the shared resource never carries them here.
+      return <></>;
     case "commits":
-      return renderCommits(resource.value.commits);
+      return <></>;
     case "reviews":
       return renderReviews(
         resource.value.reviews,
@@ -398,14 +365,14 @@ function renderTabs(content: PrViewContent): JSX.Element {
   return (
     <box flexDirection="row" gap={2} width="100%" flexGrow={0} flexShrink={0}>
       <For each={pullRequestTabs}>
-        {(tab, index) => (
+        {(tab) => (
           <text fg={content.activeTab() === tab ? colors.blue : colors.muted}>
-            <strong>
-              {index() + 1}:{tabLabel(tab)}
-            </strong>
+            <strong>{tabLabel(tab)}</strong>
           </text>
         )}
       </For>
+      <box flexGrow={1} />
+      <text fg={colors.red}>[x] Close PR</text>
     </box>
   );
 }
@@ -432,19 +399,351 @@ function renderResourceTab(content: PrViewContent): JSX.Element {
       <Show keyed when={content.resource().value}>
         {(value: PullRequestResource) => renderResource(value)}
       </Show>
+    </>
+  );
+}
+
+const lockFileNames = new Set([
+  "bun.lock",
+  "bun.lockb",
+  "Cargo.lock",
+  "composer.lock",
+  "Gemfile.lock",
+  "go.sum",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "poetry.lock",
+  "uv.lock",
+  "yarn.lock",
+]);
+
+function isLockFile(path: string): boolean {
+  const separator = path.lastIndexOf("/");
+  return lockFileNames.has(separator < 0 ? path : path.slice(separator + 1));
+}
+
+function fileDiffName(fileDiff: FileDiffMetadata): string {
+  if (fileDiff.prevName === undefined) {
+    return fileDiff.name;
+  }
+  return `${fileDiff.prevName} → ${fileDiff.name}`;
+}
+
+function parseFileDiffs(text: string | undefined): readonly FileDiffMetadata[] {
+  if (text === undefined || text.trim() === "") {
+    return [];
+  }
+  return parsePatchFiles(text).flatMap((entry) => entry.files);
+}
+
+function patchText(
+  section: ForgeSection<{ readonly text: string }> | undefined,
+): string | undefined {
+  return section?.status === "available" ? section.value.text : undefined;
+}
+
+function fileDiffsForPath(
+  resource: PullRequestDiffResource | undefined,
+  path: string | undefined,
+): readonly FileDiffMetadata[] {
+  if (resource === undefined || path === undefined) {
+    return [];
+  }
+  const fileDiff = parseFileDiffs(patchText(resource.patch)).find(
+    (candidate) => candidate.name === path || candidate.prevName === path,
+  );
+  return fileDiff === undefined ? [] : [fileDiff];
+}
+
+function diffRowColor(kind: DisplayRowKind): string {
+  switch (kind) {
+    case "addition":
+      return colors.green;
+    case "deletion":
+      return colors.red;
+    case "hunk-header":
+      return colors.dim;
+    default:
+      return colors.foreground;
+  }
+}
+
+function diffRowMarker(kind: DisplayRowKind): string {
+  switch (kind) {
+    case "addition":
+      return "+";
+    case "deletion":
+      return "-";
+    default:
+      return " ";
+  }
+}
+
+function DiffRows(props: { fileDiff: FileDiffMetadata }): JSX.Element {
+  return (
+    <For each={flattenHunks(props.fileDiff)}>
+      {(row) => (
+        <text fg={diffRowColor(row.kind)}>
+          {`${diffRowMarker(row.kind)}${row.text}`}
+        </text>
+      )}
+    </For>
+  );
+}
+
+const lockedNotice =
+  "Lock file contents are hidden by default. Press e to show them.";
+
+function renderPatchFiles(
+  fileDiffs: readonly FileDiffMetadata[],
+  revealLocked: boolean,
+): JSX.Element {
+  return (
+    <For each={fileDiffs}>
+      {(fileDiff) => (
+        <box flexDirection="column" width="100%">
+          <text fg={colors.foreground}>{fileDiffName(fileDiff)}</text>
+          <Show
+            when={revealLocked || !isLockFile(fileDiff.name)}
+            fallback={<text fg={colors.dim}>{lockedNotice}</text>}
+          >
+            <DiffRows fileDiff={fileDiff} />
+          </Show>
+        </box>
+      )}
+    </For>
+  );
+}
+
+interface DetailPaneProps {
+  readonly header: Accessor<string>;
+  readonly notice: Accessor<string | undefined>;
+  readonly revealLocked: Accessor<boolean>;
+  readonly fileDiffs: Accessor<readonly FileDiffMetadata[]>;
+  readonly setDetailScroll: (element: ScrollBoxRenderable) => void;
+  readonly above: Accessor<JSX.Element | undefined>;
+}
+
+interface DetailPaneHostProps {
+  readonly content: PrViewContent;
+  readonly revealLocked: Accessor<boolean>;
+  readonly setDetailScroll: (element: ScrollBoxRenderable) => void;
+}
+
+interface DetailView {
+  readonly header: Accessor<string>;
+  readonly notice: Accessor<string | undefined>;
+  readonly fileDiffs: Accessor<readonly FileDiffMetadata[]>;
+}
+
+function DetailPane(props: DetailPaneProps): JSX.Element {
+  return (
+    <box
+      flexDirection="column"
+      flexGrow={1}
+      flexShrink={1}
+      minHeight={0}
+      width="100%"
+    >
+      <text fg={colors.dim}>{props.header()}</text>
+      <Show
+        when={props.notice()}
+        fallback={
+          <scrollbox
+            ref={props.setDetailScroll}
+            flexGrow={1}
+            minHeight={0}
+            width="100%"
+          >
+            {props.above()}
+            {renderPatchFiles(props.fileDiffs(), props.revealLocked())}
+          </scrollbox>
+        }
+      >
+        {(text: Accessor<string>) => <text fg={colors.muted}>{text()}</text>}
+      </Show>
+    </box>
+  );
+}
+
+function mainDetailPane(
+  props: DetailPaneHostProps,
+  view: DetailView,
+  above: Accessor<JSX.Element | undefined>,
+): JSX.Element {
+  return (
+    <DetailPane
+      header={view.header}
+      notice={view.notice}
+      revealLocked={props.revealLocked}
+      fileDiffs={view.fileDiffs}
+      setDetailScroll={props.setDetailScroll}
+      above={above}
+    />
+  );
+}
+
+function FilesChangedPane(props: DetailPaneHostProps): JSX.Element {
+  const diff = () => props.content.diff();
+  const diffState = () => props.content.diffState();
+  const fileDiffs = createMemo(() =>
+    fileDiffsForPath(diff(), props.content.selectedFile()),
+  );
+
+  const notice = (): string | undefined => {
+    const state = diffState();
+    if (state.status === "loading") {
+      return "Loading files changed…";
+    }
+    if (state.status === "error") {
+      return `Could not load files changed: ${operationErrorDescription(state.error)}`;
+    }
+    const patch = state.value?.patch;
+    if (patch?.status === "failed") {
+      return `Could not load files changed: ${operationErrorDescription(patch.error)}`;
+    }
+    if (patch?.status === "unsupported") {
+      return patch.reason.diagnostic;
+    }
+    if (props.content.selectedFile() === undefined) {
+      return "Select a file in the sidebar to view its changes.";
+    }
+    if (fileDiffs().length === 0) {
+      return "No patch is available for the selected file.";
+    }
+    return undefined;
+  };
+
+  const header = (): string => {
+    const path = props.content.selectedFile();
+    return path === undefined ? "Files changed" : `Files changed · ${path}`;
+  };
+
+  return mainDetailPane(props, { header, notice, fileDiffs }, () => undefined);
+}
+
+function CommitsPane(props: DetailPaneHostProps): JSX.Element {
+  const commits = (): readonly PullRequestCommit[] => props.content.commits();
+  const commitsState = () => props.content.commitsState();
+
+  const selectedCommit = createMemo(() => {
+    const sha = props.content.selectedCommit();
+    if (sha === undefined) {
+      return undefined;
+    }
+    return commits().find((commit) => commit.sha === sha);
+  });
+
+  const fileDiffs = createMemo(() =>
+    parseFileDiffs(patchText(props.content.commitPatch().value)),
+  );
+
+  const notice = (): string | undefined => {
+    const state = commitsState();
+    if (state.status === "loading") {
+      return "Loading commits…";
+    }
+    if (state.status === "error") {
+      return `Could not load commits: ${operationErrorDescription(state.error)}`;
+    }
+    const section = state.value;
+    if (section?.status === "failed") {
+      return `Could not load commits: ${operationErrorDescription(section.error)}`;
+    }
+    if (section?.status === "unsupported") {
+      return section.reason.diagnostic;
+    }
+    if (selectedCommit() === undefined) {
+      return "Select a commit in the sidebar to view it.";
+    }
+    const patch = props.content.commitPatch();
+    if (patch.status === "loading") {
+      return "Loading commit…";
+    }
+    if (patch.status === "error") {
+      return `Could not load commit: ${operationErrorDescription(patch.error)}`;
+    }
+    if (patch.value === undefined) {
+      return "Select a commit in the sidebar to view it.";
+    }
+    if (patch.value.status === "failed") {
+      return `Could not load commit: ${operationErrorDescription(patch.value.error)}`;
+    }
+    if (patch.value.status === "unsupported") {
+      return patch.value.reason.diagnostic;
+    }
+    return undefined;
+  };
+
+  const header = (): string => {
+    const commit = selectedCommit();
+    const meta = commit === undefined ? undefined : commitMetaLine(commit);
+    return meta === undefined ? "Commits" : `Commits · ${meta}`;
+  };
+
+  const commitDetail = () => {
+    const commit = selectedCommit();
+    if (commit === undefined) {
+      return undefined;
+    }
+    return (
+      <box flexDirection="column" width="100%">
+        <text fg={colors.foreground}>
+          <strong>{commitMessage(commit)}</strong>
+        </text>
+        <text fg={colors.muted}>{commitMetaLine(commit)}</text>
+        <text fg={colors.dim}>{commit.sha}</text>
+      </box>
+    );
+  };
+
+  return mainDetailPane(props, { header, notice, fileDiffs }, commitDetail);
+}
+
+function paneHint(tab: PullRequestTab): string {
+  switch (tab) {
+    case "diff":
+      return "j/k scroll · h/l tabs · e lock files · x close PR";
+    case "commits":
+      return "j/k scroll · h/l tabs · x close PR";
+    default:
+      return "h/l switch tabs · r reloads · x close PR";
+  }
+}
+
+function NoPullRequest(props: {
+  readonly state: RepositoryAppContextState;
+}): JSX.Element {
+  const forgeError = () => forgeInitializationError(props.state);
+  return (
+    <box flexDirection="column" gap={1}>
+      <Show when={props.state.kind === ApplicationContext.Local}>
+        <text fg={colors.yellow}>Status: Local Git repository</text>
+        <text fg={colors.muted}>
+          Add a GitHub or Forgejo remote to initialize it.
+        </text>
+      </Show>
+      <Show when={forgeError()}>
+        {(error: Accessor<ForgeInitializationError>) => (
+          <>
+            <text fg={colors.yellow}>Status: CLI initialization error</text>
+            <text fg={colors.muted}>
+              {initializationErrorDescription(error())}
+            </text>
+          </>
+        )}
+      </Show>
       <Show
         when={
-          content.resource().value === undefined &&
-          content.resource().status !== "loading" &&
-          content.resource().status !== "error"
+          props.state.kind !== ApplicationContext.Local &&
+          forgeError() === undefined
         }
       >
         <text fg={colors.muted}>
-          Select a pull request to load{" "}
-          {tabLabel(content.activeTab()).toLowerCase()}.
+          Select a pull request in the sidebar and press enter to open it.
         </text>
       </Show>
-    </>
+    </box>
   );
 }
 
@@ -454,17 +753,27 @@ export function PrView(props: PrViewProps) {
   const [bodyScroll, setBodyScroll] = createSignal<
     ScrollBoxRenderable | undefined
   >();
+  const [detailScroll, setDetailScrollSignal] = createSignal<
+    ScrollBoxRenderable | undefined
+  >();
+  const setDetailScroll = (element: ScrollBoxRenderable): void => {
+    setDetailScrollSignal(element);
+  };
+  const [revealLocked, setRevealLocked] = createSignal(false);
   const focused = () => pane.active === "content";
   const currentState = () => props.state;
   const localName = () => basename(currentState().cwd) || currentState().cwd;
   const repositoryName = () =>
     props.titles.list().value?.repository.fullName ?? localName();
+  const openedNumber = () => props.titles.openedNumber();
   const summary = () => {
-    const number = props.titles.highlightedNumber();
-    return (
-      props.titles.list().value?.items.find((item) => item.number === number) ??
-      undefined
-    );
+    const number = openedNumber();
+    if (number === null) {
+      return undefined;
+    }
+    return props.titles
+      .list()
+      .value?.items.find((item) => item.number === number);
   };
   const currentOverview = () => overviewValue(props.content.overview());
   const overviewLoading = () => props.content.overview().status === "loading";
@@ -483,20 +792,27 @@ export function PrView(props: PrViewProps) {
     return pullRequestTitleLine(item.title, item.number);
   };
   const headerKey = () => {
-    const number = props.titles.highlightedNumber();
+    const number = openedNumber();
     const details = currentDetails();
     const detailsKey =
       details === undefined ? "pending" : `ready:${details.number}`;
     return `${number ?? "none"}:${detailsKey}:${titleLine() ?? ""}:${headerRepositoryName()}`;
   };
 
+  const closeOpened = (): void => {
+    props.titles.closeOpened();
+    setPane({ active: "pull-requests" });
+  };
+
+  const detailPaneProps = {
+    content: props.content,
+    revealLocked,
+    setDetailScroll,
+  };
+
   useBindings(() => ({
     target: contentBox,
     commands: [
-      ...pullRequestTabs.map((tab) => ({
-        name: `pr-view.tab-${tab}`,
-        run: () => props.content.selectTab(tab),
-      })),
       {
         name: "pr-view.tab-previous",
         run: () =>
@@ -512,23 +828,46 @@ export function PrView(props: PrViewProps) {
           ),
       },
       {
+        name: "pr-view.scroll-down",
+        run: () => {
+          const element = detailScroll() ?? bodyScroll();
+          if (element !== undefined) {
+            element.scrollTop += 1;
+          }
+        },
+      },
+      {
+        name: "pr-view.scroll-up",
+        run: () => {
+          const element = detailScroll() ?? bodyScroll();
+          if (element !== undefined) {
+            element.scrollTop -= 1;
+          }
+        },
+      },
+      {
         name: "pr-view.retry",
         run: () => props.content.retry(),
       },
       {
-        name: "pr-view.focus-sidebar",
-        run: () => setPane({ active: "sidebar" }),
+        name: "pr-view.toggle-locked-files",
+        run: () => {
+          setRevealLocked((current) => !current);
+        },
+      },
+      {
+        name: "pr-view.close",
+        run: closeOpened,
       },
     ],
     bindings: [
-      ...pullRequestTabs.map((tab, index) => ({
-        key: String(index + 1),
-        cmd: `pr-view.tab-${tab}`,
-      })),
       { key: "h", cmd: "pr-view.tab-previous" },
       { key: "l", cmd: "pr-view.tab-next" },
+      { key: "j", cmd: "pr-view.scroll-down" },
+      { key: "k", cmd: "pr-view.scroll-up" },
       { key: "r", cmd: "pr-view.retry" },
-      { key: "0", cmd: "pr-view.focus-sidebar" },
+      { key: "e", cmd: "pr-view.toggle-locked-files" },
+      { key: "x", cmd: "pr-view.close" },
     ],
   }));
 
@@ -548,6 +887,7 @@ export function PrView(props: PrViewProps) {
     on(
       () => props.content.activeTab(),
       () => {
+        setDetailScrollSignal(undefined);
         const scroll = bodyScroll();
         if (scroll !== undefined) {
           scroll.scrollTop = 0;
@@ -574,104 +914,88 @@ export function PrView(props: PrViewProps) {
       border
       borderColor={colors.border}
       focusedBorderColor={colors.blue}
-      title="[1] Main"
+      title="[3] Main"
     >
-      <Show keyed when={headerKey()}>
-        {() => (
-          <PersistentHeader
-            repositoryName={headerRepositoryName()}
-            titleLine={titleLine()}
-            details={currentDetails()}
-          />
-        )}
-      </Show>
-      <Show when={detailsLoading() && currentDetails() === undefined}>
-        <text fg={colors.muted}>Loading details…</text>
-      </Show>
-      <Show when={detailsError(props.content.details())}>
-        {(error: Accessor<string>) => (
-          <box flexDirection="column">
-            <text fg={colors.yellow}>Could not load pull request details.</text>
-            <text fg={colors.dim}>{error()}</text>
-          </box>
-        )}
-      </Show>
-      <Show when={currentState().kind === ApplicationContext.Local}>
-        <box flexDirection="column">
-          <text fg={colors.yellow}>Status: Local Git repository</text>
-          <text fg={colors.muted}>
-            Add a GitHub or Forgejo remote to initialize it.
-          </text>
-        </box>
-      </Show>
-      <Show when={forgeInitializationError(currentState())}>
-        {(error: Accessor<ForgeInitializationError>) => (
-          <box flexDirection="column">
-            <text fg={colors.yellow}>Status: CLI initialization error</text>
-            <text fg={colors.muted}>
-              {initializationErrorDescription(error())}
-            </text>
-          </box>
-        )}
-      </Show>
       <Show
-        when={
-          currentState().kind !== ApplicationContext.Local &&
-          forgeInitializationError(currentState()) === undefined
-        }
+        when={openedNumber() !== null}
+        fallback={<NoPullRequest state={currentState()} />}
       >
-        {renderTabs(props.content)}
-        <scrollbox
-          ref={setBodyScroll}
-          flexGrow={1}
-          flexShrink={1}
-          minHeight={0}
-          width="100%"
-          stickyScroll
-          stickyStart="top"
-        >
-          <Show when={overviewLoading()}>
-            <text fg={colors.muted}>Loading overview…</text>
-          </Show>
-          <Show when={props.content.activeTab() === "overview"}>
-            <Show when={overviewError(props.content.overview())}>
-              {(error: Accessor<string>) => (
-                <box flexDirection="column">
-                  <text fg={colors.yellow}>
-                    Could not load pull request overview.
-                  </text>
-                  <text fg={colors.dim}>{error()}</text>
-                  <text fg={colors.muted}>Press r to retry.</text>
-                </box>
-              )}
-            </Show>
-            <Show keyed when={currentOverview()}>
-              {(overview: PullRequestOverview) => (
-                <Show keyed when={summary()}>
-                  {(item: PullRequestSummary) => renderOverview(item, overview)}
-                </Show>
-              )}
-            </Show>
-            <Show
-              when={
-                currentOverview() === undefined &&
-                !overviewLoading() &&
-                overviewError(props.content.overview()) === undefined
-              }
-            >
-              <text fg={colors.muted}>
-                Highlight a pull request to preview it.
+        <Show keyed when={headerKey()}>
+          {() => (
+            <PersistentHeader
+              repositoryName={headerRepositoryName()}
+              titleLine={titleLine()}
+              details={currentDetails()}
+            />
+          )}
+        </Show>
+        <Show when={detailsLoading() && currentDetails() === undefined}>
+          <text fg={colors.muted}>Loading details…</text>
+        </Show>
+        <Show when={detailsError(props.content.details())}>
+          {(error: Accessor<string>) => (
+            <box flexDirection="column">
+              <text fg={colors.yellow}>
+                Could not load pull request details.
               </text>
+              <text fg={colors.dim}>{error()}</text>
+            </box>
+          )}
+        </Show>
+        {renderTabs(props.content)}
+        <Show when={props.content.activeTab() === "diff"}>
+          <FilesChangedPane {...detailPaneProps} />
+        </Show>
+        <Show when={props.content.activeTab() === "commits"}>
+          <CommitsPane {...detailPaneProps} />
+        </Show>
+        <Show
+          when={
+            props.content.activeTab() !== "diff" &&
+            props.content.activeTab() !== "commits"
+          }
+        >
+          <scrollbox
+            ref={setBodyScroll}
+            flexGrow={1}
+            flexShrink={1}
+            minHeight={0}
+            width="100%"
+            stickyScroll
+            stickyStart="top"
+          >
+            <Show when={overviewLoading()}>
+              <text fg={colors.muted}>Loading overview…</text>
             </Show>
-          </Show>
-          <Show when={props.content.activeTab() !== "overview"}>
-            {renderResourceTab(props.content)}
-          </Show>
-        </scrollbox>
+            <Show when={props.content.activeTab() === "overview"}>
+              <Show when={overviewError(props.content.overview())}>
+                {(error: Accessor<string>) => (
+                  <box flexDirection="column">
+                    <text fg={colors.yellow}>
+                      Could not load pull request overview.
+                    </text>
+                    <text fg={colors.dim}>{error()}</text>
+                    <text fg={colors.muted}>Press r to retry.</text>
+                  </box>
+                )}
+              </Show>
+              <Show keyed when={currentOverview()}>
+                {(overview: PullRequestOverview) => (
+                  <Show keyed when={summary()}>
+                    {(item: PullRequestSummary) =>
+                      renderOverview(item, overview)
+                    }
+                  </Show>
+                )}
+              </Show>
+            </Show>
+            <Show when={props.content.activeTab() !== "overview"}>
+              {renderResourceTab(props.content)}
+            </Show>
+          </scrollbox>
+        </Show>
         <box height={1} width="100%" flexGrow={0} flexShrink={0}>
-          <text fg={colors.dim}>
-            0 list · h/l or 1–6 switch tabs · r reloads the visible tab.
-          </text>
+          <text fg={colors.dim}>{paneHint(props.content.activeTab())}</text>
         </box>
       </Show>
     </box>

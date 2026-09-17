@@ -1,1 +1,1 @@
-export type RepositoryPane = "sidebar" | "content";
+export type RepositoryPane = "files" | "pull-requests" | "commits" | "content";

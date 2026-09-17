@@ -308,6 +308,17 @@ export class GithubService implements ForgeAdapter {
     );
   }
 
+  public getCommitPatch(
+    sha: string,
+    options: PullRequestResourceOptions = {},
+  ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
+    return adapterHelpers.withForgeRepository(
+      this.repositoryReader,
+      options.signal,
+      (repository) => this.readCommitPatch(sha, repository, options.signal),
+    );
+  }
+
   private readGithubOverviewForSelection(
     number: number,
     signal: AbortSignal | undefined,
@@ -637,6 +648,28 @@ export class GithubService implements ForgeAdapter {
     return adapterHelpers.sectionFromResult(result);
   }
 
+  private async readCommitPatch(
+    sha: string,
+    repository: ForgeRepository,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
+    // The .diff media type returns a complete patch with file headers, unlike
+    // the hunks-only `patch` field on the commits JSON endpoint.
+    const patch = await adapterHelpers.readForgePatch(
+      kind,
+      executableName,
+      this.cwd,
+      [
+        "api",
+        pathForApi(repository, ["commits", sha]),
+        "-H",
+        "Accept: application/vnd.github.diff",
+      ],
+      signal,
+    );
+    return Result.ok(patch);
+  }
+
   private readPatch(
     number: number,
     repository: ForgeRepository,
@@ -652,7 +685,6 @@ export class GithubService implements ForgeAdapter {
         String(number),
         "--repo",
         repository.fullName,
-        "--patch",
         "--color",
         "never",
       ],

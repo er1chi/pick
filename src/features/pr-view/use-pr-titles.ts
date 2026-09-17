@@ -35,9 +35,12 @@ export interface PrTitles {
   readonly list: Accessor<PullRequestTitlesLoadState>;
   readonly filter: Accessor<PullRequestListState>;
   readonly highlightedNumber: Accessor<number | null>;
+  readonly openedNumber: Accessor<number | null>;
   readonly setFilter: (filter: PullRequestListState) => void;
   readonly cycleFilter: (offset: number) => void;
   readonly moveHighlight: (offset: number) => void;
+  readonly openHighlighted: () => void;
+  readonly closeOpened: () => void;
   readonly retry: () => void;
 }
 
@@ -49,6 +52,7 @@ export function usePrTitles(): PrTitles {
   const [highlightedNumber, setHighlightedNumber] = createSignal<number | null>(
     null,
   );
+  const [openedNumber, setOpenedNumber] = createSignal<number | null>(null);
   const [retryVersion, setRetryVersion] = createSignal(0);
 
   let requestGeneration = 0;
@@ -71,6 +75,7 @@ export function usePrTitles(): PrTitles {
     if (repositoryChanged) {
       lastSuccessfulList = undefined;
       setHighlightedNumber(null);
+      setOpenedNumber(null);
     }
 
     const forge = state.forge;
@@ -121,6 +126,16 @@ export function usePrTitles(): PrTitles {
         setHighlightedNumber(
           selectedItem?.number ?? result.value.items[0]?.number ?? null,
         );
+
+        // An opened pull request only survives while it is still listed for
+        // the active filter. A filter change that drops it closes it.
+        const opened = openedNumber();
+        if (
+          opened !== null &&
+          !result.value.items.some((item) => item.number === opened)
+        ) {
+          setOpenedNumber(null);
+        }
       })
       .catch((cause: unknown) => {
         if (
@@ -203,6 +218,25 @@ export function usePrTitles(): PrTitles {
     );
   }
 
+  function openHighlighted(): void {
+    const number = highlightedNumber();
+    if (number === null) {
+      return;
+    }
+    const currentList = list();
+    if (
+      currentList.status !== "ready" ||
+      !currentList.value.items.some((item) => item.number === number)
+    ) {
+      return;
+    }
+    setOpenedNumber(number);
+  }
+
+  function closeOpened(): void {
+    setOpenedNumber(null);
+  }
+
   function retry(): void {
     listController?.abort();
     setRetryVersion((version) => version + 1);
@@ -212,9 +246,12 @@ export function usePrTitles(): PrTitles {
     list,
     filter,
     highlightedNumber,
+    openedNumber,
     setFilter,
     cycleFilter,
     moveHighlight,
+    openHighlighted,
+    closeOpened,
     retry,
   };
 }

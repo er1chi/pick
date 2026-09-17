@@ -52,24 +52,39 @@ function repositoryFooterBindings(
     ];
   }
 
-  if (pane === "sidebar") {
-    return [
-      { key: "Ctrl+Q", label: "Quit" },
-      { key: "0/1", label: "List/Content" },
-      { key: "j/k", label: "Navigate" },
-      { key: "o/c/a", label: "Open/Closed/All" },
-      { key: "Enter", label: "Open" },
-      { key: "R", label: "Reload list" },
-    ];
-  }
-
-  return [
+  const base: readonly FooterBinding[] = [
+    { key: "0/1/2/3", label: "Files/PRs/Commits/Main" },
     { key: "Ctrl+Q", label: "Quit" },
-    { key: "0", label: "List" },
-    { key: "h/l", label: "Prev/next tab" },
-    { key: "1–6", label: "Jump to tab" },
-    { key: "r", label: "Reload visible" },
   ];
+
+  switch (pane) {
+    case "pull-requests":
+      return [
+        ...base,
+        { key: "j/k", label: "Navigate" },
+        { key: "o/c/a", label: "Open/Closed/All" },
+        { key: "Enter", label: "Open PR" },
+        { key: "x", label: "Close PR" },
+        { key: "R", label: "Reload list" },
+      ];
+    case "files":
+    case "commits":
+      return [
+        ...base,
+        { key: "j/k", label: "Navigate" },
+        { key: "Enter", label: "Open PR" },
+        { key: "x", label: "Close PR" },
+      ];
+    case "content":
+      return [
+        ...base,
+        { key: "h/l", label: "PR tabs" },
+        { key: "j/k", label: "Scroll" },
+        { key: "Enter", label: "Open PR" },
+        { key: "x", label: "Close PR" },
+        { key: "r", label: "Reload tab" },
+      ];
+  }
 }
 
 function notifyCliInitializationError(error: ForgeInitializationError) {
@@ -93,7 +108,7 @@ function RepositoryShell(props: { readonly state: RepositoryAppContextState }) {
     <box flexDirection="column" width="100%" height="100%">
       <Menubar contextLabel={contextLabel} />
       <box flexDirection="row" flexGrow={1} width="100%">
-        <Sidebar titles={titles} />
+        <Sidebar titles={titles} content={content} />
         <PrView state={props.state} titles={titles} content={content} />
       </box>
       <Footer

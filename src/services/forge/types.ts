@@ -401,6 +401,16 @@ export interface ForgeAdapter {
     resourceKind: PullRequestResourceKind,
     options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestResource, ForgeOperationError>>;
+
+  /**
+   * The change introduced by a single commit, as a patch of that commit against
+   * its parent. Not derivable from the pull request diff, which has no commit
+   * boundaries.
+   */
+  getCommitPatch(
+    sha: string,
+    options?: PullRequestResourceOptions,
+  ): Promise<Result<ForgeSection<PullRequestPatch>, ForgeOperationError>>;
 }
 
 export type CliCheckError =

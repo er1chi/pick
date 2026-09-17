@@ -1,7 +1,7 @@
 import { colors } from "@/theme";
 import type { FileTreeVisibleRow } from "@pierre/trees";
 
-function rowLabel(row: FileTreeVisibleRow): string {
+export function fileTreeRowLabel(row: FileTreeVisibleRow): string {
   const segments = row.flattenedSegments;
   if (segments == null || segments.length === 0) {
     return row.name;
@@ -9,7 +9,7 @@ function rowLabel(row: FileTreeVisibleRow): string {
   return segments.map((segment) => segment.name).join("/");
 }
 
-function rowPrefix(row: FileTreeVisibleRow): string {
+export function fileTreeRowPrefix(row: FileTreeVisibleRow): string {
   const indent = "  ".repeat(row.depth);
   if (row.kind === "directory") {
     const chevron = row.isExpanded ? "▾ " : "▸ ";
@@ -43,8 +43,8 @@ export function FileTreeRow(props: { row: FileTreeVisibleRow }) {
       backgroundColor={rowBackground(props.row)}
     >
       <text fg={fg()}>
-        {rowPrefix(props.row)}
-        {rowLabel(props.row)}
+        {fileTreeRowPrefix(props.row)}
+        {fileTreeRowLabel(props.row)}
       </text>
     </box>
   );

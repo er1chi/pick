@@ -196,7 +196,6 @@ export function Default() {
                 {(repository) => (
                   <SelectableRow
                     id={repository.path}
-                    marker=""
                     label={repository.name}
                     detail={repository.displayPath}
                     selected={repository.path === selectedPath()}

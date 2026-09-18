@@ -206,27 +206,6 @@ export interface PullRequestReview {
   readonly url: string | null;
 }
 
-type PullRequestFileStatus =
-  | "added"
-  | "modified"
-  | "removed"
-  | "renamed"
-  | "copied"
-  | "changed"
-  | "unknown";
-
-export interface PullRequestFile {
-  readonly path: string;
-  readonly previousPath: string | null;
-  readonly status: PullRequestFileStatus;
-  readonly additions: number | null;
-  readonly deletions: number | null;
-  readonly changes: number | null;
-  readonly sha: string | null;
-  readonly patch: string | null;
-  readonly url: string | null;
-}
-
 export interface PullRequestCheck {
   readonly name: string;
   readonly status: string;
@@ -324,51 +303,16 @@ export interface PullRequestDetails {
   readonly mergeability: PullRequestMergeability;
 }
 
-export interface PullRequestDiffResource {
-  readonly patch: ForgeSection<PullRequestPatch>;
-  readonly files: ForgeSection<readonly PullRequestFile[]>;
-}
-
-interface PullRequestDetailsResource {
-  readonly details: PullRequestDetails;
-}
-
-interface PullRequestCommitsResource {
-  readonly commits: ForgeSection<readonly PullRequestCommit[]>;
-}
-
 export interface PullRequestReviewsResource {
   readonly reviews: ForgeSection<readonly PullRequestReview[]>;
   readonly reviewComments: ForgeSection<readonly PullRequestReviewComment[]>;
   readonly requestedReviewers: ForgeSection<PullRequestReviewerRequests>;
 }
 
-interface PullRequestChecksResource {
-  readonly checks: ForgeSection<readonly PullRequestCheck[]>;
-}
-
-interface PullRequestDevelopmentResource {
+export interface PullRequestDevelopment {
   readonly projects: ForgeSection<readonly PullRequestProject[]>;
   readonly linkedIssues: ForgeSection<readonly PullRequestLinkedIssue[]>;
 }
-
-interface PullRequestResourceMap {
-  readonly details: PullRequestDetailsResource;
-  readonly diff: PullRequestDiffResource;
-  readonly commits: PullRequestCommitsResource;
-  readonly reviews: PullRequestReviewsResource;
-  readonly checks: PullRequestChecksResource;
-  readonly development: PullRequestDevelopmentResource;
-}
-
-export type PullRequestResourceKind = keyof PullRequestResourceMap;
-
-export type PullRequestResource = {
-  [K in PullRequestResourceKind]: {
-    readonly kind: K;
-    readonly value: PullRequestResourceMap[K];
-  };
-}[PullRequestResourceKind];
 
 export interface PullRequestListOptions {
   readonly signal?: AbortSignal;
@@ -396,11 +340,39 @@ export interface ForgeAdapter {
     options?: PullRequestOverviewOptions,
   ): Promise<Result<PullRequestOverview, ForgeOperationError>>;
 
-  getPullRequestResource(
+  getPullRequestDetails(
     number: number,
-    resourceKind: PullRequestResourceKind,
     options?: PullRequestResourceOptions,
-  ): Promise<Result<PullRequestResource, ForgeOperationError>>;
+  ): Promise<Result<PullRequestDetails, ForgeOperationError>>;
+
+  getPullRequestDiff(
+    number: number,
+    options?: PullRequestResourceOptions,
+  ): Promise<Result<ForgeSection<PullRequestPatch>, ForgeOperationError>>;
+
+  getPullRequestCommits(
+    number: number,
+    options?: PullRequestResourceOptions,
+  ): Promise<
+    Result<ForgeSection<readonly PullRequestCommit[]>, ForgeOperationError>
+  >;
+
+  getPullRequestReviews(
+    number: number,
+    options?: PullRequestResourceOptions,
+  ): Promise<Result<PullRequestReviewsResource, ForgeOperationError>>;
+
+  getPullRequestChecks(
+    number: number,
+    options?: PullRequestResourceOptions,
+  ): Promise<
+    Result<ForgeSection<readonly PullRequestCheck[]>, ForgeOperationError>
+  >;
+
+  getPullRequestDevelopment(
+    number: number,
+    options?: PullRequestResourceOptions,
+  ): Promise<Result<PullRequestDevelopment, ForgeOperationError>>;
 
   /**
    * The change introduced by a single commit, as a patch of that commit against

@@ -33,37 +33,14 @@ export async function initializeForgeAdapter<T>(
   return (await checkCli(kind, executable, ["--version"], cwd)).map(create);
 }
 
-function requestedListLimit(
-  kind: ForgeKind,
-  value: number | undefined,
-): Result<number, ForgeOperationError> {
-  if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
-    return Result.err({
-      kind,
-      code: ForgeOperationErrorCode.InvalidRequest,
-      diagnostic: "Pull request list limit must be a positive safe integer",
-    });
-  }
-  return Result.ok(Math.min(value ?? defaultListLimit, maxListLimit));
+function requestedListLimit(value: number | undefined): number {
+  return Math.min(value ?? defaultListLimit, maxListLimit);
 }
 
 function requestedListState(
-  kind: ForgeKind,
   value: PullRequestListState | undefined,
-): Result<PullRequestListState, ForgeOperationError> {
-  if (
-    value !== undefined &&
-    value !== "open" &&
-    value !== "closed" &&
-    value !== "all"
-  ) {
-    return Result.err({
-      kind,
-      code: ForgeOperationErrorCode.InvalidRequest,
-      diagnostic: "Pull request list state must be open, closed, or all",
-    });
-  }
-  return Result.ok(value ?? defaultListState);
+): PullRequestListState {
+  return value ?? defaultListState;
 }
 
 export function executeForgeJson<T>(
@@ -160,14 +137,8 @@ export async function loadForgePullRequestList(
   cwd: string,
   options: PullRequestListOptions,
 ): Promise<ResultType<PullRequestList, ForgeOperationError>> {
-  const limit = requestedListLimit(kind, options.limit);
-  if (limit.isErr()) {
-    return limit;
-  }
-  const state = requestedListState(kind, options.state);
-  if (state.isErr()) {
-    return state;
-  }
+  const limit = requestedListLimit(options.limit);
+  const state = requestedListState(options.state);
 
   const repository = await getRepository(options.signal);
   if (repository.isErr()) {
@@ -179,8 +150,8 @@ export async function loadForgePullRequestList(
     executable,
     cwd,
     repository.value,
-    limit.value,
-    command(repository.value, limit.value, state.value),
+    limit,
+    command(repository.value, limit, state),
     decoder,
     options.signal,
   );

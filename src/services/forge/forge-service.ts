@@ -14,25 +14,19 @@ import type {
   ForgeKind,
   ForgeOperationError,
   ForgeSection,
+  PullRequestCheck,
+  PullRequestCommit,
+  PullRequestDetails,
+  PullRequestDevelopment,
   PullRequestList,
   PullRequestListOptions,
   PullRequestListState,
   PullRequestOverview,
   PullRequestOverviewOptions,
   PullRequestPatch,
-  PullRequestResource,
-  PullRequestResourceKind,
   PullRequestResourceOptions,
+  PullRequestReviewsResource,
 } from "./types";
-
-const resourceKinds: readonly PullRequestResourceKind[] = [
-  "details",
-  "diff",
-  "commits",
-  "reviews",
-  "checks",
-  "development",
-];
 
 export class ForgeService {
   private constructor(private readonly adapter: ForgeAdapter) {}
@@ -93,27 +87,68 @@ export class ForgeService {
     );
   }
 
-  public getPullRequestResource(
+  public getPullRequestDetails(
     number: number,
-    resourceKind: PullRequestResourceKind,
     options?: PullRequestResourceOptions,
-  ): Promise<Result<PullRequestResource, ForgeOperationError>> {
-    const { kind, adapter } = this;
+  ): Promise<Result<PullRequestDetails, ForgeOperationError>> {
+    return Result.andThenAsync(
+      validatePullRequestNumber(this.kind, number),
+      (value) => this.adapter.getPullRequestDetails(value, options),
+    );
+  }
 
-    return Result.gen(async function* () {
-      const value = yield* validatePullRequestNumber(kind, number);
-      if (!resourceKinds.includes(resourceKind)) {
-        yield* invalidRequest<PullRequestResource>(
-          kind,
-          `Unknown pull request resource: ${resourceKind}`,
-        );
-      }
+  public getPullRequestDiff(
+    number: number,
+    options?: PullRequestResourceOptions,
+  ): Promise<Result<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
+    return Result.andThenAsync(
+      validatePullRequestNumber(this.kind, number),
+      (value) => this.adapter.getPullRequestDiff(value, options),
+    );
+  }
 
-      const resource = yield* Result.await(
-        adapter.getPullRequestResource(value, resourceKind, options),
-      );
-      return Result.ok(resource);
-    });
+  public getPullRequestCommits(
+    number: number,
+    options?: PullRequestResourceOptions,
+  ): Promise<
+    Result<ForgeSection<readonly PullRequestCommit[]>, ForgeOperationError>
+  > {
+    return Result.andThenAsync(
+      validatePullRequestNumber(this.kind, number),
+      (value) => this.adapter.getPullRequestCommits(value, options),
+    );
+  }
+
+  public getPullRequestReviews(
+    number: number,
+    options?: PullRequestResourceOptions,
+  ): Promise<Result<PullRequestReviewsResource, ForgeOperationError>> {
+    return Result.andThenAsync(
+      validatePullRequestNumber(this.kind, number),
+      (value) => this.adapter.getPullRequestReviews(value, options),
+    );
+  }
+
+  public getPullRequestChecks(
+    number: number,
+    options?: PullRequestResourceOptions,
+  ): Promise<
+    Result<ForgeSection<readonly PullRequestCheck[]>, ForgeOperationError>
+  > {
+    return Result.andThenAsync(
+      validatePullRequestNumber(this.kind, number),
+      (value) => this.adapter.getPullRequestChecks(value, options),
+    );
+  }
+
+  public getPullRequestDevelopment(
+    number: number,
+    options?: PullRequestResourceOptions,
+  ): Promise<Result<PullRequestDevelopment, ForgeOperationError>> {
+    return Result.andThenAsync(
+      validatePullRequestNumber(this.kind, number),
+      (value) => this.adapter.getPullRequestDevelopment(value, options),
+    );
   }
 
   public getCommitPatch(

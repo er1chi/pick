@@ -3,7 +3,7 @@ import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
 import {
   ApplicationContext,
-  ForgeOperationErrorCode,
+  ForgeCancelledError,
   ForgeUnsupportedReasonCode,
 } from "./types";
 import * as schemaPrimitives from "./schema-primitives";
@@ -209,11 +209,12 @@ function joinViewFlight(
 }
 
 function cancelledView(): ResultType<ForgejoViewPayload, ForgeOperationError> {
-  return Result.err({
-    kind,
-    code: ForgeOperationErrorCode.Cancelled,
-    diagnostic: "The Forgejo pull request view request was cancelled",
-  });
+  return Result.err(
+    new ForgeCancelledError({
+      kind,
+      message: "The Forgejo pull request view request was cancelled",
+    }),
+  );
 }
 
 export class ForgejoService implements ForgeAdapter {

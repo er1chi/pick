@@ -2,6 +2,7 @@ import { useBindings } from "@opentui/keymap/solid";
 import type { FileTree as FileTreeModel } from "@pierre/trees";
 import { requestPaneFocus } from "@/context/active-pane-context";
 import { patchFileIndex } from "@/features/pr-view/patch-file-index";
+import { visibleError, visibleValue } from "@/features/pr-view/load-state";
 import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import { SelectableRow } from "@/features/shared/selectable-row";
 import {
@@ -36,7 +37,7 @@ function sectionProblemMessage(section: SectionProblem, label: string): string {
     case "unsupported":
       return section.reason.diagnostic;
     case "failed":
-      return `Could not load ${label}: ${section.error.diagnostic}`;
+      return `Could not load ${label}: ${section.error.message}`;
     case "not-requested":
       return `${label} are not available.`;
   }
@@ -46,16 +47,17 @@ function sectionProblemMessage(section: SectionProblem, label: string): string {
 // patch when a commit is active, otherwise the pull request diff patch.
 function changedFiles(content: PrViewContent): FilesView {
   const state = content.currentPatch();
-  if (state.status === "idle" || state.status === "loading") {
-    return { kind: "message", text: "Loading changed files…" };
-  }
-  if (state.status === "error") {
+  const error = visibleError(state);
+  if (error !== undefined) {
     return {
       kind: "message",
-      text: `Could not load changed files: ${state.error.diagnostic}`,
+      text: `Could not load changed files: ${error.message}`,
     };
   }
-  const section = state.value;
+  const section = visibleValue(state);
+  if (section === undefined) {
+    return { kind: "message", text: "Loading changed files…" };
+  }
   if (section.status === "available") {
     const paths = patchFileIndex(section).files.map((file) => file.name);
     return paths.length === 0

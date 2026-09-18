@@ -1,3 +1,4 @@
+import { TaggedError } from "better-result";
 import type { Result } from "better-result";
 
 export enum ApplicationContext {
@@ -9,22 +10,6 @@ export enum ApplicationContext {
 
 export type ForgeKind = ApplicationContext.GitHub | ApplicationContext.Forgejo;
 
-export enum ForgeInitializationErrorCode {
-  ExecutableUnavailable = "executable-unavailable",
-  VersionCheckFailed = "version-check-failed",
-}
-
-export enum ForgeOperationErrorCode {
-  InvalidRequest = "invalid-request",
-  CommandSpawnFailed = "command-spawn-failed",
-  CommandFailed = "command-failed",
-  InvalidJson = "invalid-json",
-  IncompatibleResponse = "incompatible-response",
-  OutputLimitExceeded = "output-limit-exceeded",
-  Cancelled = "cancelled",
-  TimedOut = "timed-out",
-}
-
 export enum PullRequestState {
   Open = "open",
   Closed = "closed",
@@ -34,62 +19,98 @@ export enum PullRequestState {
 
 export type PullRequestListState = "open" | "closed" | "all";
 
+export class ForgeExecutableUnavailableError extends TaggedError(
+  "ForgeExecutableUnavailableError",
+)<{
+  readonly kind: ForgeKind;
+  readonly message: string;
+}> {}
+
+export class ForgeVersionCheckFailedError extends TaggedError(
+  "ForgeVersionCheckFailedError",
+)<{
+  readonly kind: ForgeKind;
+  readonly exitCode: number;
+  readonly message: string;
+}> {}
+
 export type ForgeInitializationError =
-  | {
-      readonly kind: ForgeKind;
-      readonly code: ForgeInitializationErrorCode.ExecutableUnavailable;
-    }
-  | {
-      readonly kind: ForgeKind;
-      readonly code: ForgeInitializationErrorCode.VersionCheckFailed;
-      readonly exitCode: number;
-    };
+  | ForgeExecutableUnavailableError
+  | ForgeVersionCheckFailedError;
+
+export class ForgeCommandSpawnFailedError extends TaggedError(
+  "ForgeCommandSpawnFailedError",
+)<{
+  readonly kind: ForgeKind;
+  readonly message: string;
+}> {}
+
+export class ForgeCommandFailedError extends TaggedError(
+  "ForgeCommandFailedError",
+)<{
+  readonly kind: ForgeKind;
+  readonly exitCode: number;
+  readonly message: string;
+}> {}
+
+export class ForgeOutputLimitExceededError extends TaggedError(
+  "ForgeOutputLimitExceededError",
+)<{
+  readonly kind: ForgeKind;
+  readonly message: string;
+}> {}
+
+export class ForgeCancelledError extends TaggedError("ForgeCancelledError")<{
+  readonly kind: ForgeKind;
+  readonly message: string;
+}> {}
+
+export class ForgeTimedOutError extends TaggedError("ForgeTimedOutError")<{
+  readonly kind: ForgeKind;
+  readonly message: string;
+}> {}
+
+export class ForgeInvalidRequestError extends TaggedError(
+  "ForgeInvalidRequestError",
+)<{
+  readonly kind: ForgeKind;
+  readonly message: string;
+}> {}
+
+export class ForgeInvalidJsonError extends TaggedError(
+  "ForgeInvalidJsonError",
+)<{
+  readonly kind: ForgeKind;
+  readonly message: string;
+}> {}
+
+export class ForgeIncompatibleResponseError extends TaggedError(
+  "ForgeIncompatibleResponseError",
+)<{
+  readonly kind: ForgeKind;
+  readonly message: string;
+}> {}
+
+/** Raised by the service boundary when an operation throws unexpectedly. */
+export class ForgeUnexpectedError extends TaggedError("ForgeUnexpectedError")<{
+  readonly kind: ForgeKind;
+  readonly cause: unknown;
+  readonly message: string;
+}> {}
 
 export type CliExecutionError =
-  | {
-      readonly kind: ForgeKind;
-      readonly code: ForgeOperationErrorCode.CommandSpawnFailed;
-      readonly diagnostic: string;
-    }
-  | {
-      readonly kind: ForgeKind;
-      readonly code: ForgeOperationErrorCode.CommandFailed;
-      readonly exitCode: number;
-      readonly diagnostic: string;
-    }
-  | {
-      readonly kind: ForgeKind;
-      readonly code: ForgeOperationErrorCode.OutputLimitExceeded;
-      readonly diagnostic: string;
-    }
-  | {
-      readonly kind: ForgeKind;
-      readonly code: ForgeOperationErrorCode.Cancelled;
-      readonly diagnostic: string;
-    }
-  | {
-      readonly kind: ForgeKind;
-      readonly code: ForgeOperationErrorCode.TimedOut;
-      readonly diagnostic: string;
-    };
+  | ForgeCommandSpawnFailedError
+  | ForgeCommandFailedError
+  | ForgeOutputLimitExceededError
+  | ForgeCancelledError
+  | ForgeTimedOutError;
 
 export type ForgeOperationError =
   | CliExecutionError
-  | {
-      readonly kind: ForgeKind;
-      readonly code: ForgeOperationErrorCode.InvalidRequest;
-      readonly diagnostic: string;
-    }
-  | {
-      readonly kind: ForgeKind;
-      readonly code: ForgeOperationErrorCode.InvalidJson;
-      readonly diagnostic: string;
-    }
-  | {
-      readonly kind: ForgeKind;
-      readonly code: ForgeOperationErrorCode.IncompatibleResponse;
-      readonly diagnostic: string;
-    };
+  | ForgeInvalidRequestError
+  | ForgeInvalidJsonError
+  | ForgeIncompatibleResponseError
+  | ForgeUnexpectedError;
 
 export interface ForgeRepository {
   readonly fullName: string;
@@ -384,12 +405,3 @@ export interface ForgeAdapter {
     options?: PullRequestResourceOptions,
   ): Promise<Result<ForgeSection<PullRequestPatch>, ForgeOperationError>>;
 }
-
-export type CliCheckError =
-  | {
-      readonly code: ForgeInitializationErrorCode.ExecutableUnavailable;
-    }
-  | {
-      readonly code: ForgeInitializationErrorCode.VersionCheckFailed;
-      readonly exitCode: number;
-    };

@@ -11,28 +11,35 @@ import {
   type SidebarPaneProps,
 } from "@/features/sidebar/sidebar-box";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
+import {
+  isPending,
+  visibleError,
+  visibleValue,
+} from "@/features/pr-view/load-state";
 import type { PullRequestSummary } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { For, Show } from "solid-js";
 import type { JSX } from "solid-js";
 
 function listItems(titles: PrTitles): readonly PullRequestSummary[] {
-  return titles.list().value?.items ?? [];
+  return visibleValue(titles.list())?.items ?? [];
 }
 
 function listError(titles: PrTitles): string | undefined {
-  const state = titles.list();
-  return state.status === "error" ? state.error.diagnostic : undefined;
+  return visibleError(titles.list())?.message;
 }
 
 function listIsTruncated(titles: PrTitles): boolean {
   const state = titles.list();
-  return state.status === "ready" && state.value.truncated;
+  return (
+    state.status === "settled" &&
+    state.result.isOk() &&
+    state.result.value.truncated
+  );
 }
 
 function listIsPending(titles: PrTitles): boolean {
-  const state = titles.list();
-  return state.status === "loading" && state.value === undefined;
+  return isPending(titles.list());
 }
 
 export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {

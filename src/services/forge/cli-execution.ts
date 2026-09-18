@@ -1,6 +1,13 @@
-import { Result } from "better-result";
+import { Result, TaggedError } from "better-result";
 import type { Result as ResultType } from "better-result";
-import { ForgeOperationErrorCode } from "./types";
+import {
+  ForgeCancelledError,
+  ForgeCommandFailedError,
+  ForgeCommandSpawnFailedError,
+  ForgeInvalidJsonError,
+  ForgeOutputLimitExceededError,
+  ForgeTimedOutError,
+} from "./types";
 import type {
   CliExecutionError,
   ForgeKind,
@@ -16,17 +23,11 @@ export interface CliExecutionOptions {
   readonly maxOutputBytes?: number;
 }
 
-class CliOutputFailure extends Error {
-  public constructor(
-    public readonly code:
-      | ForgeOperationErrorCode.OutputLimitExceeded
-      | ForgeOperationErrorCode.Cancelled
-      | ForgeOperationErrorCode.TimedOut,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+/** Internal abort signal for the stream readers, mapped to a domain error by
+ * the `catch` handler of the surrounding `Result.tryPromise`. */
+class CliOutputFailure extends TaggedError("CliOutputFailure")<{
+  readonly failure: CliExecutionError;
+}> {}
 
 export async function executeCli(
   kind: ForgeKind,
@@ -36,11 +37,12 @@ export async function executeCli(
   options: CliExecutionOptions = {},
 ): Promise<Result<string, CliExecutionError>> {
   if (options.signal?.aborted) {
-    return Result.err({
-      kind,
-      code: ForgeOperationErrorCode.Cancelled,
-      diagnostic: "CLI execution was cancelled before it started",
-    });
+    return Result.err(
+      new ForgeCancelledError({
+        kind,
+        message: "CLI execution was cancelled before it started",
+      }),
+    );
   }
 
   const execution = await Result.tryPromise({
@@ -70,22 +72,26 @@ export async function executeCli(
 
       try {
         const [stdout, stderr, exitCode] = await Promise.all([
-          readStream(subprocess.stdout, options.maxOutputBytes),
-          readStream(subprocess.stderr, diagnosticOutputLimit),
+          readStream(subprocess.stdout, kind, options.maxOutputBytes),
+          readStream(subprocess.stderr, kind, diagnosticOutputLimit),
           subprocess.exited,
         ]);
 
         if (cancelled) {
-          throw new CliOutputFailure(
-            ForgeOperationErrorCode.Cancelled,
-            "CLI execution was cancelled",
-          );
+          throw new CliOutputFailure({
+            failure: new ForgeCancelledError({
+              kind,
+              message: "CLI execution was cancelled",
+            }),
+          });
         }
         if (timedOut) {
-          throw new CliOutputFailure(
-            ForgeOperationErrorCode.TimedOut,
-            `CLI execution exceeded ${timeoutMs}ms`,
-          );
+          throw new CliOutputFailure({
+            failure: new ForgeTimedOutError({
+              kind,
+              message: `CLI execution exceeded ${timeoutMs}ms`,
+            }),
+          });
         }
 
         return { stdout, stderr, exitCode };
@@ -100,30 +106,26 @@ export async function executeCli(
       }
     },
     catch: (cause): CliExecutionError => {
-      if (cause instanceof CliOutputFailure) {
-        return {
-          kind,
-          code: cause.code,
-          diagnostic: cause.message,
-        };
+      if (CliOutputFailure.is(cause)) {
+        return cause.failure;
       }
-      return {
+      return new ForgeCommandSpawnFailedError({
         kind,
-        code: ForgeOperationErrorCode.CommandSpawnFailed,
-        diagnostic: describeCause(cause),
-      };
+        message: describeCause(cause),
+      });
     },
   });
 
   return execution.andThen(({ stdout, stderr, exitCode }) =>
     exitCode === 0
       ? Result.ok(stdout)
-      : Result.err<never, CliExecutionError>({
-          kind,
-          code: ForgeOperationErrorCode.CommandFailed,
-          exitCode,
-          diagnostic: stderr.trim() || `CLI exited with code ${exitCode}`,
-        }),
+      : Result.err<never, CliExecutionError>(
+          new ForgeCommandFailedError({
+            kind,
+            exitCode,
+            message: stderr.trim() || `CLI exited with code ${exitCode}`,
+          }),
+        ),
   );
 }
 
@@ -137,14 +139,14 @@ export function decodeJson<T>(
         const value: unknown = JSON.parse(output);
         return value;
       },
-      catch: (cause): ForgeOperationError => ({
-        kind,
-        code: ForgeOperationErrorCode.InvalidJson,
-        diagnostic:
-          cause instanceof Error
-            ? cause.message
-            : "CLI returned malformed JSON",
-      }),
+      catch: (cause): ForgeOperationError =>
+        new ForgeInvalidJsonError({
+          kind,
+          message:
+            cause instanceof Error
+              ? cause.message
+              : "CLI returned malformed JSON",
+        }),
     });
 
     return parsed.andThen(decoder);
@@ -153,6 +155,7 @@ export function decodeJson<T>(
 
 async function readStream(
   stream: ReadableStream<Uint8Array>,
+  kind: ForgeKind,
   maxBytes: number | undefined,
 ): Promise<string> {
   const reader = stream.getReader();
@@ -168,10 +171,12 @@ async function readStream(
 
       byteLength += chunk.value.byteLength;
       if (maxBytes !== undefined && byteLength > maxBytes) {
-        throw new CliOutputFailure(
-          ForgeOperationErrorCode.OutputLimitExceeded,
-          `CLI output exceeded the ${maxBytes}-byte limit`,
-        );
+        throw new CliOutputFailure({
+          failure: new ForgeOutputLimitExceededError({
+            kind,
+            message: `CLI output exceeded the ${maxBytes}-byte limit`,
+          }),
+        });
       }
       chunks.push(chunk.value);
     }

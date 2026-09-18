@@ -346,7 +346,7 @@ function decisionSegment(
     case "unsupported":
       return `decision unsupported — ${section.reason.diagnostic}`;
     case "failed":
-      return `decision failed — ${section.error.diagnostic}`;
+      return `decision failed — ${section.error.message}`;
     case "not-requested":
       return undefined;
   }
@@ -408,7 +408,7 @@ function sectionAvailability<T>(
     case "unsupported":
       return `unsupported — ${section.reason.diagnostic}`;
     case "failed":
-      return `failed — ${section.error.diagnostic}`;
+      return `failed — ${section.error.message}`;
     case "not-requested":
       return "not requested";
   }

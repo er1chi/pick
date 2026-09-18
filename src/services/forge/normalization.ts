@@ -1,8 +1,8 @@
 import { Result } from "better-result";
+import { ForgeUnsupportedReasonCode, PullRequestState } from "./types";
 import {
-  ForgeOperationErrorCode,
-  ForgeUnsupportedReasonCode,
-  PullRequestState,
+  ForgeIncompatibleResponseError,
+  ForgeInvalidRequestError,
 } from "./types";
 import type {
   ForgeKind,
@@ -67,11 +67,10 @@ export function normalizeRepository(
     parts[1].length === 0 ||
     /\s/u.test(fullName)
   ) {
-    return Result.err({
+    return incompatible(
       kind,
-      code: ForgeOperationErrorCode.IncompatibleResponse,
-      diagnostic: `Repository identity is not owner/repo: ${fullName}`,
-    });
+      `Repository identity is not owner/repo: ${fullName}`,
+    );
   }
 
   return Result.ok({
@@ -237,24 +236,16 @@ export function failed<T>(error: ForgeOperationError): ForgeSection<T> {
 
 export function incompatible<T>(
   kind: ForgeKind,
-  diagnostic: string,
+  message: string,
 ): Result<T, ForgeOperationError> {
-  return Result.err({
-    kind,
-    code: ForgeOperationErrorCode.IncompatibleResponse,
-    diagnostic,
-  });
+  return Result.err(new ForgeIncompatibleResponseError({ kind, message }));
 }
 
 export function invalidRequest<T>(
   kind: ForgeKind,
-  diagnostic: string,
+  message: string,
 ): Result<T, ForgeOperationError> {
-  return Result.err({
-    kind,
-    code: ForgeOperationErrorCode.InvalidRequest,
-    diagnostic,
-  });
+  return Result.err(new ForgeInvalidRequestError({ kind, message }));
 }
 
 export function validateCommitSha(

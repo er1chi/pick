@@ -4,22 +4,20 @@ import {
   type CachedQuery,
   type Fetcher,
 } from "@/features/pr-view/cached-query";
-import type { LoadState } from "@/features/pr-view/load-state";
+import { visibleValue, type LoadState } from "@/features/pr-view/load-state";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { ForgeService } from "@/services/forge/forge-service";
-import {
-  ForgeOperationErrorCode,
-  type ForgeOperationError,
-  type ForgeSection,
-  type PullRequestCheck,
-  type PullRequestCommit,
-  type PullRequestDetails,
-  type PullRequestDevelopment,
-  type PullRequestOverview,
-  type PullRequestPatch,
-  type PullRequestReviewsResource,
+import type {
+  ForgeOperationError,
+  ForgeSection,
+  PullRequestCheck,
+  PullRequestCommit,
+  PullRequestDetails,
+  PullRequestDevelopment,
+  PullRequestOverview,
+  PullRequestPatch,
+  PullRequestReviewsResource,
 } from "@/services/forge/types";
-import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
 import { createEffect, createSignal, type Accessor } from "solid-js";
 
@@ -102,32 +100,21 @@ function developmentFailed(resource: PullRequestDevelopment): boolean {
 }
 
 function forgeFetcher<T>(
-  forge: ForgeService,
-  fallback: string,
   run: (signal: AbortSignal) => Promise<ResultType<T, ForgeOperationError>>,
 ): Fetcher<T> {
-  return (signal) =>
-    Promise.resolve()
-      .then(() => run(signal))
-      .catch((cause: unknown) =>
-        Result.err<T, ForgeOperationError>({
-          code: ForgeOperationErrorCode.IncompatibleResponse,
-          kind: forge.kind,
-          diagnostic: cause instanceof Error ? cause.message : fallback,
-        }),
-      );
+  return (signal) => run(signal);
 }
 
 function overviewFetcher(selection: Selection): Fetcher<PullRequestOverview> {
   const { forge, number } = selection;
-  return forgeFetcher(forge, "Could not load pull request overview", (signal) =>
+  return forgeFetcher((signal) =>
     forge.getPullRequestOverview(number, { signal }),
   );
 }
 
 function detailsFetcher(selection: Selection): Fetcher<PullRequestDetails> {
   const { forge, number } = selection;
-  return forgeFetcher(forge, "Could not load pull request details", (signal) =>
+  return forgeFetcher((signal) =>
     forge.getPullRequestDetails(number, { signal }),
   );
 }
@@ -136,16 +123,14 @@ function diffFetcher(
   selection: Selection,
 ): Fetcher<ForgeSection<PullRequestPatch>> {
   const { forge, number } = selection;
-  return forgeFetcher(forge, "Could not load files changed", (signal) =>
-    forge.getPullRequestDiff(number, { signal }),
-  );
+  return forgeFetcher((signal) => forge.getPullRequestDiff(number, { signal }));
 }
 
 function commitsFetcher(
   selection: Selection,
 ): Fetcher<ForgeSection<readonly PullRequestCommit[]>> {
   const { forge, number } = selection;
-  return forgeFetcher(forge, "Could not load commits", (signal) =>
+  return forgeFetcher((signal) =>
     forge.getPullRequestCommits(number, { signal }),
   );
 }
@@ -154,7 +139,7 @@ function reviewsFetcher(
   selection: Selection,
 ): Fetcher<PullRequestReviewsResource> {
   const { forge, number } = selection;
-  return forgeFetcher(forge, "Could not load reviews", (signal) =>
+  return forgeFetcher((signal) =>
     forge.getPullRequestReviews(number, { signal }),
   );
 }
@@ -163,7 +148,7 @@ function checksFetcher(
   selection: Selection,
 ): Fetcher<ForgeSection<readonly PullRequestCheck[]>> {
   const { forge, number } = selection;
-  return forgeFetcher(forge, "Could not load checks", (signal) =>
+  return forgeFetcher((signal) =>
     forge.getPullRequestChecks(number, { signal }),
   );
 }
@@ -172,7 +157,7 @@ function developmentFetcher(
   selection: Selection,
 ): Fetcher<PullRequestDevelopment> {
   const { forge, number } = selection;
-  return forgeFetcher(forge, "Could not load development", (signal) =>
+  return forgeFetcher((signal) =>
     forge.getPullRequestDevelopment(number, { signal }),
   );
 }
@@ -182,9 +167,7 @@ function commitPatchFetcher(
   sha: string,
 ): Fetcher<ForgeSection<PullRequestPatch>> {
   const { forge } = selection;
-  return forgeFetcher(forge, `Could not load commit ${sha}`, (signal) =>
-    forge.getCommitPatch(sha, { signal }),
-  );
+  return forgeFetcher((signal) => forge.getCommitPatch(sha, { signal }));
 }
 
 interface EagerRow {
@@ -262,7 +245,7 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
   function currentSelection(): Selection | undefined {
     const state = appContext.state();
     const number = titles.openedNumber();
-    const list = titles.list().value;
+    const list = visibleValue(titles.list());
     if (state.forge === undefined || number === null || list === undefined) {
       return undefined;
     }
@@ -290,7 +273,7 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
   }
 
   function commitsValue(): readonly PullRequestCommit[] {
-    const section = commits.state().value;
+    const section = visibleValue(commits.state());
     return section?.status === "available" ? section.value : [];
   }
 

@@ -1,5 +1,6 @@
 import { Result } from "better-result";
-import { GitRemoteErrorCode, type GitRemoteError } from "./types";
+import { GitCommandFailedError, GitUnavailableError } from "./types";
+import type { GitRemoteError } from "./types";
 
 export async function readGitRemoteOutput(
   cwd: string,
@@ -21,17 +22,20 @@ export async function readGitRemoteOutput(
 
       return { stdout, exitCode };
     },
-    catch: (): GitRemoteError => ({
-      code: GitRemoteErrorCode.GitUnavailable,
-    }),
+    catch: () =>
+      new GitUnavailableError({
+        message: "git could not be executed",
+      }),
   });
 
   return execution.andThen(({ stdout, exitCode }) =>
     exitCode === 0
       ? Result.ok(stdout)
-      : Result.err<never, GitRemoteError>({
-          code: GitRemoteErrorCode.GitCommandFailed,
-          exitCode,
-        }),
+      : Result.err<never, GitRemoteError>(
+          new GitCommandFailedError({
+            exitCode,
+            message: `git remote -v exited with code ${exitCode}`,
+          }),
+        ),
   );
 }

@@ -1,4 +1,5 @@
 import { CommitContext } from "@/features/pr-view/commit-context";
+import { visibleError, visibleValue } from "@/features/pr-view/load-state";
 import { oneLine } from "@/features/pr-view/pr-view-chrome";
 import { patchFileIndex } from "@/features/pr-view/patch-file-index";
 import type {
@@ -63,7 +64,7 @@ function patchSectionNotice(
     case "unsupported":
       return section.reason.diagnostic;
     case "failed":
-      return `Could not load patch: ${section.error.diagnostic}`;
+      return `Could not load patch: ${section.error.message}`;
     default:
       return undefined;
   }
@@ -86,22 +87,27 @@ interface SelectedDiffProps {
 export function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
   const fromCommit = () => props.view.commit !== undefined;
   const fileDiffs = createMemo(() =>
-    fileDiffsForPatch(props.content.currentPatch().value, props.view.path),
+    fileDiffsForPatch(
+      visibleValue(props.content.currentPatch()),
+      props.view.path,
+    ),
   );
 
   const notice = (): string | undefined => {
     const state = props.content.currentPatch();
-    if (state.status === "error") {
+    const error = visibleError(state);
+    if (error !== undefined) {
       return `Could not load ${
         fromCommit() ? "commit" : "pull request"
-      } diff: ${state.error.diagnostic}`;
+      } diff: ${error.message}`;
     }
-    if (state.value === undefined) {
+    const section = visibleValue(state);
+    if (section === undefined) {
       return fromCommit()
         ? "Loading commit diff…"
         : "Loading pull request diff…";
     }
-    const sectionNotice = patchSectionNotice(state.value);
+    const sectionNotice = patchSectionNotice(section);
     if (sectionNotice !== undefined) {
       return sectionNotice;
     }

@@ -1,9 +1,11 @@
 import { idleLoadState, type LoadState } from "@/features/pr-view/load-state";
 import type { ForgeOperationError } from "@/services/forge/types";
+import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
 import { createSignal, onCleanup, type Accessor } from "solid-js";
 
-/** Must never reject: a rejected fetch would leave the query loading forever. */
+/** Must never reject: a rejected fetch would leave the query loading forever.
+ * The ForgeService boundary guarantees this for forge operations. */
 export type Fetcher<T> = (
   signal: AbortSignal,
 ) => Promise<ResultType<T, ForgeOperationError>>;
@@ -36,25 +38,44 @@ export function createCachedQuery<T>(
     request = undefined;
   }
 
+  /** The successful result for the current key, if one has settled. */
+  function retained(): ResultType<T, ForgeOperationError> | undefined {
+    const current = state();
+    if (key === undefined) {
+      return undefined;
+    }
+    if (current.status === "loading") {
+      return current.previous;
+    }
+    if (current.status === "settled" && current.result.isOk()) {
+      return current.result;
+    }
+    return undefined;
+  }
+
   function show(nextKey: string, fetch: Fetcher<T>, force = false): void {
     if (!force && key === nextKey) {
       return;
     }
-    const retained = key === nextKey ? state().value : undefined;
+    const previous = key === nextKey ? retained() : undefined;
     key = nextKey;
     cancel();
 
     if (!force) {
       const cached = cache.get(nextKey);
       if (cached !== undefined) {
-        setState({ status: "ready", value: cached, error: undefined });
+        setState({
+          status: "settled",
+          result: Result.ok(cached),
+          previous: undefined,
+        });
         return;
       }
     }
 
     const controller = new AbortController();
     request = controller;
-    setState({ status: "loading", value: retained, error: undefined });
+    setState({ status: "loading", previous });
 
     void fetch(controller.signal).then((result) => {
       // Identity is the whole staleness guard: every supersede, reset, and
@@ -64,13 +85,13 @@ export function createCachedQuery<T>(
       }
       request = undefined;
       if (result.isErr()) {
-        setState({ status: "error", value: retained, error: result.error });
+        setState({ status: "settled", result, previous });
         return;
       }
       if (options.isCacheable(result.value)) {
         cache.set(nextKey, result.value);
       }
-      setState({ status: "ready", value: result.value, error: undefined });
+      setState({ status: "settled", result, previous: undefined });
     });
   }
 

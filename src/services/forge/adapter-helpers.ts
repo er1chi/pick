@@ -3,10 +3,10 @@ import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
 import { checkCli } from "./cli-check";
 import { decodeJson, executeCli } from "./cli-execution";
-import { ForgeOperationErrorCode } from "./types";
+import { ForgeIncompatibleResponseError } from "./types";
 import { available, byteLength, failed } from "./normalization";
 import type {
-  CliCheckError,
+  ForgeInitializationError,
   ForgeKind,
   ForgeOperationError,
   ForgeRepository,
@@ -29,7 +29,7 @@ export async function initializeForgeAdapter<T>(
   executable: string,
   cwd: string,
   create: () => T,
-): Promise<ResultType<T, CliCheckError>> {
+): Promise<ResultType<T, ForgeInitializationError>> {
   return (await checkCli(kind, executable, ["--version"], cwd)).map(create);
 }
 
@@ -65,11 +65,12 @@ export function parseForgeSchema<T>(
 ): Result<T, ForgeOperationError> {
   const payload = schema(cause);
   if (payload instanceof type.errors) {
-    return Result.err({
-      kind,
-      code: ForgeOperationErrorCode.IncompatibleResponse,
-      diagnostic: `${diagnostic}: ${payload.summary}`,
-    });
+    return Result.err(
+      new ForgeIncompatibleResponseError({
+        kind,
+        message: `${diagnostic}: ${payload.summary}`,
+      }),
+    );
   }
   return Result.ok(payload);
 }

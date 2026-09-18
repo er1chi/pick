@@ -1,4 +1,8 @@
-import type { LoadState } from "@/features/pr-view/load-state";
+import {
+  visibleError,
+  visibleValue,
+  type LoadState,
+} from "@/features/pr-view/load-state";
 import {
   checkLine,
   collectionAvailability,
@@ -175,8 +179,7 @@ interface ResourceSectionProps<T> {
  * renderers through their ForgeSection values.
  */
 function ResourceSection<T>(props: ResourceSectionProps<T>): JSX.Element {
-  const error = (): string | undefined =>
-    props.state.status === "error" ? props.state.error.diagnostic : undefined;
+  const error = (): string | undefined => visibleError(props.state)?.message;
 
   return (
     <box flexDirection="column" gap={0}>
@@ -192,7 +195,7 @@ function ResourceSection<T>(props: ResourceSectionProps<T>): JSX.Element {
           </box>
         )}
       </Show>
-      <Show keyed when={props.state.value}>
+      <Show keyed when={visibleValue(props.state)}>
         {(value: T) => props.render(value)}
       </Show>
     </box>

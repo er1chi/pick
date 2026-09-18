@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import type { RepositoryAppContextState } from "@/context/app-context";
 import { PaneStore, requestPaneFocus } from "@/context/active-pane-context";
 import { CommitContext } from "@/features/pr-view/commit-context";
+import { visibleValue } from "@/features/pr-view/load-state";
 import { OverviewScreen } from "@/features/pr-view/overview-screen";
 import { MAIN_PANE_CHROME } from "@/features/pr-view/pr-view-chrome";
 import { NoPullRequest, PrViewHeader } from "@/features/pr-view/pr-view-header";
@@ -52,18 +53,18 @@ export function PrView(props: PrViewProps) {
   const currentState = () => props.state;
   const localName = () => basename(currentState().cwd) || currentState().cwd;
   const repositoryName = () =>
-    props.titles.list().value?.repository.fullName ?? localName();
+    visibleValue(props.titles.list())?.repository.fullName ?? localName();
   const openedNumber = () => props.titles.openedNumber();
   const summary = () => {
     const number = openedNumber();
     if (number === null) {
       return undefined;
     }
-    return props.titles
-      .list()
-      .value?.items.find((item) => item.number === number);
+    return visibleValue(props.titles.list())?.items.find(
+      (item) => item.number === number,
+    );
   };
-  const currentDetails = () => props.content.details().value;
+  const currentDetails = () => visibleValue(props.content.details());
   const selectedCommitValue = createMemo(() => {
     const sha = mainViewCommit(view());
     if (sha === undefined) {
@@ -177,7 +178,7 @@ export function PrView(props: PrViewProps) {
 
   createEffect(() => {
     prewarmSplitHighlights(
-      patchFileIndex(props.content.currentPatch().value).files,
+      patchFileIndex(visibleValue(props.content.currentPatch())).files,
     );
   });
 

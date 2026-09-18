@@ -12,7 +12,7 @@ import { usePrViewContent } from "@/features/pr-view/use-pr-view-content";
 import { Sidebar } from "@/features/sidebar/sidebar";
 import {
   ApplicationContext,
-  ForgeInitializationErrorCode,
+  ForgeExecutableUnavailableError,
   type ForgeInitializationError,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
@@ -91,10 +91,9 @@ function notifyCliInitializationError(error: ForgeInitializationError) {
   const service =
     error.kind === ApplicationContext.GitHub ? "GitHub" : "Forgejo";
   const executable = error.kind === ApplicationContext.GitHub ? "gh" : "fj";
-  const reason =
-    error.code === ForgeInitializationErrorCode.ExecutableUnavailable
-      ? "is unavailable"
-      : "version check failed";
+  const reason = ForgeExecutableUnavailableError.is(error)
+    ? "is unavailable"
+    : "version check failed";
   toast.warning(`${service} CLI (${executable}) ${reason}.`);
 }
 

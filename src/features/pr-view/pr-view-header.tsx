@@ -1,12 +1,15 @@
 import type { RepositoryAppContextState } from "@/context/app-context";
-import type { LoadState } from "@/features/pr-view/load-state";
+import {
+  visibleError,
+  visibleValue,
+  type LoadState,
+} from "@/features/pr-view/load-state";
 import {
   mainViewCommit,
   type MainView,
 } from "@/features/pr-view/use-pr-view-content";
 import {
   ApplicationContext,
-  ForgeInitializationErrorCode,
   type ForgeInitializationError,
   type PullRequestDetails,
 } from "@/services/forge/types";
@@ -108,12 +111,9 @@ export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
       : 0);
   const contextTextWidth = () =>
     Math.max(8, props.maxWidth - closeAffordancesWidth() - 1);
-  const details = () => props.detailsState.value;
+  const details = () => visibleValue(props.detailsState);
   const detailsLoading = () => props.detailsState.status === "loading";
-  const detailsError = () =>
-    props.detailsState.status === "error"
-      ? props.detailsState.error.diagnostic
-      : undefined;
+  const detailsError = () => visibleError(props.detailsState)?.message;
 
   return (
     <box
@@ -205,11 +205,12 @@ function serviceName(
 function initializationErrorDescription(
   error: ForgeInitializationError,
 ): string {
-  const service = serviceName(error.kind);
-  if (error.code === ForgeInitializationErrorCode.ExecutableUnavailable) {
-    return `${service} CLI is unavailable.`;
-  }
-  return `${service} CLI version check failed.`;
+  return error.match({
+    ForgeExecutableUnavailableError: (e) =>
+      `${serviceName(e.kind)} CLI is unavailable.`,
+    ForgeVersionCheckFailedError: (e) =>
+      `${serviceName(e.kind)} CLI version check failed.`,
+  });
 }
 
 function forgeInitializationError(

@@ -1,4 +1,5 @@
 import { Result } from "better-result";
+import type { Result as ResultType } from "better-result";
 import { ForgejoService } from "./forgejo-service";
 import { GithubService } from "./github-service";
 import {
@@ -6,9 +7,8 @@ import {
   validateCommitSha,
   validatePullRequestNumber,
 } from "./normalization";
-import { ApplicationContext, ForgeInitializationErrorCode } from "./types";
+import { ApplicationContext, ForgeUnexpectedError } from "./types";
 import type {
-  CliCheckError,
   ForgeAdapter,
   ForgeInitializationError,
   ForgeKind,
@@ -28,6 +28,25 @@ import type {
   PullRequestReviewsResource,
 } from "./types";
 
+/** The service boundary never rejects: an operation that throws unexpectedly
+ * is reported as a failed `Result`, so callers never need a rejection handler. */
+function guard<T>(
+  kind: ForgeKind,
+  operation: Promise<ResultType<T, ForgeOperationError>>,
+): Promise<ResultType<T, ForgeOperationError>> {
+  return operation.catch(
+    (cause: unknown): ResultType<T, ForgeOperationError> =>
+      Result.err(
+        new ForgeUnexpectedError({
+          kind,
+          cause,
+          message:
+            cause instanceof Error ? cause.message : "Unexpected failure",
+        }),
+      ),
+  );
+}
+
 export class ForgeService {
   private constructor(private readonly adapter: ForgeAdapter) {}
 
@@ -35,19 +54,33 @@ export class ForgeService {
     return this.adapter.kind;
   }
 
+  /** Validates the pull request number and runs one adapter operation inside
+   * the never-rejecting service guard. */
+  private fetchResource<T>(
+    number: number,
+    options: PullRequestResourceOptions | undefined,
+    fetch: (value: number) => Promise<ResultType<T, ForgeOperationError>>,
+  ): Promise<ResultType<T, ForgeOperationError>> {
+    return guard(
+      this.kind,
+      Result.andThenAsync(validatePullRequestNumber(this.kind, number), fetch),
+    );
+  }
+
   public static async initialize(
     kind: ForgeKind,
     cwd = process.cwd(),
   ): Promise<Result<ForgeService, ForgeInitializationError>> {
-    if (kind === ApplicationContext.GitHub) {
-      return (await GithubService.initialize(cwd))
-        .map((adapter) => new ForgeService(adapter))
-        .mapError((error) => normalizeInitializationError(kind, error));
-    }
+    const initialize =
+      kind === ApplicationContext.GitHub
+        ? GithubService.initialize(cwd)
+        : ForgejoService.initialize(cwd);
 
-    return (await ForgejoService.initialize(cwd))
-      .map((adapter) => new ForgeService(adapter))
-      .mapError((error) => normalizeInitializationError(kind, error));
+    const initialized = await initialize;
+    if (initialized.isErr()) {
+      return initialized;
+    }
+    return Result.ok(new ForgeService(initialized.value));
   }
 
   public getPullRequests(
@@ -55,35 +88,40 @@ export class ForgeService {
   ): Promise<Result<PullRequestList, ForgeOperationError>> {
     const { kind, adapter } = this;
 
-    return Result.gen(async function* () {
-      const limit = options?.limit;
-      if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
-        yield* invalidRequest<PullRequestList>(
-          kind,
-          "Pull request list limit must be a positive safe integer",
-        );
-      }
-      if (!isPullRequestListState(options?.state)) {
-        yield* invalidRequest<PullRequestList>(
-          kind,
-          "Pull request list state must be open, closed, or all",
-        );
-      }
+    return guard(
+      kind,
+      Result.gen(async function* () {
+        const limit = options?.limit;
+        if (
+          limit !== undefined &&
+          (!Number.isSafeInteger(limit) || limit <= 0)
+        ) {
+          yield* invalidRequest<PullRequestList>(
+            kind,
+            "Pull request list limit must be a positive safe integer",
+          );
+        }
+        if (!isPullRequestListState(options?.state)) {
+          yield* invalidRequest<PullRequestList>(
+            kind,
+            "Pull request list state must be open, closed, or all",
+          );
+        }
 
-      const pullRequests = yield* Result.await(
-        adapter.getPullRequests(options),
-      );
-      return Result.ok(pullRequests);
-    });
+        const pullRequests = yield* Result.await(
+          adapter.getPullRequests(options),
+        );
+        return Result.ok(pullRequests);
+      }),
+    );
   }
 
   public getPullRequestOverview(
     number: number,
     options?: PullRequestOverviewOptions,
   ): Promise<Result<PullRequestOverview, ForgeOperationError>> {
-    return Result.andThenAsync(
-      validatePullRequestNumber(this.kind, number),
-      (value) => this.adapter.getPullRequestOverview(value, options),
+    return this.fetchResource(number, options, (value) =>
+      this.adapter.getPullRequestOverview(value, options),
     );
   }
 
@@ -91,9 +129,8 @@ export class ForgeService {
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestDetails, ForgeOperationError>> {
-    return Result.andThenAsync(
-      validatePullRequestNumber(this.kind, number),
-      (value) => this.adapter.getPullRequestDetails(value, options),
+    return this.fetchResource(number, options, (value) =>
+      this.adapter.getPullRequestDetails(value, options),
     );
   }
 
@@ -101,9 +138,8 @@ export class ForgeService {
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<Result<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
-    return Result.andThenAsync(
-      validatePullRequestNumber(this.kind, number),
-      (value) => this.adapter.getPullRequestDiff(value, options),
+    return this.fetchResource(number, options, (value) =>
+      this.adapter.getPullRequestDiff(value, options),
     );
   }
 
@@ -113,9 +149,8 @@ export class ForgeService {
   ): Promise<
     Result<ForgeSection<readonly PullRequestCommit[]>, ForgeOperationError>
   > {
-    return Result.andThenAsync(
-      validatePullRequestNumber(this.kind, number),
-      (value) => this.adapter.getPullRequestCommits(value, options),
+    return this.fetchResource(number, options, (value) =>
+      this.adapter.getPullRequestCommits(value, options),
     );
   }
 
@@ -123,9 +158,8 @@ export class ForgeService {
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestReviewsResource, ForgeOperationError>> {
-    return Result.andThenAsync(
-      validatePullRequestNumber(this.kind, number),
-      (value) => this.adapter.getPullRequestReviews(value, options),
+    return this.fetchResource(number, options, (value) =>
+      this.adapter.getPullRequestReviews(value, options),
     );
   }
 
@@ -135,9 +169,8 @@ export class ForgeService {
   ): Promise<
     Result<ForgeSection<readonly PullRequestCheck[]>, ForgeOperationError>
   > {
-    return Result.andThenAsync(
-      validatePullRequestNumber(this.kind, number),
-      (value) => this.adapter.getPullRequestChecks(value, options),
+    return this.fetchResource(number, options, (value) =>
+      this.adapter.getPullRequestChecks(value, options),
     );
   }
 
@@ -145,9 +178,8 @@ export class ForgeService {
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestDevelopment, ForgeOperationError>> {
-    return Result.andThenAsync(
-      validatePullRequestNumber(this.kind, number),
-      (value) => this.adapter.getPullRequestDevelopment(value, options),
+    return this.fetchResource(number, options, (value) =>
+      this.adapter.getPullRequestDevelopment(value, options),
     );
   }
 
@@ -157,11 +189,16 @@ export class ForgeService {
   ): Promise<Result<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
     const { kind, adapter } = this;
 
-    return Result.gen(async function* () {
-      const value = yield* validateCommitSha(kind, sha);
-      const patch = yield* Result.await(adapter.getCommitPatch(value, options));
-      return Result.ok(patch);
-    });
+    return guard(
+      kind,
+      Result.gen(async function* () {
+        const value = yield* validateCommitSha(kind, sha);
+        const patch = yield* Result.await(
+          adapter.getCommitPatch(value, options),
+        );
+        return Result.ok(patch);
+      }),
+    );
   }
 }
 
@@ -174,20 +211,4 @@ function isPullRequestListState(
     value === "closed" ||
     value === "all"
   );
-}
-
-function normalizeInitializationError(
-  kind: ForgeKind,
-  error: CliCheckError,
-): ForgeInitializationError {
-  switch (error.code) {
-    case ForgeInitializationErrorCode.ExecutableUnavailable:
-      return { kind, code: ForgeInitializationErrorCode.ExecutableUnavailable };
-    case ForgeInitializationErrorCode.VersionCheckFailed:
-      return {
-        kind,
-        code: ForgeInitializationErrorCode.VersionCheckFailed,
-        exitCode: error.exitCode,
-      };
-  }
 }

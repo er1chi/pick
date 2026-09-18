@@ -1,4 +1,4 @@
-import { Result } from "better-result";
+import { Result, TaggedError } from "better-result";
 import { resolve } from "node:path";
 import { createContext, createSignal, useContext } from "solid-js";
 import type { Accessor } from "solid-js";
@@ -46,15 +46,24 @@ export type RepositoryAppContextState = Exclude<
   AppContextBase<ApplicationContext.Default> & NoForge
 >;
 
-export enum RepositorySelectionErrorCode {
-  DirectoryChangeFailed = "directory-change-failed",
-  ContextInitializationFailed = "context-initialization-failed",
-}
-
-export type RepositorySelectionError = {
-  readonly code: RepositorySelectionErrorCode;
+export class RepositoryDirectoryChangeFailedError extends TaggedError(
+  "RepositoryDirectoryChangeFailedError",
+)<{
   readonly path: string;
-};
+  readonly message: string;
+}> {}
+
+export class RepositoryContextInitializationFailedError extends TaggedError(
+  "RepositoryContextInitializationFailedError",
+)<{
+  readonly path: string;
+  readonly cause: unknown;
+  readonly message: string;
+}> {}
+
+export type RepositorySelectionError =
+  | RepositoryDirectoryChangeFailedError
+  | RepositoryContextInitializationFailedError;
 
 type RepositorySelectionResult = ResultType<void, RepositorySelectionError>;
 
@@ -150,10 +159,12 @@ export function AppContextProvider(
     const path = resolve(repositoryPath);
     const initialization = await Result.tryPromise({
       try: () => initializeAppContext(path),
-      catch: (): RepositorySelectionError => ({
-        code: RepositorySelectionErrorCode.ContextInitializationFailed,
-        path,
-      }),
+      catch: (cause) =>
+        new RepositoryContextInitializationFailedError({
+          path,
+          cause,
+          message: "Could not initialize the repository context",
+        }),
     });
 
     if (initialization.isErr()) {
@@ -164,10 +175,11 @@ export function AppContextProvider(
       try: () => {
         process.chdir(path);
       },
-      catch: (): RepositorySelectionError => ({
-        code: RepositorySelectionErrorCode.DirectoryChangeFailed,
-        path,
-      }),
+      catch: () =>
+        new RepositoryDirectoryChangeFailedError({
+          path,
+          message: `Could not change directory to ${path}`,
+        }),
     });
 
     if (changeDirectory.isErr()) {

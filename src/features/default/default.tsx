@@ -1,6 +1,5 @@
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import {
-  RepositorySelectionErrorCode,
   useAppContext,
   type RepositorySelectionError,
 } from "@/context/app-context";
@@ -73,17 +72,15 @@ export function Default() {
     error: RepositorySelectionError,
     repositoryName: string,
   ): void {
-    switch (error.code) {
-      case RepositorySelectionErrorCode.DirectoryChangeFailed:
-        toast.error(`Could not open ${repositoryName}.`);
-        return;
-      case RepositorySelectionErrorCode.ContextInitializationFailed:
-        toast.error(`Could not initialize ${repositoryName}.`);
-        return;
-    }
+    error.match({
+      RepositoryDirectoryChangeFailedError: () =>
+        toast.error(`Could not open ${repositoryName}.`),
+      RepositoryContextInitializationFailedError: () =>
+        toast.error(`Could not initialize ${repositoryName}.`),
+    });
   }
 
-  function activateSelectedRepository(): void {
+  async function activateSelectedRepository(): Promise<void> {
     const currentRepositories = repositories();
     const currentSelectedPath = selectedPath();
     const selectedRepository = currentRepositories.find(
@@ -93,16 +90,13 @@ export function Default() {
       return;
     }
 
-    void appContext
-      .selectRepository(selectedRepository.path)
-      .then((result) => {
-        if (result.isErr()) {
-          notifyRepositorySelectionError(result.error, selectedRepository.name);
-        }
-      })
-      .catch(() => {
-        toast.error(`Could not open ${selectedRepository.name}.`);
-      });
+    // `selectRepository` never rejects: every failure mode is a tagged error
+    // carried in the `Result`.
+    void appContext.selectRepository(selectedRepository.path).then((result) => {
+      if (result.isErr()) {
+        notifyRepositorySelectionError(result.error, selectedRepository.name);
+      }
+    });
   }
 
   useBindings(() => ({

@@ -1,8 +1,7 @@
 import { useAppContext } from "@/context/app-context";
-import {
-  ForgeOperationErrorCode,
-  type PullRequestList,
-  type PullRequestListState,
+import type {
+  PullRequestList,
+  PullRequestListState,
 } from "@/services/forge/types";
 import { moveInList } from "@/utils/navigation";
 import {
@@ -10,6 +9,7 @@ import {
   isCancelled,
   type LoadState,
 } from "@/features/pr-view/load-state";
+import { Result } from "better-result";
 import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 
 export interface PrTitles {
@@ -69,8 +69,10 @@ export function usePrTitles(): PrTitles {
     listController = controller;
     setList({
       status: "loading",
-      value: repositoryChanged ? undefined : lastSuccessfulList,
-      error: undefined,
+      previous:
+        !repositoryChanged && lastSuccessfulList !== undefined
+          ? Result.ok(lastSuccessfulList)
+          : undefined,
     });
 
     void forge
@@ -90,16 +92,19 @@ export function usePrTitles(): PrTitles {
         if (result.isErr()) {
           if (!isCancelled(result.error)) {
             setList({
-              status: "error",
-              value: lastSuccessfulList,
-              error: result.error,
+              status: "settled",
+              result,
+              previous:
+                lastSuccessfulList === undefined
+                  ? undefined
+                  : Result.ok(lastSuccessfulList),
             });
           }
           return;
         }
 
         lastSuccessfulList = result.value;
-        setList({ status: "ready", value: result.value, error: undefined });
+        setList({ status: "settled", result, previous: undefined });
         const currentNumber = highlightedNumber();
         const selectedItem = result.value.items.find(
           (item) => item.number === currentNumber,
@@ -117,29 +122,6 @@ export function usePrTitles(): PrTitles {
         ) {
           setOpenedNumber(null);
         }
-      })
-      .catch((cause: unknown) => {
-        if (
-          generation !== requestGeneration ||
-          repositoryKey !== activeRepositoryKey ||
-          filter() !== selectedFilter ||
-          controller.signal.aborted
-        ) {
-          return;
-        }
-        const diagnostic =
-          cause instanceof Error
-            ? cause.message
-            : "Could not load pull requests";
-        setList({
-          status: "error",
-          value: lastSuccessfulList,
-          error: {
-            code: ForgeOperationErrorCode.IncompatibleResponse,
-            kind: forge.kind,
-            diagnostic,
-          },
-        });
       });
 
     onCleanup(() => {
@@ -176,17 +158,17 @@ export function usePrTitles(): PrTitles {
   function moveHighlight(offset: number): void {
     const currentList = list();
     if (
-      currentList.status !== "ready" ||
-      currentList.value.items.length === 0
+      currentList.status !== "settled" ||
+      currentList.result.isErr() ||
+      currentList.result.value.items.length === 0
     ) {
       return;
     }
 
+    const items = currentList.result.value.items;
     const currentNumber = highlightedNumber();
-    const currentItem = currentList.value.items.find(
-      (item) => item.number === currentNumber,
-    );
-    const firstItem = currentList.value.items[0];
+    const currentItem = items.find((item) => item.number === currentNumber);
+    const firstItem = items[0];
     if (currentItem === undefined && firstItem === undefined) {
       return;
     }
@@ -194,9 +176,7 @@ export function usePrTitles(): PrTitles {
     if (anchorItem === undefined) {
       return;
     }
-    setHighlightedNumber(
-      moveInList(currentList.value.items, anchorItem, offset).number,
-    );
+    setHighlightedNumber(moveInList(items, anchorItem, offset).number);
   }
 
   function openHighlighted(): boolean {
@@ -206,8 +186,9 @@ export function usePrTitles(): PrTitles {
     }
     const currentList = list();
     if (
-      currentList.status !== "ready" ||
-      !currentList.value.items.some((item) => item.number === number)
+      currentList.status !== "settled" ||
+      currentList.result.isErr() ||
+      !currentList.result.value.items.some((item) => item.number === number)
     ) {
       return false;
     }

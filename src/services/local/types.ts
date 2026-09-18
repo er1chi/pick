@@ -1,13 +1,14 @@
-export enum GitRemoteErrorCode {
-  GitUnavailable = "git-unavailable",
-  GitCommandFailed = "git-command-failed",
-}
+import { TaggedError } from "better-result";
 
-export type GitRemoteError =
-  | {
-      readonly code: GitRemoteErrorCode.GitUnavailable;
-    }
-  | {
-      readonly code: GitRemoteErrorCode.GitCommandFailed;
-      readonly exitCode: number;
-    };
+export class GitUnavailableError extends TaggedError("GitUnavailableError")<{
+  readonly message: string;
+}> {}
+
+export class GitCommandFailedError extends TaggedError(
+  "GitCommandFailedError",
+)<{
+  readonly exitCode: number;
+  readonly message: string;
+}> {}
+
+export type GitRemoteError = GitUnavailableError | GitCommandFailedError;

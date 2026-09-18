@@ -107,27 +107,30 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
         <SidebarScrollBox scrollRef={setScrollBox}>
           <For each={commits()}>
             {(commit) => {
-              const highlighted = commit.sha === highlightedSha();
-              const active =
+              // Accessors, not const booleans: computing these eagerly inside
+              // the <For> callback would snapshot the signals once per item,
+              // so j/k highlight changes would never re-render the rows.
+              const highlighted = () => commit.sha === highlightedSha();
+              const active = () =>
                 commit.sha === mainViewCommit(props.content.view());
               return (
                 <box
                   width="100%"
                   flexDirection="row"
                   flexShrink={0}
-                  backgroundColor={active ? colors.selected : undefined}
+                  backgroundColor={active() ? colors.selected : undefined}
                 >
                   {/* A persistent accent marks the activated commit even once
                       the keyboard highlight or pane focus moves elsewhere. */}
                   <box
                     width={1}
                     flexShrink={0}
-                    backgroundColor={active ? colors.blue : undefined}
+                    backgroundColor={active() ? colors.blue : undefined}
                   />
                   <box flexGrow={1} flexShrink={1} minWidth={0}>
                     <SelectableRow
                       id={`commit-${commit.sha}`}
-                      selected={highlighted || active}
+                      selected={highlighted() || active()}
                       label={commit.sha.slice(0, 7)}
                       detail={firstLine(commit.message)}
                       maxWidth={props.rowWidth - 1}

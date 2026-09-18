@@ -1,5 +1,5 @@
 import type { FileDiffMetadata, ThemedToken } from "@pierre/diffs";
-import type { BoxRenderable } from "@opentui/core";
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import {
   createEffect,
   createMemo,
@@ -15,9 +15,15 @@ import type { DisplayRow, DisplayRowKind } from "./utils/display-row";
 import { highlightSplitRows } from "./utils/highlight";
 import { splitRows, type SplitDisplayRow } from "./utils/split-rows";
 
+export interface SplitFileDiffScrollTarget {
+  scrollBy(lines: number): void;
+  reset(): void;
+}
+
 export interface SplitFileDiffProps {
   fileDiff: FileDiffMetadata;
   disableLineNumbers?: boolean;
+  scrollTargetRef?: (target: SplitFileDiffScrollTarget | undefined) => void;
 }
 
 /**
@@ -189,20 +195,21 @@ function DiffPane(props: {
   split: boolean;
   disableLineNumbers: boolean;
   tokensFor: (rowKey: string, side: Side) => readonly ThemedToken[] | undefined;
+  scrollRef: (element: ScrollBoxRenderable) => void;
 }) {
   return (
-    <box
-      flexDirection="column"
+    <scrollbox
+      ref={props.scrollRef}
       width={props.split ? "auto" : "100%"}
-      flexGrow={props.split ? 1 : 0}
-      flexBasis={props.split ? 0 : "auto"}
+      flexGrow={1}
+      flexBasis={0}
+      flexShrink={1}
       minWidth={0}
-      flexShrink={0}
+      minHeight={0}
       border
       borderColor={colors.border}
       title={props.title}
       titleColor={colors.dim}
-      overflow="hidden"
     >
       <For each={props.rows}>
         {(row) => (
@@ -215,12 +222,14 @@ function DiffPane(props: {
           />
         )}
       </For>
-    </box>
+    </scrollbox>
   );
 }
 
 export function SplitFileDiff(props: SplitFileDiffProps) {
   const [container, setContainer] = createSignal<BoxRenderable | undefined>();
+  const [leftScroll, setLeftScroll] = createSignal<ScrollBoxRenderable>();
+  const [rightScroll, setRightScroll] = createSignal<ScrollBoxRenderable>();
   // Responsiveness follows the diff container's own width rather than a global
   // terminal/sidebar budget, so nested layouts can differ.
   const [containerWidth, setContainerWidth] = createSignal(0);
@@ -236,6 +245,26 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
     onCleanup(() => {
       node.onSizeChange = undefined;
     });
+  });
+
+  createEffect(() => {
+    const left = leftScroll();
+    const right = rightScroll();
+    if (left === undefined || right === undefined) {
+      return;
+    }
+    const target: SplitFileDiffScrollTarget = {
+      scrollBy(lines) {
+        left.scrollTop += lines;
+        right.scrollTop += lines;
+      },
+      reset() {
+        left.scrollTop = 0;
+        right.scrollTop = 0;
+      },
+    };
+    props.scrollTargetRef?.(target);
+    onCleanup(() => props.scrollTargetRef?.(undefined));
   });
 
   const rows = createMemo(() => splitRows(props.fileDiff));
@@ -273,8 +302,23 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
   };
 
   return (
-    <box ref={setContainer} flexDirection="column" width="100%">
-      <box flexDirection={split() ? "row" : "column"} width="100%" gap={1}>
+    <box
+      ref={setContainer}
+      flexDirection="column"
+      width="100%"
+      height="100%"
+      flexGrow={1}
+      flexShrink={1}
+      minHeight={0}
+    >
+      <box
+        flexDirection={split() ? "row" : "column"}
+        width="100%"
+        flexGrow={1}
+        flexShrink={1}
+        minHeight={0}
+        gap={1}
+      >
         <DiffPane
           title="Before"
           side="left"
@@ -283,6 +327,7 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
           split={split()}
           disableLineNumbers={disableLineNumbers()}
           tokensFor={tokensFor}
+          scrollRef={setLeftScroll}
         />
         <DiffPane
           title="After"
@@ -292,6 +337,7 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
           split={split()}
           disableLineNumbers={disableLineNumbers()}
           tokensFor={tokensFor}
+          scrollRef={setRightScroll}
         />
       </box>
     </box>

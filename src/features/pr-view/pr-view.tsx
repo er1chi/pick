@@ -1,7 +1,8 @@
 import { basename } from "node:path";
 import type { RepositoryAppContextState } from "@/context/app-context";
-import { PaneStore } from "@/context/active-pane-context";
+import { PaneStore, requestPaneFocus } from "@/context/active-pane-context";
 import type { LoadState } from "@/features/pr-view/load-state";
+import { patchFileIndex } from "@/features/pr-view/patch-file-index";
 import {
   checkLine,
   collectionAvailability,
@@ -51,7 +52,7 @@ import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { useBindings } from "@opentui/keymap/solid";
-import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import type { FileDiffMetadata } from "@pierre/diffs";
 import {
   For,
   Show,
@@ -61,7 +62,11 @@ import {
   on,
 } from "solid-js";
 import type { Accessor } from "solid-js";
-import { SplitFileDiff } from "@/packages/pierre/solid/diffs";
+import {
+  prewarmSplitHighlights,
+  SplitFileDiff,
+  type SplitFileDiffScrollTarget,
+} from "@/packages/pierre/solid/diffs";
 
 export interface PrViewProps {
   readonly state: RepositoryAppContextState;
@@ -468,13 +473,6 @@ function fileDiffName(fileDiff: FileDiffMetadata): string {
   return `${fileDiff.prevName} → ${fileDiff.name}`;
 }
 
-function parseFileDiffs(text: string | undefined): readonly FileDiffMetadata[] {
-  if (text === undefined || text.trim() === "") {
-    return [];
-  }
-  return parsePatchFiles(text).flatMap((entry) => entry.files);
-}
-
 function fileDiffsForPatch(
   section: ForgeSection<PullRequestPatch> | undefined,
   path: string | undefined,
@@ -482,10 +480,7 @@ function fileDiffsForPatch(
   if (path === undefined) {
     return [];
   }
-  const text = section?.status === "available" ? section.value.text : undefined;
-  const fileDiff = parseFileDiffs(text).find(
-    (candidate) => candidate.name === path || candidate.prevName === path,
-  );
+  const fileDiff = patchFileIndex(section).byPath.get(path);
   return fileDiff === undefined ? [] : [fileDiff];
 }
 
@@ -511,7 +506,9 @@ interface SelectedDiffProps {
   readonly commit: PullRequestCommit | undefined;
   readonly revealLocked: boolean;
   readonly maxWidth: number;
-  readonly setDiffScroll: (element: ScrollBoxRenderable) => void;
+  readonly setDiffScroll: (
+    target: SplitFileDiffScrollTarget | undefined,
+  ) => void;
 }
 
 function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
@@ -555,60 +552,85 @@ function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
   };
 
   return (
-    <scrollbox
-      ref={props.setDiffScroll}
+    <box
+      flexDirection="column"
       flexGrow={1}
       flexShrink={1}
       minHeight={0}
       width="100%"
+      gap={1}
     >
-      <box flexDirection="column" width="100%" gap={1}>
-        <Show when={props.content.selectedCommit()} keyed>
-          {(sha: string) => (
+      <Show when={props.content.selectedCommit()} keyed>
+        {(sha: string) => (
+          <scrollbox
+            flexGrow={1}
+            flexBasis={0}
+            flexShrink={1}
+            minHeight={3}
+            width="100%"
+          >
             <CommitContext
               sha={sha}
               commit={props.commit}
               hasFile
               maxWidth={props.maxWidth}
             />
-          )}
-        </Show>
-        <box flexDirection="column" width="100%" gap={0}>
-          {headerRow(
-            <text fg={colors.dim} wrapMode="none" truncate>
-              {endTruncate(
-                fromCommit()
-                  ? `Commit diff · ${props.path}`
-                  : `Pull request diff · ${props.path}`,
-                props.maxWidth,
-              )}
-            </text>,
-          )}
-          <Show
-            when={notice()}
-            fallback={
-              <For each={fileDiffs()}>
-                {(fileDiff) => (
-                  <box flexDirection="column" width="100%">
-                    <text fg={colors.foreground}>{fileDiffName(fileDiff)}</text>
-                    <Show
-                      when={props.revealLocked || !isLockFile(fileDiff.name)}
-                      fallback={<text fg={colors.dim}>{lockedNotice}</text>}
-                    >
-                      <SplitFileDiff fileDiff={fileDiff} />
-                    </Show>
-                  </box>
-                )}
-              </For>
-            }
-          >
-            {(text: Accessor<string>) => (
-              <text fg={colors.muted}>{text()}</text>
+          </scrollbox>
+        )}
+      </Show>
+      <box
+        flexDirection="column"
+        width="100%"
+        flexGrow={2}
+        flexBasis={0}
+        flexShrink={1}
+        minHeight={fromCommit() ? 9 : 0}
+      >
+        {headerRow(
+          <text fg={colors.dim} wrapMode="none" truncate>
+            {endTruncate(
+              fromCommit()
+                ? `Commit diff · ${props.path}`
+                : `Pull request diff · ${props.path}`,
+              props.maxWidth,
             )}
-          </Show>
-        </box>
+          </text>,
+        )}
+        <Show
+          when={notice()}
+          fallback={
+            <For each={fileDiffs()}>
+              {(fileDiff) => (
+                <box
+                  flexDirection="column"
+                  width="100%"
+                  flexGrow={1}
+                  flexShrink={1}
+                  minHeight={0}
+                >
+                  {oneLine(
+                    <text fg={colors.foreground} wrapMode="none" truncate>
+                      {fileDiffName(fileDiff)}
+                    </text>,
+                  )}
+                  <Show
+                    when={props.revealLocked || !isLockFile(fileDiff.name)}
+                    fallback={<text fg={colors.dim}>{lockedNotice}</text>}
+                  >
+                    <SplitFileDiff
+                      fileDiff={fileDiff}
+                      scrollTargetRef={props.setDiffScroll}
+                    />
+                  </Show>
+                </box>
+              )}
+            </For>
+          }
+        >
+          {(text: Accessor<string>) => <text fg={colors.muted}>{text()}</text>}
+        </Show>
       </box>
-    </scrollbox>
+    </box>
   );
 }
 
@@ -747,7 +769,7 @@ export function PrView(props: PrViewProps) {
     ScrollBoxRenderable | undefined
   >();
   const [diffScroll, setDiffScroll] = createSignal<
-    ScrollBoxRenderable | undefined
+    SplitFileDiffScrollTarget | undefined
   >();
   const [revealLocked, setRevealLocked] = createSignal(false);
   const focused = () => pane.active === "content";
@@ -814,13 +836,21 @@ export function PrView(props: PrViewProps) {
     return "Context: Pull request";
   };
 
-  const activeScroll = () =>
-    selectedFile() === undefined ? overviewScroll() : diffScroll();
+  function scrollContent(lines: number): void {
+    if (selectedFile() !== undefined) {
+      diffScroll()?.scrollBy(lines);
+      return;
+    }
+    const overview = overviewScroll();
+    if (overview !== undefined) {
+      overview.scrollTop += lines;
+    }
+  }
 
   const closeOpened = (): void => {
     props.content.clearSelection();
     props.titles.closeOpened();
-    setPane({ active: "pull-requests" });
+    requestPaneFocus(pane, setPane, "pull-requests");
   };
 
   useBindings(() => ({
@@ -828,21 +858,11 @@ export function PrView(props: PrViewProps) {
     commands: [
       {
         name: "pr-view.scroll-down",
-        run: () => {
-          const element = activeScroll();
-          if (element !== undefined) {
-            element.scrollTop += 1;
-          }
-        },
+        run: () => scrollContent(1),
       },
       {
         name: "pr-view.scroll-up",
-        run: () => {
-          const element = activeScroll();
-          if (element !== undefined) {
-            element.scrollTop -= 1;
-          }
-        },
+        run: () => scrollContent(-1),
       },
       {
         name: "pr-view.retry",
@@ -869,24 +889,38 @@ export function PrView(props: PrViewProps) {
   }));
 
   createEffect(() => {
+    // Track the request token so an explicit focus request re-runs this even
+    // when the content pane was already active.
+    void pane.focusRequest;
     if (!focused()) {
       return;
     }
-    const scroll = activeScroll();
-    if (scroll !== undefined) {
-      scroll.focus();
+    const overview = overviewScroll();
+    if (selectedFile() === undefined && overview !== undefined) {
+      overview.focus();
       return;
     }
     contentBox()?.focus();
+  });
+
+  createEffect(() => {
+    prewarmSplitHighlights(patchFileIndex(props.content.diff()?.patch).files);
+    prewarmSplitHighlights(
+      patchFileIndex(props.content.commitPatch().value).files,
+    );
   });
 
   createEffect(
     on(
       () => `${selectedFile() ?? ""}|${selectedCommit() ?? ""}`,
       () => {
-        const scroll = activeScroll();
-        if (scroll !== undefined) {
-          scroll.scrollTop = 0;
+        if (selectedFile() !== undefined) {
+          diffScroll()?.reset();
+          return;
+        }
+        const overview = overviewScroll();
+        if (overview !== undefined) {
+          overview.scrollTop = 0;
         }
       },
       { defer: true },
@@ -954,7 +988,9 @@ export function PrView(props: PrViewProps) {
               <PersistentHeader
                 repositoryName={headerRepositoryName()}
                 titleLine={titleLine()}
-                details={currentDetails()}
+                details={
+                  selectedFile() === undefined ? currentDetails() : undefined
+                }
                 maxWidth={contentWidth()}
               />
             )}

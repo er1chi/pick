@@ -48,10 +48,42 @@ function hasContent(lines: readonly string[]): boolean {
   return lines.some((line) => line.length > 0);
 }
 
+const languageWarmups = new Map<SupportedLanguages, Promise<void>>();
+
+function defer<T>(run: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => void run().then(resolve, reject), 0);
+  });
+}
+
+function warmLanguage(lang: SupportedLanguages): Promise<void> {
+  const cached = languageWarmups.get(lang);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  // Loading a grammar is cheap, but its first tokenization compiles regexes
+  // synchronously. Schedule that work outside the selection/rendering turn.
+  const pending = defer(async () => {
+    const highlighter = await getSharedHighlighter({
+      themes: [SPLIT_THEME],
+      langs: [lang],
+    });
+    highlighter.codeToTokens("const value = 0", {
+      lang,
+      theme: SPLIT_THEME,
+    });
+  });
+  languageWarmups.set(lang, pending);
+  pending.catch(() => languageWarmups.delete(lang));
+  return pending;
+}
+
 async function tokenizeSide(
   lang: SupportedLanguages,
   code: string,
 ): Promise<readonly (readonly ThemedToken[])[]> {
+  await warmLanguage(lang);
   const highlighter = await getSharedHighlighter({
     themes: [SPLIT_THEME],
     langs: [lang],
@@ -96,6 +128,22 @@ const highlightCache = new WeakMap<
   Promise<SplitTokens | undefined>
 >();
 
+/** Warm each language in an available patch before the user opens a file. */
+export function prewarmSplitHighlights(
+  fileDiffs: readonly FileDiffMetadata[],
+): void {
+  const languages = new Set<SupportedLanguages>();
+  for (const fileDiff of fileDiffs) {
+    const lang = fileDiff.lang ?? getFiletypeFromFileName(fileDiff.name);
+    if (lang !== "text" && lang !== "ansi") {
+      languages.add(lang);
+    }
+  }
+  for (const lang of languages) {
+    void warmLanguage(lang).catch(() => undefined);
+  }
+}
+
 /**
  * Highlights both split sides, reusing the pending or resolved result for the
  * same file identity. Oversized input resolves to `undefined`, and a failed
@@ -110,7 +158,9 @@ export function highlightSplitRows(
   if (cached !== undefined) {
     return cached;
   }
-  const pending = tokenizeSplitRows(fileDiff, rows);
+  // Plain diff rows can paint before tokenization starts, even if prewarming
+  // has not finished yet.
+  const pending = defer(() => tokenizeSplitRows(fileDiff, rows));
   highlightCache.set(fileDiff, pending);
   pending.catch(() => {
     if (highlightCache.get(fileDiff) === pending) {

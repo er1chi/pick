@@ -39,7 +39,7 @@ export interface PrTitles {
   readonly setFilter: (filter: PullRequestListState) => void;
   readonly cycleFilter: (offset: number) => void;
   readonly moveHighlight: (offset: number) => void;
-  readonly openHighlighted: () => void;
+  readonly openHighlighted: () => boolean;
   readonly closeOpened: () => void;
   readonly retry: () => void;
 }
@@ -218,19 +218,20 @@ export function usePrTitles(): PrTitles {
     );
   }
 
-  function openHighlighted(): void {
+  function openHighlighted(): boolean {
     const number = highlightedNumber();
     if (number === null) {
-      return;
+      return false;
     }
     const currentList = list();
     if (
       currentList.status !== "ready" ||
       !currentList.value.items.some((item) => item.number === number)
     ) {
-      return;
+      return false;
     }
     setOpenedNumber(number);
+    return true;
   }
 
   function closeOpened(): void {

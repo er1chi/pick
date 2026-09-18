@@ -1,9 +1,9 @@
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import { useBindings } from "@opentui/keymap/solid";
-import { parsePatchFiles } from "@pierre/diffs";
 import type { FileTree as FileTreeModel } from "@pierre/trees";
-import { PaneStore } from "@/context/active-pane-context";
+import { PaneStore, requestPaneFocus } from "@/context/active-pane-context";
 import { SelectableRow } from "@/features/shared/selectable-row";
+import { patchFileIndex } from "@/features/pr-view/patch-file-index";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import {
@@ -93,9 +93,7 @@ function commitPatchFiles(content: PrViewContent): FilesView {
   }
   const section = state.value;
   if (section.status === "available") {
-    const paths = parsePatchFiles(section.value.text)
-      .flatMap((entry) => entry.files)
-      .map((file) => file.name);
+    const paths = patchFileIndex(section).files.map((file) => file.name);
     return paths.length === 0
       ? { kind: "message", text: "This commit has no changed files." }
       : { kind: "list", paths };
@@ -214,10 +212,15 @@ function EmptyGate(props: EmptyGateProps): JSX.Element {
 
 function useFocusWhenActive(
   active: () => boolean,
+  request: () => number,
   target: () => BoxRenderable | undefined,
 ): void {
   createEffect(() => {
-    if (active()) {
+    const shouldFocus = active();
+    // Subscribe to the focus request token so an explicit request re-runs the
+    // effect even when the pane was already active.
+    request();
+    if (shouldFocus) {
       target()?.focus();
     }
   });
@@ -236,7 +239,7 @@ function useScrollIntoView(
 }
 
 function FilesBox(props: SidebarProps): JSX.Element {
-  const [pane] = PaneStore.use();
+  const [pane, setPane] = PaneStore.use();
   const [box, setBox] = createSignal<BoxRenderable>();
   const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
   const focused = () => pane.active === "files";
@@ -292,6 +295,7 @@ function FilesBox(props: SidebarProps): JSX.Element {
     const path = focusedFilePath();
     if (path !== undefined) {
       props.content.selectFile(path);
+      requestPaneFocus(pane, setPane, "content");
     }
   }
 
@@ -304,7 +308,7 @@ function FilesBox(props: SidebarProps): JSX.Element {
       props.content.selectedFile() === undefined &&
       focusedFile !== undefined
     ) {
-      props.content.selectFile(focusedFile);
+      selectFocusedFile();
       return;
     }
     if (model.getFocusedItem() === null) {
@@ -326,7 +330,7 @@ function FilesBox(props: SidebarProps): JSX.Element {
     return path === undefined ? undefined : `file-${path}`;
   }, scrollBox);
 
-  useFocusWhenActive(focused, box);
+  useFocusWhenActive(focused, () => pane.focusRequest, box);
 
   useBindings(() => ({
     target: box,
@@ -366,7 +370,7 @@ function FilesBox(props: SidebarProps): JSX.Element {
 }
 
 function PullRequestsBox(props: SidebarProps): JSX.Element {
-  const [pane] = PaneStore.use();
+  const [pane, setPane] = PaneStore.use();
   const [box, setBox] = createSignal<BoxRenderable>();
   const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
   const focused = () => pane.active === "pull-requests";
@@ -412,7 +416,10 @@ function PullRequestsBox(props: SidebarProps): JSX.Element {
           // Reopening, even the same PR, starts from a cleared selection so
           // the main view returns to the PR-level context.
           props.content.clearSelection();
-          props.titles.openHighlighted();
+          if (props.titles.openHighlighted()) {
+            // A newly opened PR exposes its files; focus belongs in the tree.
+            requestPaneFocus(pane, setPane, "files");
+          }
         },
       },
       {
@@ -441,7 +448,7 @@ function PullRequestsBox(props: SidebarProps): JSX.Element {
     return number === null ? undefined : `pull-request-${number}`;
   }, scrollBox);
 
-  useFocusWhenActive(focused, box);
+  useFocusWhenActive(focused, () => pane.focusRequest, box);
 
   // The box is content-sized so it never claims an equal flex share. Rows are
   // counted here so the scrollbox still has a definite height to scroll in
@@ -605,7 +612,7 @@ function CommitsBox(props: SidebarProps): JSX.Element {
     ],
   }));
 
-  useFocusWhenActive(focused, box);
+  useFocusWhenActive(focused, () => pane.focusRequest, box);
 
   return (
     <SidebarBox title="[1] Commits" active={focused()} boxRef={setBox}>
@@ -622,16 +629,26 @@ function CommitsBox(props: SidebarProps): JSX.Element {
               return (
                 <box
                   width="100%"
+                  flexDirection="row"
                   flexShrink={0}
                   backgroundColor={active ? colors.selected : undefined}
                 >
-                  <SelectableRow
-                    id={`commit-${commit.sha}`}
-                    selected={highlighted}
-                    label={commit.sha.slice(0, 7)}
-                    detail={firstLine(commit.message)}
-                    maxWidth={SIDEBAR_ROW_WIDTH}
+                  {/* A persistent accent marks the activated commit even once
+                      the keyboard highlight or pane focus moves elsewhere. */}
+                  <box
+                    width={1}
+                    flexShrink={0}
+                    backgroundColor={active ? colors.blue : undefined}
                   />
+                  <box flexGrow={1} flexShrink={1} minWidth={0}>
+                    <SelectableRow
+                      id={`commit-${commit.sha}`}
+                      selected={highlighted || active}
+                      label={commit.sha.slice(0, 7)}
+                      detail={firstLine(commit.message)}
+                      maxWidth={SIDEBAR_ROW_WIDTH - 1}
+                    />
+                  </box>
                 </box>
               );
             }}
@@ -643,18 +660,29 @@ function CommitsBox(props: SidebarProps): JSX.Element {
 }
 
 export function Sidebar(props: SidebarProps) {
-  const [, setPane] = PaneStore.use();
+  const [pane, setPane] = PaneStore.use();
 
   // Global numeric focus shared by every pane, including the main content.
+  // Every keypress issues a fresh request so real focus is re-asserted even if
+  // a pointer click moved it without updating `pane.active`.
   useBindings(() => ({
     commands: [
-      { name: "pane.files", run: () => setPane({ active: "files" }) },
-      { name: "pane.commits", run: () => setPane({ active: "commits" }) },
+      {
+        name: "pane.files",
+        run: () => requestPaneFocus(pane, setPane, "files"),
+      },
+      {
+        name: "pane.commits",
+        run: () => requestPaneFocus(pane, setPane, "commits"),
+      },
       {
         name: "pane.pull-requests",
-        run: () => setPane({ active: "pull-requests" }),
+        run: () => requestPaneFocus(pane, setPane, "pull-requests"),
       },
-      { name: "pane.content", run: () => setPane({ active: "content" }) },
+      {
+        name: "pane.content",
+        run: () => requestPaneFocus(pane, setPane, "content"),
+      },
     ],
     bindings: [
       { key: "0", cmd: "pane.files" },

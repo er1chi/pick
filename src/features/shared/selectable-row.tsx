@@ -1,4 +1,5 @@
 import { colors } from "@/theme";
+import { truncateEnd } from "@/utils/truncate";
 
 export interface SelectableRowProps {
   readonly id: string;
@@ -18,19 +19,6 @@ function sanitizeLine(text: string): string {
     .replace(/\s*[\r\n]+\s*/g, " ")
     .replace(/\t/g, " ")
     .trimEnd();
-}
-
-// Truncate only the end. The renderer's own overflow handling is a backstop,
-// but bounding the string here keeps rows from ever eliding the middle.
-function truncateEnd(text: string, maxWidth: number): string {
-  if (maxWidth <= 0) {
-    return "";
-  }
-  const characters = Array.from(text);
-  if (characters.length <= maxWidth) {
-    return text;
-  }
-  return `${characters.slice(0, maxWidth - 1).join("")}…`;
 }
 
 export function SelectableRow(props: SelectableRowProps) {

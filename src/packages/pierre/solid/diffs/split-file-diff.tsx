@@ -253,6 +253,15 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
     if (left === undefined || right === undefined) {
       return;
     }
+    // Hide the track while keeping the scrollbar renderables in the scrollbox:
+    // scrolling, viewport math, and j/k syncing all read through them.
+    // Assigning through the `visible` setter marks the visibility as manual so
+    // ScrollBox's own recalculation does not turn the bars back on.
+    left.verticalScrollBar.visible = false;
+    left.horizontalScrollBar.visible = false;
+    right.verticalScrollBar.visible = false;
+    right.horizontalScrollBar.visible = false;
+
     const target: SplitFileDiffScrollTarget = {
       scrollBy(lines) {
         left.scrollTop += lines;

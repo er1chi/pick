@@ -614,8 +614,24 @@ function CommitsBox(props: SidebarProps): JSX.Element {
 
   useFocusWhenActive(focused, () => pane.focusRequest, box);
 
+  // Content-sized like the Pull Requests box: a fixed height stops the box
+  // from claiming an equal flex share, while flexShrink lets a constrained
+  // terminal squeeze it and the scrollbox still has a definite height to
+  // scroll in. The constant two rows are the border; the empty, loading, and
+  // failed states all render a single row.
+  function bodyRowCount(): number {
+    const count = commits().length;
+    return count === 0 ? 1 : count;
+  }
+
   return (
-    <SidebarBox title="[1] Commits" active={focused()} boxRef={setBox}>
+    <SidebarBox
+      title="[1] Commits"
+      active={focused()}
+      boxRef={setBox}
+      grow={0}
+      height={2 + bodyRowCount()}
+    >
       <EmptyGate
         opened={opened()}
         hasItems={commits().length > 0}

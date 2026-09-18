@@ -81,6 +81,7 @@ function repositoryFooterBindings(
         { key: "j/k", label: "Scroll" },
         { key: "r", label: "Retry" },
         { key: "e", label: "Reveal lock files" },
+        { key: "o", label: "Close diff" },
         { key: "x", label: "Close PR" },
       ];
   }

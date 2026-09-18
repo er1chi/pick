@@ -78,8 +78,12 @@ export interface PrViewProps {
 // horizontal padding (3) from the terminal width. Header and metadata lines are
 // bounded by that budget so they truncate at the end instead of wrapping.
 const MAIN_PANE_CHROME = 37;
-// The top context row shares its width with the fixed close affordance.
-const CLOSE_BUTTON_WIDTH = "[x] Close PR".length;
+// The top context row shares its width with the close affordances. The diff
+// affordance only appears once a file or commit context is selected, so the
+// reserved width tracks whichever affordances are actually shown.
+const CLOSE_PR_LABEL = "[x] Close PR";
+const CLOSE_DIFF_LABEL = "[o] Close diff";
+const CLOSE_AFFORDANCE_GAP = 1;
 
 function endTruncate(text: string, maxWidth: number): string {
   const characters = Array.from(text);
@@ -762,8 +766,15 @@ export function PrView(props: PrViewProps) {
   const dimensions = useTerminalDimensions();
   const contentWidth = () =>
     Math.max(16, dimensions().width - MAIN_PANE_CHROME);
+  const diffContextSelected = () =>
+    selectedFile() !== undefined || selectedCommit() !== undefined;
+  const closeAffordancesWidth = () =>
+    CLOSE_PR_LABEL.length +
+    (diffContextSelected()
+      ? CLOSE_AFFORDANCE_GAP + CLOSE_DIFF_LABEL.length
+      : 0);
   const contextTextWidth = () =>
-    Math.max(8, contentWidth() - CLOSE_BUTTON_WIDTH - 1);
+    Math.max(8, contentWidth() - closeAffordancesWidth() - 1);
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
   const [overviewScroll, setOverviewScroll] = createSignal<
     ScrollBoxRenderable | undefined
@@ -853,6 +864,18 @@ export function PrView(props: PrViewProps) {
     requestPaneFocus(pane, setPane, "pull-requests");
   };
 
+  // Returns the Main pane from a file or commit diff to the PR overview
+  // without leaving the pane. `clearSelection` also puts the Files pane back
+  // on PR-level files; focus is re-asserted so it never drifts to the tree.
+  const closeDiff = (): void => {
+    props.content.clearSelection();
+    const overview = overviewScroll();
+    if (overview !== undefined) {
+      overview.scrollTop = 0;
+    }
+    requestPaneFocus(pane, setPane, "content");
+  };
+
   useBindings(() => ({
     target: contentBox,
     commands: [
@@ -878,6 +901,10 @@ export function PrView(props: PrViewProps) {
         name: "pr-view.close",
         run: closeOpened,
       },
+      {
+        name: "pr-view.close-diff",
+        run: closeDiff,
+      },
     ],
     bindings: [
       { key: "j", cmd: "pr-view.scroll-down" },
@@ -885,6 +912,7 @@ export function PrView(props: PrViewProps) {
       { key: "r", cmd: "pr-view.retry" },
       { key: "e", cmd: "pr-view.toggle-locked-files" },
       { key: "x", cmd: "pr-view.close" },
+      { key: "o", cmd: "pr-view.close-diff" },
     ],
   }));
 
@@ -977,9 +1005,19 @@ export function PrView(props: PrViewProps) {
                 </strong>
               </text>
             </box>
-            <box flexShrink={0} height={1}>
+            <box
+              flexShrink={0}
+              height={1}
+              flexDirection="row"
+              gap={CLOSE_AFFORDANCE_GAP}
+            >
+              <Show when={diffContextSelected()}>
+                <text fg={colors.red} wrapMode="none">
+                  {CLOSE_DIFF_LABEL}
+                </text>
+              </Show>
               <text fg={colors.red} wrapMode="none">
-                [x] Close PR
+                {CLOSE_PR_LABEL}
               </text>
             </box>
           </box>

@@ -1,14 +1,14 @@
 import { type } from "arktype";
 import * as schemaPrimitives from "./schema-primitives";
 
-export const userSchema = type({
+const userSchema = type({
   login: "string",
   id: schemaPrimitives.optionalIdentifier,
   name: schemaPrimitives.optionalNullableString,
   html_url: schemaPrimitives.optionalNullableString,
   url: schemaPrimitives.optionalNullableString,
 });
-export const teamSchema = type({
+const teamSchema = type({
   name: "string",
   id: schemaPrimitives.optionalIdentifier,
   slug: schemaPrimitives.optionalNullableString,
@@ -19,14 +19,14 @@ export const repositorySchema = type({
   nameWithOwner: "string",
   url: schemaPrimitives.optionalNullableString,
 });
-export const labelSchema = type({
+const labelSchema = type({
   name: "string",
   id: schemaPrimitives.optionalIdentifier,
   color: schemaPrimitives.optionalNullableString,
   description: schemaPrimitives.optionalNullableString,
   url: schemaPrimitives.optionalNullableString,
 });
-export const milestoneSchema = type({
+const milestoneSchema = type({
   title: "string",
   id: schemaPrimitives.optionalIdentifier,
   description: schemaPrimitives.optionalNullableString,
@@ -80,7 +80,7 @@ const gitIdentitySchema = type({
   email: schemaPrimitives.optionalNullableString,
   date: schemaPrimitives.optionalDate,
 });
-export const commitSchema = type({
+const commitSchema = type({
   sha: "string",
   commit: type({
     message: "string",
@@ -92,7 +92,7 @@ export const commitSchema = type({
   html_url: schemaPrimitives.optionalNullableString,
   url: schemaPrimitives.optionalNullableString,
 });
-export const commentSchema = type({
+const commentSchema = type({
   id: type("number | string"),
   user: userSchema.or("null").optional(),
   body: schemaPrimitives.optionalNullableString,
@@ -107,7 +107,7 @@ export const commentSchema = type({
   in_reply_to_id: schemaPrimitives.optionalIdentifier,
   pull_request_review_id: schemaPrimitives.optionalIdentifier,
 });
-export const reviewSchema = type({
+const reviewSchema = type({
   id: type("number | string"),
   user: userSchema.or("null").optional(),
   body: schemaPrimitives.optionalNullableString,
@@ -120,7 +120,7 @@ export const requestedReviewersSchema = type({
   users: userSchema.array(),
   teams: teamSchema.array(),
 });
-export const checkSchema = type({
+const checkSchema = type({
   name: schemaPrimitives.optionalNullableString,
   context: schemaPrimitives.optionalNullableString,
   status: schemaPrimitives.optionalNullableString,

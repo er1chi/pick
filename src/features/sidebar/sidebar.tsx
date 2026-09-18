@@ -286,31 +286,9 @@ function FilesBox(props: SidebarProps): JSX.Element {
     model.focusFirstItem();
   });
 
-  function focusedFilePath(): string | undefined {
-    const item = model.getFocusedItem();
-    return item !== null && !item.isDirectory() ? item.getPath() : undefined;
-  }
-
-  function selectFocusedFile(): void {
-    const path = focusedFilePath();
-    if (path !== undefined) {
-      props.content.selectFile(path);
-      requestPaneFocus(pane, setPane, "content");
-    }
-  }
-
-  // Opening a PR must not default to the first file, so selection only happens
-  // on explicit navigation. The first move also selects whatever file is
-  // already focused after the content selection was cleared.
+  // Tree navigation only moves the keyboard highlight. It never selects a file
+  // or changes panes, so the main view keeps its previously selected context.
   function moveFocus(offset: number): void {
-    const focusedFile = focusedFilePath();
-    if (
-      props.content.selectedFile() === undefined &&
-      focusedFile !== undefined
-    ) {
-      selectFocusedFile();
-      return;
-    }
     if (model.getFocusedItem() === null) {
       if (offset > 0) {
         model.focusFirstItem();
@@ -322,12 +300,28 @@ function FilesBox(props: SidebarProps): JSX.Element {
     } else {
       model.focusPreviousItem();
     }
-    selectFocusedFile();
   }
 
+  // Enter is the explicit activation: a directory expands/collapses in place,
+  // while a file is selected and hands focus to the main view.
+  function activateFocusedItem(): void {
+    const item = model.getFocusedItem();
+    if (item === null) {
+      return;
+    }
+    if ("toggle" in item) {
+      item.toggle();
+      return;
+    }
+    props.content.selectFile(item.getPath());
+    requestPaneFocus(pane, setPane, "content");
+  }
+
+  // Follow the keyboard highlight rather than the content selection, so moving
+  // through the tree scrolls the focused row into view without opening it.
   useScrollIntoView(() => {
-    const path = props.content.selectedFile();
-    return path === undefined ? undefined : `file-${path}`;
+    const focusedRow = rows().find((row) => row.isFocused);
+    return focusedRow === undefined ? undefined : `file-${focusedRow.path}`;
   }, scrollBox);
 
   useFocusWhenActive(focused, () => pane.focusRequest, box);
@@ -339,7 +333,7 @@ function FilesBox(props: SidebarProps): JSX.Element {
       { key: "down", cmd: () => moveFocus(1) },
       { key: "k", cmd: () => moveFocus(-1) },
       { key: "up", cmd: () => moveFocus(-1) },
-      { key: "return", cmd: () => toggleFocusedDirectory(model) },
+      { key: "return", cmd: activateFocusedItem },
       { key: "right", cmd: () => toggleFocusedDirectory(model) },
       { key: "left", cmd: () => model.focusParentItem() },
     ],

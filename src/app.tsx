@@ -70,8 +70,8 @@ function repositoryFooterBindings(
     case "files":
       return [
         ...base,
-        { key: "j/k", label: "Navigate/select file" },
-        { key: "Enter", label: "Toggle folder" },
+        { key: "j/k", label: "Navigate" },
+        { key: "Enter", label: "Open file/Toggle folder" },
       ];
     case "commits":
       return [...base, { key: "j/k", label: "Navigate/select commit" }];

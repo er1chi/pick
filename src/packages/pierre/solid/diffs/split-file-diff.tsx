@@ -24,6 +24,15 @@ export interface SplitFileDiffProps {
   fileDiff: FileDiffMetadata;
   disableLineNumbers?: boolean;
   scrollTargetRef?: (target: SplitFileDiffScrollTarget | undefined) => void;
+  /**
+   * Width the diff container is expected to occupy before the container has
+   * been measured. Supplying it lets the first frame commit to split or
+   * stacked layout instead of rendering stacked at the pre-layout width of 0
+   * and switching once the container reports its real width. The measured
+   * container width still wins as soon as it is available, so this is only a
+   * seed for the initial render.
+   */
+  widthHint?: number;
 }
 
 /**
@@ -54,6 +63,17 @@ function kindColor(kind: DisplayRowKind | undefined): string {
       return colors.red;
     default:
       return colors.foreground;
+  }
+}
+
+function kindBackground(kind: DisplayRowKind | undefined): string | undefined {
+  switch (kind) {
+    case "addition":
+      return colors.additionBackground;
+    case "deletion":
+      return colors.deletionBackground;
+    default:
+      return undefined;
   }
 }
 
@@ -120,6 +140,7 @@ function SplitCell(props: {
       flexShrink={0}
       minWidth={0}
       overflow="hidden"
+      backgroundColor={kindBackground(props.row?.kind)}
     >
       <text fg={kindColor(props.row?.kind)} wrapMode="none">
         <span>{gutter()}</span>
@@ -231,15 +252,24 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
   const [leftScroll, setLeftScroll] = createSignal<ScrollBoxRenderable>();
   const [rightScroll, setRightScroll] = createSignal<ScrollBoxRenderable>();
   // Responsiveness follows the diff container's own width rather than a global
-  // terminal/sidebar budget, so nested layouts can differ.
-  const [containerWidth, setContainerWidth] = createSignal(0);
+  // terminal/sidebar budget, so nested layouts can differ. Until the container
+  // has been measured, fall back to the parent-supplied hint so the initial
+  // frame is already laid out correctly.
+  const [measuredWidth, setMeasuredWidth] = createSignal<number | undefined>();
+  const containerWidth = () => measuredWidth() ?? props.widthHint ?? 0;
 
   createEffect(() => {
     const node = container();
     if (node === undefined) {
       return;
     }
-    const sync = () => setContainerWidth(node.width);
+    const sync = () => {
+      // A pre-layout container reports 0. Ignore that so a valid width hint
+      // keeps the first frame stable instead of collapsing to stacked.
+      if (node.width > 0) {
+        setMeasuredWidth(node.width);
+      }
+    };
     node.onSizeChange = sync;
     sync();
     onCleanup(() => {

@@ -623,6 +623,7 @@ function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
                   >
                     <SplitFileDiff
                       fileDiff={fileDiff}
+                      widthHint={props.maxWidth}
                       scrollTargetRef={props.setDiffScroll}
                     />
                   </Show>
@@ -864,16 +865,16 @@ export function PrView(props: PrViewProps) {
     requestPaneFocus(pane, setPane, "pull-requests");
   };
 
-  // Returns the Main pane from a file or commit diff to the PR overview
-  // without leaving the pane. `clearSelection` also puts the Files pane back
-  // on PR-level files; focus is re-asserted so it never drifts to the tree.
+  // Returns the Main pane from a file or commit diff to the PR overview.
+  // `clearSelection` also puts the Files pane back on PR-level files, and
+  // requesting focus for `files` hands keyboard focus back to the tree.
   const closeDiff = (): void => {
     props.content.clearSelection();
     const overview = overviewScroll();
     if (overview !== undefined) {
       overview.scrollTop = 0;
     }
-    requestPaneFocus(pane, setPane, "content");
+    requestPaneFocus(pane, setPane, "files");
   };
 
   useBindings(() => ({

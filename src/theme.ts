@@ -10,4 +10,6 @@ export const colors = {
   dim: "#54546d",
   border: "#54546d",
   selected: "#2a2a37",
+  additionBackground: "#2b3328",
+  deletionBackground: "#43242b",
 } as const;

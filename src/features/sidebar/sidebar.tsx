@@ -169,13 +169,26 @@ function SidebarBox(props: SidebarBoxProps): JSX.Element {
 
 interface SidebarScrollBoxProps {
   readonly scrollRef: Setter<ScrollBoxRenderable | undefined>;
+  readonly hideScrollbar?: boolean;
   readonly children: JSX.Element;
 }
 
 function SidebarScrollBox(props: SidebarScrollBoxProps): JSX.Element {
+  function captureScrollBox(node: ScrollBoxRenderable): void {
+    if (props.hideScrollbar === true) {
+      // Hide the track but keep the scrollbar renderables mounted: scrolling
+      // and scrollChildIntoView read through them. Assigning via the `visible`
+      // setter marks the visibility as manual so the ScrollBox's own
+      // recalculation cannot reveal the bar again as content arrives; passing
+      // it as an option would be overwritten.
+      node.verticalScrollBar.visible = false;
+    }
+    props.scrollRef(node);
+  }
+
   return (
     <scrollbox
-      ref={props.scrollRef}
+      ref={captureScrollBox}
       width="100%"
       flexGrow={1}
       minHeight={0}
@@ -346,7 +359,7 @@ function FilesBox(props: SidebarProps): JSX.Element {
         hasItems={rows().length > 0}
         emptyText={emptyText()}
       >
-        <SidebarScrollBox scrollRef={setScrollBox}>
+        <SidebarScrollBox scrollRef={setScrollBox} hideScrollbar>
           <For each={rows()}>
             {(row) => (
               <SelectableRow

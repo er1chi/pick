@@ -1,6 +1,7 @@
 import { useAppContext } from "@/context/app-context";
 import {
   createCachedQuery,
+  type CachedQuery,
   type Fetcher,
 } from "@/features/pr-view/cached-query";
 import type { LoadState } from "@/features/pr-view/load-state";
@@ -10,13 +11,13 @@ import {
   ForgeOperationErrorCode,
   type ForgeOperationError,
   type ForgeSection,
+  type PullRequestCheck,
   type PullRequestCommit,
   type PullRequestDetails,
-  type PullRequestDiffResource,
+  type PullRequestDevelopment,
   type PullRequestOverview,
   type PullRequestPatch,
-  type PullRequestResource,
-  type PullRequestResourceKind,
+  type PullRequestReviewsResource,
 } from "@/services/forge/types";
 import { Result } from "better-result";
 import type { Result as ResultType } from "better-result";
@@ -24,43 +25,57 @@ import { createEffect, createSignal, type Accessor } from "solid-js";
 
 type OverviewLoadState = LoadState<PullRequestOverview>;
 type DetailsLoadState = LoadState<PullRequestDetails>;
-type DiffLoadState = LoadState<PullRequestDiffResource>;
+type DiffLoadState = LoadState<ForgeSection<PullRequestPatch>>;
 type CommitsLoadState = LoadState<ForgeSection<readonly PullRequestCommit[]>>;
-type ResourceLoadState = LoadState<PullRequestResource>;
+type ReviewsLoadState = LoadState<PullRequestReviewsResource>;
+type ChecksLoadState = LoadState<ForgeSection<readonly PullRequestCheck[]>>;
+type DevelopmentLoadState = LoadState<PullRequestDevelopment>;
+
+/** The three main-pane screens. `usePrViewContent` owns the one value that
+ * selects between them; callers derive a path or sha from it. */
+export type MainView =
+  | { readonly kind: "overview" }
+  | { readonly kind: "commit"; readonly sha: string }
+  | {
+      readonly kind: "diff";
+      readonly path: string;
+      readonly commit?: string;
+    };
+
+/** The commit a view is anchored to, if any (commit context or a commit
+ * diff). Overview and commit-free diffs return `undefined`. */
+export function mainViewCommit(view: MainView): string | undefined {
+  if (view.kind === "commit") {
+    return view.sha;
+  }
+  return view.kind === "diff" ? view.commit : undefined;
+}
 
 export interface PrViewContent {
   readonly overview: Accessor<OverviewLoadState>;
   readonly details: Accessor<DetailsLoadState>;
-  readonly diff: Accessor<PullRequestDiffResource | undefined>;
-  readonly diffState: Accessor<DiffLoadState>;
   readonly commits: Accessor<readonly PullRequestCommit[]>;
   readonly commitsState: Accessor<CommitsLoadState>;
   /** Reviews/checks/development are independent eager queries so the unified
    * main screen can show every PR section concurrently. */
-  readonly reviews: Accessor<ResourceLoadState>;
-  readonly checks: Accessor<ResourceLoadState>;
-  readonly development: Accessor<ResourceLoadState>;
-  /** `undefined` until the user picks a file; never defaulted to the first. */
-  readonly selectedFile: Accessor<string | undefined>;
+  readonly reviews: Accessor<ReviewsLoadState>;
+  readonly checks: Accessor<ChecksLoadState>;
+  readonly development: Accessor<DevelopmentLoadState>;
+  /** The one main-pane view: overview, commit context, or a file diff. */
+  readonly view: Accessor<MainView>;
   readonly selectFile: (path: string) => void;
-  /** `undefined` until the user picks a commit; never defaulted to the first. */
-  readonly selectedCommit: Accessor<string | undefined>;
   /**
-   * `selectCommit(sha)` clears the file selection and eagerly loads `sha`'s
-   * patch; `selectCommit(undefined)` returns to PR-level files and drops the
-   * commit patch.
+   * `selectCommit(sha)` shows that commit's context and eagerly loads its
+   * patch; `selectCommit(undefined)` returns to the overview.
    */
   readonly selectCommit: (sha: string | undefined) => void;
-  readonly commitPatch: Accessor<LoadState<ForgeSection<PullRequestPatch>>>;
+  /** The selected commit's patch when a commit is selected, otherwise the pull
+   * request diff patch. The Files pane and the main diff both read this. */
+  readonly currentPatch: Accessor<DiffLoadState>;
   /** Clears commit, file, and commit-patch state for the open PR. */
   readonly clearSelection: () => void;
   readonly retry: () => void;
 }
-
-type EagerResourceTab = Extract<
-  PullRequestResourceKind,
-  "reviews" | "checks" | "development"
->;
 
 interface Selection {
   readonly forge: ForgeService;
@@ -72,43 +87,18 @@ function sectionFailed(section: ForgeSection<unknown>): boolean {
   return section.status === "failed";
 }
 
-function diffFailed(resource: PullRequestDiffResource): boolean {
-  return sectionFailed(resource.patch) || sectionFailed(resource.files);
+function reviewsFailed(resource: PullRequestReviewsResource): boolean {
+  return (
+    sectionFailed(resource.reviews) ||
+    sectionFailed(resource.reviewComments) ||
+    sectionFailed(resource.requestedReviewers)
+  );
 }
 
-function resourceFailed(resource: PullRequestResource): boolean {
-  switch (resource.kind) {
-    case "details":
-      return false;
-    case "diff":
-      return diffFailed(resource.value);
-    case "commits":
-      return sectionFailed(resource.value.commits);
-    case "reviews":
-      return (
-        sectionFailed(resource.value.reviews) ||
-        sectionFailed(resource.value.reviewComments) ||
-        sectionFailed(resource.value.requestedReviewers)
-      );
-    case "checks":
-      return sectionFailed(resource.value.checks);
-    case "development":
-      return (
-        sectionFailed(resource.value.projects) ||
-        sectionFailed(resource.value.linkedIssues)
-      );
-  }
-}
-
-function incompatible<T>(
-  forge: ForgeService,
-  diagnostic: string,
-): ResultType<T, ForgeOperationError> {
-  return Result.err<T, ForgeOperationError>({
-    code: ForgeOperationErrorCode.IncompatibleResponse,
-    kind: forge.kind,
-    diagnostic,
-  });
+function developmentFailed(resource: PullRequestDevelopment): boolean {
+  return (
+    sectionFailed(resource.projects) || sectionFailed(resource.linkedIssues)
+  );
 }
 
 function forgeFetcher<T>(
@@ -137,75 +127,53 @@ function overviewFetcher(selection: Selection): Fetcher<PullRequestOverview> {
 
 function detailsFetcher(selection: Selection): Fetcher<PullRequestDetails> {
   const { forge, number } = selection;
-  return forgeFetcher(
-    forge,
-    "Could not load pull request details",
-    async (signal) => {
-      const result = await forge.getPullRequestResource(number, "details", {
-        signal,
-      });
-      if (result.isErr()) {
-        return Result.err<PullRequestDetails, ForgeOperationError>(
-          result.error,
-        );
-      }
-      return result.value.kind === "details"
-        ? Result.ok(result.value.value.details)
-        : incompatible(
-            forge,
-            "Details resource returned a different resource kind",
-          );
-    },
+  return forgeFetcher(forge, "Could not load pull request details", (signal) =>
+    forge.getPullRequestDetails(number, { signal }),
   );
 }
 
-function diffFetcher(selection: Selection): Fetcher<PullRequestDiffResource> {
+function diffFetcher(
+  selection: Selection,
+): Fetcher<ForgeSection<PullRequestPatch>> {
   const { forge, number } = selection;
-  return forgeFetcher(forge, "Could not load files changed", async (signal) => {
-    const result = await forge.getPullRequestResource(number, "diff", {
-      signal,
-    });
-    if (result.isErr()) {
-      return Result.err<PullRequestDiffResource, ForgeOperationError>(
-        result.error,
-      );
-    }
-    return result.value.kind === "diff"
-      ? Result.ok(result.value.value)
-      : incompatible(forge, "Diff resource returned a different resource kind");
-  });
+  return forgeFetcher(forge, "Could not load files changed", (signal) =>
+    forge.getPullRequestDiff(number, { signal }),
+  );
 }
 
 function commitsFetcher(
   selection: Selection,
 ): Fetcher<ForgeSection<readonly PullRequestCommit[]>> {
   const { forge, number } = selection;
-  return forgeFetcher(forge, "Could not load commits", async (signal) => {
-    const result = await forge.getPullRequestResource(number, "commits", {
-      signal,
-    });
-    if (result.isErr()) {
-      return Result.err<
-        ForgeSection<readonly PullRequestCommit[]>,
-        ForgeOperationError
-      >(result.error);
-    }
-    return result.value.kind === "commits"
-      ? Result.ok(result.value.value.commits)
-      : incompatible(
-          forge,
-          "Commits resource returned a different resource kind",
-        );
-  });
+  return forgeFetcher(forge, "Could not load commits", (signal) =>
+    forge.getPullRequestCommits(number, { signal }),
+  );
 }
 
-function resourceFetcher(
+function reviewsFetcher(
   selection: Selection,
-  tab: EagerResourceTab,
-): Fetcher<PullRequestResource> {
+): Fetcher<PullRequestReviewsResource> {
   const { forge, number } = selection;
-  return forgeFetcher(forge, `Could not load ${tab}`, (signal) =>
-    forge.getPullRequestResource(number, tab, { signal }),
+  return forgeFetcher(forge, "Could not load reviews", (signal) =>
+    forge.getPullRequestReviews(number, { signal }),
+  );
+}
+
+function checksFetcher(
+  selection: Selection,
+): Fetcher<ForgeSection<readonly PullRequestCheck[]>> {
+  const { forge, number } = selection;
+  return forgeFetcher(forge, "Could not load checks", (signal) =>
+    forge.getPullRequestChecks(number, { signal }),
+  );
+}
+
+function developmentFetcher(
+  selection: Selection,
+): Fetcher<PullRequestDevelopment> {
+  const { forge, number } = selection;
+  return forgeFetcher(forge, "Could not load development", (signal) =>
+    forge.getPullRequestDevelopment(number, { signal }),
   );
 }
 
@@ -219,6 +187,23 @@ function commitPatchFetcher(
   );
 }
 
+interface EagerRow {
+  show: (selection: Selection, force?: boolean) => void;
+  reset: () => void;
+}
+
+/** Binds one eager cached query to the fetcher that loads it for a selection. */
+function eagerRow<T>(
+  query: CachedQuery<T>,
+  fetch: (selection: Selection) => Fetcher<T>,
+): EagerRow {
+  return {
+    show: (selection, force = false) =>
+      query.show(selection.cacheKey, fetch(selection), force),
+    reset: () => query.reset(),
+  };
+}
+
 export function usePrViewContent(titles: PrTitles): PrViewContent {
   const appContext = useAppContext();
 
@@ -228,29 +213,50 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
   const details = createCachedQuery<PullRequestDetails>({
     isCacheable: () => true,
   });
-  const diff = createCachedQuery<PullRequestDiffResource>({
-    isCacheable: (value) => !diffFailed(value),
+  const diff = createCachedQuery<ForgeSection<PullRequestPatch>>({
+    isCacheable: (section) => !sectionFailed(section),
   });
   const commits = createCachedQuery<ForgeSection<readonly PullRequestCommit[]>>(
     {
       isCacheable: (section) => section.status !== "failed",
     },
   );
-  const reviews = createCachedQuery<PullRequestResource>({
-    isCacheable: (value) => !resourceFailed(value),
+  const reviews = createCachedQuery<PullRequestReviewsResource>({
+    isCacheable: (value) => !reviewsFailed(value),
   });
-  const checks = createCachedQuery<PullRequestResource>({
-    isCacheable: (value) => !resourceFailed(value),
+  const checks = createCachedQuery<ForgeSection<readonly PullRequestCheck[]>>({
+    isCacheable: (section) => !sectionFailed(section),
   });
-  const development = createCachedQuery<PullRequestResource>({
-    isCacheable: (value) => !resourceFailed(value),
+  const development = createCachedQuery<PullRequestDevelopment>({
+    isCacheable: (value) => !developmentFailed(value),
   });
   const commitPatch = createCachedQuery<ForgeSection<PullRequestPatch>>({
     isCacheable: (section) => section.status !== "failed",
   });
 
-  const [selectedFilePath, setSelectedFilePath] = createSignal<string>();
-  const [selectedCommitSha, setSelectedCommitSha] = createSignal<string>();
+  const eagerRows: readonly EagerRow[] = [
+    eagerRow(overview, overviewFetcher),
+    eagerRow(details, detailsFetcher),
+    eagerRow(diff, diffFetcher),
+    eagerRow(commits, commitsFetcher),
+    eagerRow(reviews, reviewsFetcher),
+    eagerRow(checks, checksFetcher),
+    eagerRow(development, developmentFetcher),
+  ];
+
+  function loadEager(selection: Selection, force = false): void {
+    for (const row of eagerRows) {
+      row.show(selection, force);
+    }
+  }
+
+  function resetEager(): void {
+    for (const row of eagerRows) {
+      row.reset();
+    }
+  }
+
+  const [view, setView] = createSignal<MainView>({ kind: "overview" });
   let selectedKey: string | undefined;
 
   function currentSelection(): Selection | undefined {
@@ -271,46 +277,6 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     return { forge: state.forge, number, cacheKey: `${contextKey}#${number}` };
   }
 
-  function loadOverview(selection: Selection, force = false): void {
-    overview.show(selection.cacheKey, overviewFetcher(selection), force);
-  }
-
-  function loadDetails(selection: Selection, force = false): void {
-    details.show(selection.cacheKey, detailsFetcher(selection), force);
-  }
-
-  function loadDiff(selection: Selection, force = false): void {
-    diff.show(selection.cacheKey, diffFetcher(selection), force);
-  }
-
-  function loadCommits(selection: Selection, force = false): void {
-    commits.show(selection.cacheKey, commitsFetcher(selection), force);
-  }
-
-  function loadReviews(selection: Selection, force = false): void {
-    reviews.show(
-      selection.cacheKey,
-      resourceFetcher(selection, "reviews"),
-      force,
-    );
-  }
-
-  function loadChecks(selection: Selection, force = false): void {
-    checks.show(
-      selection.cacheKey,
-      resourceFetcher(selection, "checks"),
-      force,
-    );
-  }
-
-  function loadDevelopment(selection: Selection, force = false): void {
-    development.show(
-      selection.cacheKey,
-      resourceFetcher(selection, "development"),
-      force,
-    );
-  }
-
   function loadCommitPatch(
     selection: Selection,
     sha: string,
@@ -328,14 +294,13 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     return section?.status === "available" ? section.value : [];
   }
 
-  // Selection is only ever explicit: opening a PR starts with neither a file
-  // nor a commit selected.
-  function selectedFile(): string | undefined {
-    return selectedFilePath();
-  }
-
-  function selectedCommit(): string | undefined {
-    return selectedCommitSha();
+  // Selection is only ever explicit: opening a PR starts on the overview.
+  // The Files pane and the main diff must never disagree about which patch
+  // they show, so both derive it from the one view value.
+  function currentPatch(): DiffLoadState {
+    return mainViewCommit(view()) === undefined
+      ? diff.state()
+      : commitPatch.state();
   }
 
   // The single source of truth for what should be loaded right now. `show`
@@ -347,34 +312,20 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     const key = selection?.cacheKey;
     if (key !== selectedKey) {
       selectedKey = key;
-      setSelectedFilePath(undefined);
-      setSelectedCommitSha(undefined);
-      commitPatch.reset();
+      clearSelection();
     }
 
     if (selection === undefined) {
-      overview.reset();
-      details.reset();
-      diff.reset();
-      commits.reset();
-      reviews.reset();
-      checks.reset();
-      development.reset();
+      resetEager();
       commitPatch.reset();
       return;
     }
 
-    loadOverview(selection);
-    loadDetails(selection);
-    loadDiff(selection);
-    loadCommits(selection);
-    loadReviews(selection);
-    loadChecks(selection);
-    loadDevelopment(selection);
+    loadEager(selection);
 
     // A selected commit's patch is independent of any screen, so it loads
     // eagerly here and is dropped as soon as the commit is cleared.
-    const sha = selectedCommitSha();
+    const sha = mainViewCommit(view());
     if (sha !== undefined) {
       loadCommitPatch(selection, sha);
     } else {
@@ -382,21 +333,23 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     }
   });
 
-  // Selecting a commit always resets the file selection: the file tree then
-  // derives from that commit rather than the PR-level diff. `selectFile` only
-  // changes the file and keeps the current commit context.
+  // Selecting a commit switches to its context and clears any open file.
+  // `selectFile` keeps the current commit context, if there is one.
   function selectCommit(sha: string | undefined): void {
-    setSelectedCommitSha(sha);
-    setSelectedFilePath(undefined);
+    setView(sha === undefined ? { kind: "overview" } : { kind: "commit", sha });
   }
 
   function selectFile(path: string): void {
-    setSelectedFilePath(path);
+    const commit = mainViewCommit(view());
+    setView(
+      commit === undefined
+        ? { kind: "diff", path }
+        : { kind: "diff", path, commit },
+    );
   }
 
   function clearSelection(): void {
-    setSelectedCommitSha(undefined);
-    setSelectedFilePath(undefined);
+    setView({ kind: "overview" });
     commitPatch.reset();
   }
 
@@ -405,14 +358,8 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     if (selection === undefined) {
       return;
     }
-    loadOverview(selection, true);
-    loadDetails(selection, true);
-    loadDiff(selection, true);
-    loadCommits(selection, true);
-    loadReviews(selection, true);
-    loadChecks(selection, true);
-    loadDevelopment(selection, true);
-    const sha = selectedCommitSha();
+    loadEager(selection, true);
+    const sha = mainViewCommit(view());
     if (sha !== undefined) {
       loadCommitPatch(selection, sha, true);
     }
@@ -421,18 +368,15 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
   return {
     overview: overview.state,
     details: details.state,
-    diff: () => diff.state().value,
-    diffState: diff.state,
     commits: commitsValue,
     commitsState: commits.state,
     reviews: reviews.state,
     checks: checks.state,
     development: development.state,
-    selectedFile,
+    view,
     selectFile,
-    selectedCommit,
     selectCommit,
-    commitPatch: commitPatch.state,
+    currentPatch,
     clearSelection,
     retry,
   };

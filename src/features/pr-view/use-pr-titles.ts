@@ -1,38 +1,19 @@
 import { useAppContext } from "@/context/app-context";
 import {
   ForgeOperationErrorCode,
-  type ForgeOperationError,
   type PullRequestList,
   type PullRequestListState,
 } from "@/services/forge/types";
 import { moveInList } from "@/utils/navigation";
-import { idleLoadState, isCancelled } from "@/features/pr-view/load-state";
+import {
+  idleLoadState,
+  isCancelled,
+  type LoadState,
+} from "@/features/pr-view/load-state";
 import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 
-type PullRequestTitlesLoadState =
-  | {
-      readonly status: "idle";
-      readonly value: undefined;
-      readonly error: undefined;
-    }
-  | {
-      readonly status: "loading";
-      readonly value: PullRequestList | undefined;
-      readonly error: undefined;
-    }
-  | {
-      readonly status: "ready";
-      readonly value: PullRequestList;
-      readonly error: undefined;
-    }
-  | {
-      readonly status: "error";
-      readonly value: PullRequestList | undefined;
-      readonly error: ForgeOperationError;
-    };
-
 export interface PrTitles {
-  readonly list: Accessor<PullRequestTitlesLoadState>;
+  readonly list: Accessor<LoadState<PullRequestList>>;
   readonly filter: Accessor<PullRequestListState>;
   readonly highlightedNumber: Accessor<number | null>;
   readonly openedNumber: Accessor<number | null>;
@@ -47,7 +28,7 @@ export interface PrTitles {
 export function usePrTitles(): PrTitles {
   const appContext = useAppContext();
   const [list, setList] =
-    createSignal<PullRequestTitlesLoadState>(idleLoadState());
+    createSignal<LoadState<PullRequestList>>(idleLoadState());
   const [filter, setFilterSignal] = createSignal<PullRequestListState>("open");
   const [highlightedNumber, setHighlightedNumber] = createSignal<number | null>(
     null,

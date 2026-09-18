@@ -1,6 +1,4 @@
 import {
-  ForgeOperationErrorCode,
-  type ForgeOperationError,
   type ForgeSection,
   type PullRequestCheck,
   type PullRequestComment,
@@ -18,20 +16,6 @@ import {
 import { formatPresentTimestamp } from "@/utils/format-timestamp";
 import { presentText } from "@/utils/present-text";
 export { presentText };
-
-export function operationErrorDescription(error: ForgeOperationError): string {
-  switch (error.code) {
-    case ForgeOperationErrorCode.InvalidRequest:
-    case ForgeOperationErrorCode.CommandSpawnFailed:
-    case ForgeOperationErrorCode.CommandFailed:
-    case ForgeOperationErrorCode.InvalidJson:
-    case ForgeOperationErrorCode.IncompatibleResponse:
-    case ForgeOperationErrorCode.OutputLimitExceeded:
-    case ForgeOperationErrorCode.Cancelled:
-    case ForgeOperationErrorCode.TimedOut:
-      return error.diagnostic;
-  }
-}
 
 export function persistentMetadataLines(
   details: PullRequestDetails,
@@ -362,7 +346,7 @@ function decisionSegment(
     case "unsupported":
       return `decision unsupported — ${section.reason.diagnostic}`;
     case "failed":
-      return `decision failed — ${operationErrorDescription(section.error)}`;
+      return `decision failed — ${section.error.diagnostic}`;
     case "not-requested":
       return undefined;
   }
@@ -424,7 +408,7 @@ function sectionAvailability<T>(
     case "unsupported":
       return `unsupported — ${section.reason.diagnostic}`;
     case "failed":
-      return `failed — ${operationErrorDescription(section.error)}`;
+      return `failed — ${section.error.diagnostic}`;
     case "not-requested":
       return "not requested";
   }

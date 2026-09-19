@@ -1,26 +1,24 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { For, Show } from "solid-js";
-import { requestPaneFocus } from "@/context/active-pane-context";
+import { createSignal, For, Show } from "solid-js";
+import { SelectableRow } from "@/components/selectable-row";
+import { PaneStore } from "@/context/active-pane-context";
 import {
   isPending,
   visibleError,
   visibleValue,
 } from "@/features/pr-view/load-state";
-import { SelectableRow } from "@/features/shared/selectable-row";
-import {
-  SidebarBox,
-  SidebarScrollBox,
-  firstLine,
-  useFocusWhenActive,
-  useScrollIntoView,
-  useSidebarPane,
-  type SidebarPaneProps,
-} from "@/features/sidebar/sidebar-box";
+import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
+import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { colors } from "@/theme";
+import { Pane } from "@/types";
+import { firstLine } from "@/utils/utils";
+import { SidebarBox, SidebarScrollBox } from "./sidebar-box";
 
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "solid-js";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { PullRequestSummary } from "@/services/forge/types";
+import type { SidebarPaneProps } from "../types";
 
 function listItems(titles: PrTitles): readonly PullRequestSummary[] {
   return visibleValue(titles.list())?.items ?? [];
@@ -44,8 +42,10 @@ function listIsPending(titles: PrTitles): boolean {
 }
 
 export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
-  const { pane, setPane, box, setBox, scrollBox, setScrollBox, focused } =
-    useSidebarPane("pull-requests");
+  const [box, setBox] = createSignal<BoxRenderable>();
+  const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
+  const [_pane, setPane] = PaneStore.use();
+  const isFocused = useFocusedPane(Pane.PullRequests);
 
   useBindings(() => ({
     target: box,
@@ -90,7 +90,7 @@ export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
           props.content.clearSelection();
           if (props.titles.openHighlighted()) {
             // A newly opened PR exposes its files; focus belongs in the tree.
-            requestPaneFocus(pane, setPane, "files");
+            setPane({ active: Pane.Files });
           }
         },
       },
@@ -120,7 +120,7 @@ export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
     return number === null ? undefined : `pull-request-${number}`;
   }, scrollBox);
 
-  useFocusWhenActive(focused, () => pane.focusRequest, box);
+  //useFocusWhenActive(focused, () => pane.focusRequest, box);
 
   // The box is content-sized so it never claims an equal flex share. Rows are
   // counted here so the scrollbox still has a definite height to scroll in
@@ -139,13 +139,19 @@ export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
     return count + (listIsTruncated(props.titles) ? 1 : 0);
   }
 
+  function handleMouseFocus() {
+    setPane({ active: Pane.PullRequests });
+  }
+
   return (
     <SidebarBox
+      id={Pane.PullRequests}
       title="[2] Pull Requests"
-      active={focused()}
+      active={isFocused()}
       boxRef={setBox}
       grow={0}
       height={3 + bodyRowCount()}
+      handleMouseFocus={handleMouseFocus}
     >
       <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1}>
         <text fg={props.titles.filter() === "open" ? colors.blue : colors.dim}>

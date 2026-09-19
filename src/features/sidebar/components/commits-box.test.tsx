@@ -1,14 +1,14 @@
 import { RGBA, type BoxRenderable } from "@opentui/core";
 import { KeymapProvider } from "@opentui/keymap/solid";
-import { testRender } from "@opentui/solid";
-import { useRenderer } from "@opentui/solid";
+import { testRender, useRenderer } from "@opentui/solid";
 import { describe, expect, test } from "bun:test";
 import { createMemo, onMount, type JSX } from "solid-js";
-import { requestPaneFocus, PaneStore } from "@/context/active-pane-context";
+import { PaneStore } from "@/context/active-pane-context";
 import { idleLoadState } from "@/features/pr-view/load-state";
-import { CommitsBox } from "@/features/sidebar/commits-box";
 import { createAppKeymap } from "@/shared/keymap";
 import { colors } from "@/theme";
+import { Pane } from "@/types";
+import { CommitsBox } from "./commits-box";
 
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
@@ -83,8 +83,8 @@ function CommitsBoxHarness(): JSX.Element {
 }
 
 function FocusCommitsPane(): null {
-  const [pane, setPane] = PaneStore.use();
-  onMount(() => requestPaneFocus(pane, setPane, "commits"));
+  const [_pane, setPane] = PaneStore.use();
+  onMount(() => setPane({ active: Pane.Commits }));
   return null;
 }
 

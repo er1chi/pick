@@ -2,7 +2,7 @@ import { useBindings } from "@opentui/keymap/solid";
 import { useTerminalDimensions } from "@opentui/solid";
 import { basename } from "node:path";
 import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
-import { PaneStore, requestPaneFocus } from "@/context/active-pane-context";
+import { PaneStore } from "@/context/active-pane-context";
 import { CommitContext } from "@/features/pr-view/commit-context";
 import { visibleValue } from "@/features/pr-view/load-state";
 import { OverviewScreen } from "@/features/pr-view/overview-screen";
@@ -22,7 +22,9 @@ import {
   prewarmSplitHighlights,
   type SplitFileDiffScrollTarget,
 } from "@/packages/pierre/solid/diffs";
+import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { colors } from "@/theme";
+import { Pane } from "@/types";
 import { truncateEnd } from "@/utils/truncate";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
@@ -37,7 +39,8 @@ export interface PrViewProps {
 }
 
 export function PrView(props: PrViewProps) {
-  const [pane, setPane] = PaneStore.use();
+  const [_pane, setPane] = PaneStore.use();
+  const isFocused = useFocusedPane(Pane.Main);
   const dimensions = useTerminalDimensions();
   const contentWidth = () =>
     Math.max(16, dimensions().width - MAIN_PANE_CHROME);
@@ -50,7 +53,6 @@ export function PrView(props: PrViewProps) {
     SplitFileDiffScrollTarget | undefined
   >();
   const [revealLocked, setRevealLocked] = createSignal(false);
-  const focused = () => pane.active === "content";
   const currentState = () => props.state;
   const localName = () => basename(currentState().cwd) || currentState().cwd;
   const repositoryName = () =>
@@ -107,7 +109,7 @@ export function PrView(props: PrViewProps) {
   const closeOpened = (): void => {
     props.content.clearSelection();
     props.titles.closeOpened();
-    requestPaneFocus(pane, setPane, "pull-requests");
+    setPane({ active: Pane.PullRequests });
   };
 
   // Returns the Main pane from a file or commit diff to the PR overview.
@@ -119,7 +121,7 @@ export function PrView(props: PrViewProps) {
     if (overview !== undefined) {
       overview.scrollTop = 0;
     }
-    requestPaneFocus(pane, setPane, "files");
+    setPane({ active: Pane.Files });
   };
 
   useBindings(() => ({
@@ -165,8 +167,7 @@ export function PrView(props: PrViewProps) {
   createEffect(() => {
     // Track the request token so an explicit focus request re-runs this even
     // when the content pane was already active.
-    void pane.focusRequest;
-    if (!focused()) {
+    if (!isFocused()) {
       return;
     }
     const overview = overviewScroll();
@@ -174,7 +175,6 @@ export function PrView(props: PrViewProps) {
       overview.focus();
       return;
     }
-    contentBox()?.focus();
   });
 
   createEffect(() => {
@@ -255,9 +255,10 @@ export function PrView(props: PrViewProps) {
 
   return (
     <box
+      id={Pane.Main}
       ref={setContentBox}
       focusable
-      focused={focused()}
+      focused={isFocused()}
       flexDirection="column"
       flexGrow={1}
       flexShrink={1}
@@ -271,6 +272,10 @@ export function PrView(props: PrViewProps) {
       borderColor={colors.border}
       focusedBorderColor={colors.blue}
       title="[3] Main"
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        setPane({ active: Pane.Main });
+      }}
     >
       <Show
         when={openedNumber() !== null}

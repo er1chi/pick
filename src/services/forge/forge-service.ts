@@ -31,7 +31,7 @@ import type {
 
 /** The service boundary never rejects: an operation that throws unexpectedly
  * is reported as a failed `Result`, so callers never need a rejection handler. */
-function guard<T>(
+async function guard<T>(
   kind: ForgeKind,
   operation: Promise<ResultType<T, ForgeOperationError>>,
 ): Promise<ResultType<T, ForgeOperationError>> {
@@ -59,7 +59,7 @@ export class ForgeService {
    * the never-rejecting service guard. */
   private fetchResource<T>(
     number: number,
-    options: PullRequestResourceOptions | undefined,
+    _options: PullRequestResourceOptions | undefined,
     fetch: (value: number) => Promise<ResultType<T, ForgeOperationError>>,
   ): Promise<ResultType<T, ForgeOperationError>> {
     return guard(

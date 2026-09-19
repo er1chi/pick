@@ -1,1 +1,6 @@
-export type RepositoryPane = "files" | "pull-requests" | "commits" | "content";
+export enum Pane {
+  Files = "files",
+  PullRequests = "pull-requests",
+  Commits = "commits",
+  Main = "main",
+}

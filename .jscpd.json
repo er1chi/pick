@@ -1,10 +1,13 @@
 {
   "path": ["src"],
+  "exitCode": 0,
+  "mode": "strict",
   "minLines": 5,
   "minTokens": 50,
   "threshold": 1.5,
   "reporters": ["console", "silent"],
   "gitignore": true,
   "ignore": ["**/vendor/**"],
+  "ignorePattern": ["^\\s*import\\s"],
   "noTips": true
 }

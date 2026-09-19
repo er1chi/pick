@@ -1,11 +1,11 @@
 import { useBindings } from "@opentui/keymap/solid";
 import { toast } from "@tuiparts/toast/solid";
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
+import { SelectableRow } from "@/components/selectable-row";
 import {
   useAppContext,
   type RepositorySelectionError,
 } from "@/context/app-context";
-import { SelectableRow } from "@/features/shared/selectable-row";
 import {
   discoverRecentRepositories,
   type RecentRepository,

@@ -1,6 +1,7 @@
+import { useBindings } from "@opentui/keymap/solid";
 import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
-import { createEffect, onMount, Show } from "solid-js";
+import { createEffect, createSignal, onMount, Show } from "solid-js";
 import {
   type AppContextState,
   useAppContext,
@@ -20,9 +21,10 @@ import {
 } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { PaneStore } from "./context/active-pane-context";
+import { Pane } from "./types";
 
+import type { BoxRenderable } from "@opentui/core";
 import type { Accessor } from "solid-js";
-import type { RepositoryPane } from "./types";
 
 function repositoryAppContextState(
   state: AppContextState,
@@ -44,7 +46,7 @@ function repositoryContextLabel(
 
 function repositoryFooterBindings(
   kind: RepositoryAppContextState["kind"],
-  pane: RepositoryPane,
+  pane: Pane,
 ): readonly FooterBinding[] {
   if (kind === ApplicationContext.Local) {
     return [
@@ -59,7 +61,7 @@ function repositoryFooterBindings(
   ];
 
   switch (pane) {
-    case "pull-requests":
+    case Pane.PullRequests:
       return [
         ...base,
         { key: "j/k", label: "Navigate" },
@@ -68,15 +70,15 @@ function repositoryFooterBindings(
         { key: "x", label: "Close PR" },
         { key: "R", label: "Reload list" },
       ];
-    case "files":
+    case Pane.Files:
       return [
         ...base,
         { key: "j/k", label: "Navigate" },
         { key: "Enter", label: "Open file/Toggle folder" },
       ];
-    case "commits":
+    case Pane.Commits:
       return [...base, { key: "j/k", label: "Navigate/select commit" }];
-    case "content":
+    case Pane.Main:
       return [
         ...base,
         { key: "j/k", label: "Scroll" },
@@ -85,6 +87,8 @@ function repositoryFooterBindings(
         { key: "o", label: "Close diff" },
         { key: "x", label: "Close PR" },
       ];
+    default:
+      return [];
   }
 }
 
@@ -99,13 +103,42 @@ function notifyCliInitializationError(error: ForgeInitializationError) {
 }
 
 function RepositoryShell(props: { readonly state: RepositoryAppContextState }) {
-  const [pane] = PaneStore.use();
+  const [box, setBox] = createSignal<BoxRenderable>();
+  const [pane, setPane] = PaneStore.use();
   const contextLabel = repositoryContextLabel(props.state.kind);
   const titles = usePrTitles();
   const content = usePrViewContent(titles);
 
+  useBindings(() => ({
+    target: box,
+    commands: [
+      {
+        name: "pane.files",
+        run: () => setPane({ active: Pane.Files }),
+      },
+      {
+        name: "pane.commits",
+        run: () => setPane({ active: Pane.Commits }),
+      },
+      {
+        name: "pane.pull-requests",
+        run: () => setPane({ active: Pane.PullRequests }),
+      },
+      {
+        name: "pane.main",
+        run: () => setPane({ active: Pane.Main }),
+      },
+    ],
+    bindings: [
+      { key: "0", cmd: "pane.files" },
+      { key: "1", cmd: "pane.commits" },
+      { key: "2", cmd: "pane.pull-requests" },
+      { key: "3", cmd: "pane.main" },
+    ],
+  }));
+
   return (
-    <box flexDirection="column" width="100%" height="100%">
+    <box ref={setBox} flexDirection="column" width="100%" height="100%">
       <Menubar contextLabel={contextLabel} />
       <box flexDirection="row" flexGrow={1} width="100%">
         <Sidebar titles={titles} content={content} />

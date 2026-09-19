@@ -1,4 +1,5 @@
 import { colors } from "@/theme";
+import { sanitizeLine } from "@/utils/sanitize-line";
 import { truncateEnd } from "@/utils/truncate";
 
 export interface SelectableRowProps {
@@ -6,19 +7,7 @@ export interface SelectableRowProps {
   readonly selected: boolean;
   readonly label: string;
   readonly detail?: string;
-  /** Maximum display columns before the row is truncated at the end. */
   readonly maxWidth?: number;
-}
-
-// Sidebar rows must stay exactly one visual line, so collapse embedded
-// newlines/tabs before handing the text to the renderer. Leading spaces are
-// meaningful indentation for tree rows, so only trailing junk is removed;
-// callers that must stay flush provide labels without leading whitespace.
-function sanitizeLine(text: string): string {
-  return text
-    .replace(/\s*[\r\n]+\s*/g, " ")
-    .replace(/\t/g, " ")
-    .trimEnd();
 }
 
 export function SelectableRow(props: SelectableRowProps) {

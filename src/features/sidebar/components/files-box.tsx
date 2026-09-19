@@ -1,18 +1,9 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { For, createEffect, createMemo } from "solid-js";
-import { requestPaneFocus } from "@/context/active-pane-context";
+import { For, createEffect, createMemo, createSignal } from "solid-js";
+import { SelectableRow } from "@/components/selectable-row";
+import { PaneStore } from "@/context/active-pane-context";
 import { visibleError, visibleValue } from "@/features/pr-view/load-state";
 import { patchFileIndex } from "@/features/pr-view/patch-file-index";
-import { SelectableRow } from "@/features/shared/selectable-row";
-import {
-  EmptyGate,
-  SidebarBox,
-  SidebarScrollBox,
-  useFocusWhenActive,
-  useScrollIntoView,
-  useSidebarPane,
-  type SidebarPaneProps,
-} from "@/features/sidebar/sidebar-box";
 import {
   areVisibleRowsEqual,
   fileTreeRowLabel,
@@ -21,11 +12,18 @@ import {
   useFileTree,
   useFileTreeSelector,
 } from "@/packages/pierre/solid/trees";
+import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
+import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
+import { Pane } from "@/types";
+import { EmptyGate } from "./empty-gate";
+import { SidebarBox, SidebarScrollBox } from "./sidebar-box";
 
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { FileTree as FileTreeModel } from "@pierre/trees";
 import type { JSX } from "solid-js";
 import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import type { ForgeSection } from "@/services/forge/types";
+import type { SidebarPaneProps } from "../types";
 
 type FilesView =
   | { readonly kind: "list"; readonly paths: readonly string[] }
@@ -79,8 +77,10 @@ function toggleFocusedDirectory(model: FileTreeModel): void {
 }
 
 export function FilesBox(props: SidebarPaneProps): JSX.Element {
-  const { pane, setPane, box, setBox, scrollBox, setScrollBox, focused } =
-    useSidebarPane("files");
+  const [box, setBox] = createSignal<BoxRenderable>();
+  const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
+  const [_pane, setPane] = PaneStore.use();
+  const isFocused = useFocusedPane(Pane.Files);
   const opened = () => props.titles.openedNumber() !== null;
   const filesView = createMemo<FilesView>(() => {
     if (!opened()) {
@@ -150,7 +150,7 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
       return;
     }
     props.content.selectFile(item.getPath());
-    requestPaneFocus(pane, setPane, "content");
+    setPane({ active: Pane.Main });
   }
 
   // Follow the keyboard highlight rather than the content selection, so moving
@@ -160,7 +160,7 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
     return focusedRow === undefined ? undefined : `file-${focusedRow.path}`;
   }, scrollBox);
 
-  useFocusWhenActive(focused, () => pane.focusRequest, box);
+  //useFocusWhenActive(focused, () => pane.focusRequest, box);
 
   useBindings(() => ({
     target: box,
@@ -174,9 +174,18 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
       { key: "left", cmd: () => model.focusParentItem() },
     ],
   }));
+  function handleMouseFocus() {
+    setPane({ active: Pane.Files });
+  }
 
   return (
-    <SidebarBox title="[0] Files" active={focused()} boxRef={setBox}>
+    <SidebarBox
+      id={Pane.Files}
+      title="[0] Files"
+      active={isFocused()}
+      boxRef={setBox}
+      handleMouseFocus={handleMouseFocus}
+    >
       <EmptyGate
         opened={opened()}
         hasItems={rows().length > 0}

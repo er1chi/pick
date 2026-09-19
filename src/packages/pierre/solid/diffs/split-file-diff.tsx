@@ -359,16 +359,18 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
         minHeight={0}
         gap={1}
       >
-        <DiffPane
-          title="Before"
-          side="left"
-          rows={rows()}
-          width={oldWidth()}
-          split={split()}
-          disableLineNumbers={disableLineNumbers()}
-          tokensFor={tokensFor}
-          scrollRef={setLeftScroll}
-        />
+        <Show when={rows().length > 1}>
+          <DiffPane
+            title="Before"
+            side="left"
+            rows={rows()}
+            width={oldWidth()}
+            split={split()}
+            disableLineNumbers={disableLineNumbers()}
+            tokensFor={tokensFor}
+            scrollRef={setLeftScroll}
+          />
+        </Show>
         <DiffPane
           title="After"
           side="right"

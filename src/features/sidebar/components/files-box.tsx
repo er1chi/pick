@@ -58,10 +58,13 @@ function changedFiles(content: PrViewContent): FilesView {
     return { kind: "message", text: "Loading changed files…" };
   }
   if (section.status === "available") {
-    const paths = patchFileIndex(section).files.map((file) => file.name);
-    return paths.length === 0
+    // The index caches the names array so repeated memo runs keep the same
+    // array identity and consumers depending on it (e.g. resetPaths) don't
+    // re-fire when only the selection changes.
+    const index = patchFileIndex(section);
+    return index.names.length === 0
       ? { kind: "message", text: "No changed files." }
-      : { kind: "list", paths };
+      : { kind: "list", paths: index.names };
   }
   return {
     kind: "message",

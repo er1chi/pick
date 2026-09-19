@@ -1,53 +1,70 @@
-import { Result } from "better-result";
+import { Result, TaggedError } from "better-result";
 import { resolve } from "node:path";
 import { createContext, createSignal, useContext } from "solid-js";
-import type { Accessor } from "solid-js";
-import type { JSX } from "@opentui/solid";
-import type { Result as ResultType } from "better-result";
 import { ForgeService } from "@/services/forge/forge-service";
 import {
   ApplicationContext,
   type ForgeInitializationError,
   type ForgeKind,
 } from "@/services/forge/types";
+import { readGitRemoteOutput } from "@/services/local/local";
+
+import type { JSX } from "@opentui/solid";
+import type { Result as ResultType } from "better-result";
+import type { Accessor } from "solid-js";
 
 interface AppContextBase<T extends ApplicationContext> {
   readonly cwd: string;
   readonly kind: T;
 }
 
-interface ExistingForge {
+interface ExistingForgeState {
   readonly forge: ForgeService;
   readonly forgeError: undefined;
 }
 
-interface ForgeErrorState {
+interface NoForge {
   readonly forge: undefined;
+}
+
+interface ForgeErrorState extends NoForge {
   readonly forgeError: ForgeInitializationError;
 }
 
 type RemoteAppContextState = AppContextBase<ForgeKind> &
-  (ExistingForge | ForgeErrorState);
-type LocalAppContextState =
+  (ExistingForgeState | ForgeErrorState);
+
+type LocalAppContextState = (
   | AppContextBase<ApplicationContext.Default>
-  | AppContextBase<ApplicationContext.Local>;
+  | AppContextBase<ApplicationContext.Local>
+) &
+  NoForge;
+
 export type AppContextState = LocalAppContextState | RemoteAppContextState;
 
 export type RepositoryAppContextState = Exclude<
   AppContextState,
-  AppContextBase<ApplicationContext.Default>
+  AppContextBase<ApplicationContext.Default> & NoForge
 >;
 
-export enum RepositorySelectionErrorCode {
-  DirectoryChangeFailed = "directory-change-failed",
-  ContextInitializationFailed = "context-initialization-failed",
-  TransitionInProgress = "transition-in-progress",
-}
-
-export type RepositorySelectionError = {
-  readonly code: RepositorySelectionErrorCode;
+class RepositoryDirectoryChangeFailedError extends TaggedError(
+  "RepositoryDirectoryChangeFailedError",
+)<{
   readonly path: string;
-};
+  readonly message: string;
+}> {}
+
+class RepositoryContextInitializationFailedError extends TaggedError(
+  "RepositoryContextInitializationFailedError",
+)<{
+  readonly path: string;
+  readonly cause: unknown;
+  readonly message: string;
+}> {}
+
+export type RepositorySelectionError =
+  | RepositoryDirectoryChangeFailedError
+  | RepositoryContextInitializationFailedError;
 
 type RepositorySelectionResult = ResultType<void, RepositorySelectionError>;
 
@@ -74,55 +91,6 @@ function isGithubRemoteUrl(url: string): boolean {
     .unwrapOr(false);
 }
 
-enum GitRemoteErrorCode {
-  GitUnavailable = "git-unavailable",
-  GitCommandFailed = "git-command-failed",
-}
-
-type GitRemoteError =
-  | {
-      readonly code: GitRemoteErrorCode.GitUnavailable;
-    }
-  | {
-      readonly code: GitRemoteErrorCode.GitCommandFailed;
-      readonly exitCode: number;
-    };
-
-async function readGitRemoteOutput(
-  cwd: string,
-): Promise<Result<string, GitRemoteError>> {
-  const execution = await Result.tryPromise({
-    try: async () => {
-      const subprocess = Bun.spawn(["git", "remote", "-v"], {
-        cwd,
-        stdin: "ignore",
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-
-      const [stdout, , exitCode] = await Promise.all([
-        new Response(subprocess.stdout).text(),
-        new Response(subprocess.stderr).text(),
-        subprocess.exited,
-      ]);
-
-      return { stdout, exitCode };
-    },
-    catch: (): GitRemoteError => ({
-      code: GitRemoteErrorCode.GitUnavailable,
-    }),
-  });
-
-  return execution.andThen(({ stdout, exitCode }) =>
-    exitCode === 0
-      ? Result.ok(stdout)
-      : Result.err<never, GitRemoteError>({
-          code: GitRemoteErrorCode.GitCommandFailed,
-          exitCode,
-        }),
-  );
-}
-
 export async function initializeAppContext(
   cwd = process.cwd(),
 ): Promise<AppContextState> {
@@ -132,6 +100,7 @@ export async function initializeAppContext(
     return {
       cwd: activeCwd,
       kind: ApplicationContext.Default,
+      forge: undefined,
     };
   }
 
@@ -140,6 +109,7 @@ export async function initializeAppContext(
     return {
       cwd: activeCwd,
       kind: ApplicationContext.Local,
+      forge: undefined,
     };
   }
 
@@ -183,52 +153,42 @@ export function AppContextProvider(
   props: AppContextProviderProps,
 ): JSX.Element {
   const [state, setState] = createSignal(props.value);
-  let transitionInProgress = false;
 
   const selectRepository = async (
     repositoryPath: string,
   ): Promise<RepositorySelectionResult> => {
     const path = resolve(repositoryPath);
-    if (transitionInProgress) {
-      return Result.err<void, RepositorySelectionError>({
-        code: RepositorySelectionErrorCode.TransitionInProgress,
-        path,
-      });
+    const initialization = await Result.tryPromise({
+      try: () => initializeAppContext(path),
+      catch: (cause) =>
+        new RepositoryContextInitializationFailedError({
+          path,
+          cause,
+          message: "Could not initialize the repository context",
+        }),
+    });
+
+    if (initialization.isErr()) {
+      return initialization;
     }
 
-    transitionInProgress = true;
-    try {
-      const initialization = await Result.tryPromise({
-        try: () => initializeAppContext(path),
-        catch: (): RepositorySelectionError => ({
-          code: RepositorySelectionErrorCode.ContextInitializationFailed,
+    const changeDirectory = Result.try({
+      try: () => {
+        process.chdir(path);
+      },
+      catch: () =>
+        new RepositoryDirectoryChangeFailedError({
           path,
+          message: `Could not change directory to ${path}`,
         }),
-      });
+    });
 
-      if (initialization.isErr()) {
-        return initialization;
-      }
-
-      const changeDirectory = Result.try({
-        try: () => {
-          process.chdir(path);
-        },
-        catch: (): RepositorySelectionError => ({
-          code: RepositorySelectionErrorCode.DirectoryChangeFailed,
-          path,
-        }),
-      });
-
-      if (changeDirectory.isErr()) {
-        return changeDirectory;
-      }
-
-      setState({ ...initialization.value, cwd: process.cwd() });
-      return Result.ok();
-    } finally {
-      transitionInProgress = false;
+    if (changeDirectory.isErr()) {
+      return changeDirectory;
     }
+
+    setState({ ...initialization.value, cwd: process.cwd() });
+    return Result.ok();
   };
 
   const context: AppContextValue = { state, selectRepository };

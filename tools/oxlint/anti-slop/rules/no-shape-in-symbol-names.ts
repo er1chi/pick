@@ -1,4 +1,5 @@
 import { defineRule } from "@oxlint/plugins";
+
 import type { ESTree } from "@oxlint/plugins";
 
 const FORBIDDEN_SYMBOL_NAME = "shape";

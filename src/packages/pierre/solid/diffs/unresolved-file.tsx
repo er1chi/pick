@@ -1,7 +1,8 @@
-import type { FileContents } from "@pierre/diffs";
 import { createMemo } from "solid-js";
-import { conflictDisplayRows } from "./utils/conflict-lines";
 import { FileLike } from "./file-like";
+import { conflictDisplayRows } from "./utils/conflict-lines";
+
+import type { FileContents } from "@pierre/diffs";
 import type { FileViewProps } from "./types";
 
 export interface UnresolvedFileProps<

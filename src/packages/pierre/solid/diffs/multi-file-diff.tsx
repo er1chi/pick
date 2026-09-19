@@ -1,6 +1,7 @@
 import { parseDiffFromFile, type DiffFileInput } from "@pierre/diffs";
 import { createMemo, splitProps } from "solid-js";
 import { FileDiff } from "./file-diff";
+
 import type { DiffBaseProps } from "./types";
 
 export type MultiFileDiffProps<LAnnotation = undefined> =

@@ -3,6 +3,7 @@ import { KeymapProvider } from "@opentui/keymap/solid";
 import { render } from "@opentui/solid";
 import { DialogProvider } from "@tuiparts/dialog/solid";
 import { App } from "@/app";
+import { PaneStore } from "@/context/active-pane-context";
 import {
   AppContextProvider,
   initializeAppContext,
@@ -20,11 +21,13 @@ const appContext = await initializeAppContext();
 await render(
   () => (
     <AppContextProvider value={appContext}>
-      <KeymapProvider keymap={keymap}>
-        <DialogProvider>
-          <App />
-        </DialogProvider>
-      </KeymapProvider>
+      <PaneStore.Provider>
+        <KeymapProvider keymap={keymap}>
+          <DialogProvider>
+            <App />
+          </DialogProvider>
+        </KeymapProvider>
+      </PaneStore.Provider>
     </AppContextProvider>
   ),
   renderer,

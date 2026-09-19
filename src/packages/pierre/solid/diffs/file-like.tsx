@@ -1,12 +1,13 @@
-import type { FileContents } from "@pierre/diffs";
-import { AnnotatedCodeSurface } from "./code-surface";
 import { CodeHeader } from "./code-header";
+import { AnnotatedCodeSurface } from "./code-surface";
 import {
   fileAnnotationsForRow,
   fileLevelAnnotations,
 } from "./utils/annotations";
-import type { DisplayRow } from "./utils/display-row";
+
+import type { FileContents } from "@pierre/diffs";
 import type { FileViewProps } from "./types";
+import type { DisplayRow } from "./utils/display-row";
 
 export function FileLike<LAnnotation>(
   props: FileViewProps<LAnnotation> & {

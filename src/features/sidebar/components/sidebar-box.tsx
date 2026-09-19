@@ -10,6 +10,7 @@ interface SidebarBoxProps extends BoxProps {
   readonly boxRef: Setter<BoxRenderable | undefined>;
   readonly grow?: number;
   readonly height?: number;
+  readonly flexShrink?: number;
   readonly children: JSX.Element;
   readonly handleMouseFocus: () => void;
 }
@@ -23,7 +24,7 @@ export function SidebarBox(props: SidebarBoxProps): JSX.Element {
       focused={props.active}
       flexDirection="column"
       flexGrow={props.grow ?? 1}
-      flexShrink={1}
+      flexShrink={props.flexShrink ?? 1}
       minHeight={0}
       height={props.height}
       width="100%"

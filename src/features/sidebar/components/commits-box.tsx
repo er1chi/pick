@@ -102,7 +102,8 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
       active={isFocused()}
       boxRef={setBox}
       grow={0}
-      height={2 + bodyRowCount()}
+      height={Math.min(15, 2 + bodyRowCount())}
+      flexShrink={0}
       handleMouseFocus={handleMouseFocus}
     >
       <EmptyGate

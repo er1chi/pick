@@ -2,7 +2,14 @@ import { RGBA, type BoxRenderable } from "@opentui/core";
 import { KeymapProvider } from "@opentui/keymap/solid";
 import { testRender, useRenderer } from "@opentui/solid";
 import { describe, expect, test } from "bun:test";
-import { createMemo, onMount, type JSX } from "solid-js";
+import {
+  createMemo,
+  createSignal,
+  For,
+  onMount,
+  type JSX,
+  type Setter,
+} from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
 import { idleLoadState } from "@/features/pr-view/load-state";
 import { createAppKeymap } from "@/shared/keymap";
@@ -88,6 +95,38 @@ function FocusCommitsPane(): null {
   return null;
 }
 
+interface LayoutHarnessControls {
+  readonly setCommits: Setter<readonly PullRequestCommit[]>;
+  readonly setFileRows: Setter<number>;
+}
+
+function CommitsBoxLayoutHarness(props: {
+  readonly ready: (controls: LayoutHarnessControls) => void;
+}): JSX.Element {
+  const renderer = useRenderer();
+  const keymap = createMemo(() => createAppKeymap(renderer));
+  const [commits, setCommits] = createSignal<readonly PullRequestCommit[]>([]);
+  const [fileRows, setFileRows] = createSignal(1);
+  const reactiveContent: PrViewContent = { ...content, commits };
+
+  onMount(() => props.ready({ setCommits, setFileRows }));
+
+  return (
+    <PaneStore.Provider>
+      <KeymapProvider keymap={keymap()}>
+        <box flexDirection="column" width={40} height={20}>
+          <box flexGrow={1} minHeight={0} overflow="hidden">
+            <For each={Array.from({ length: fileRows() })}>
+              {(_, index) => <text id={`file-row-${index()}`}>file</text>}
+            </For>
+          </box>
+          <CommitsBox titles={titles} content={reactiveContent} rowWidth={30} />
+        </box>
+      </KeymapProvider>
+    </PaneStore.Provider>
+  );
+}
+
 /** SelectableRow paints its selected background with `colors.border`. */
 const selectedBackground = RGBA.fromHex(colors.border).toInts();
 
@@ -105,6 +144,15 @@ function isSelected(setup: TestSetup, sha: string): boolean {
   return selectedBackground.every(
     (channel, index) => channel === background[index],
   );
+}
+
+function commitsBoxHeight(setup: TestSetup): number {
+  const node = setup.renderer.root.findDescendantById(Pane.Commits);
+  if (node === undefined) {
+    throw new Error("missing commits box renderable");
+  }
+  // SAFETY: Pane.Commits is only assigned to the commits SidebarBox.
+  return (node as BoxRenderable).height;
 }
 
 describe("CommitsBox", () => {
@@ -126,6 +174,36 @@ describe("CommitsBox", () => {
       // The highlight moves: second row selected, first row cleared.
       expect(isSelected(setup, COMMIT_B.sha)).toBe(true);
       expect(isSelected(setup, COMMIT_A.sha)).toBe(false);
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("grows from its empty row to a stable capped height", async () => {
+    let controls: LayoutHarnessControls | undefined;
+    const setup = await testRender(
+      () => <CommitsBoxLayoutHarness ready={(value) => (controls = value)} />,
+      { width: 40, height: 20 },
+    );
+
+    try {
+      await setup.waitFor(() => controls !== undefined);
+      expect(commitsBoxHeight(setup)).toBe(3);
+
+      controls?.setCommits(
+        Array.from({ length: 20 }, (_, index) => ({
+          ...COMMIT_A,
+          sha: String(index).padStart(40, "0"),
+        })),
+      );
+      await setup.waitFor(() => commitsBoxHeight(setup) === 15);
+
+      controls?.setFileRows(20);
+      await setup.waitFor(
+        () =>
+          setup.renderer.root.findDescendantById("file-row-19") !== undefined,
+      );
+      expect(commitsBoxHeight(setup)).toBe(15);
     } finally {
       setup.renderer.destroy();
     }

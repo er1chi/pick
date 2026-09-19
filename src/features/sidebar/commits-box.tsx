@@ -1,4 +1,5 @@
 import { useBindings } from "@opentui/keymap/solid";
+import { For, createEffect, createMemo, createSignal } from "solid-js";
 import { mainViewCommit } from "@/features/pr-view/use-pr-view-content";
 import { SelectableRow } from "@/features/shared/selectable-row";
 import {
@@ -11,10 +12,10 @@ import {
   useSidebarPane,
   type SidebarPaneProps,
 } from "@/features/sidebar/sidebar-box";
-import type { PullRequestCommit } from "@/services/forge/types";
 import { colors } from "@/theme";
-import { For, createEffect, createMemo, createSignal } from "solid-js";
+
 import type { JSX } from "solid-js";
+import type { PullRequestCommit } from "@/services/forge/types";
 
 export function CommitsBox(props: SidebarPaneProps): JSX.Element {
   const { pane, box, setBox, scrollBox, setScrollBox, focused } =

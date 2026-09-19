@@ -1,12 +1,5 @@
 import { type } from "arktype";
 import { Result } from "better-result";
-import type { Result as ResultType } from "better-result";
-import {
-  ApplicationContext,
-  ForgeCancelledError,
-  ForgeUnsupportedReasonCode,
-} from "./types";
-import * as schemaPrimitives from "./schema-primitives";
 import * as adapterHelpers from "./adapter-helpers";
 import {
   addCommentTruncation,
@@ -22,6 +15,14 @@ import {
   normalizeUser,
   unsupported,
 } from "./normalization";
+import * as schemaPrimitives from "./schema-primitives";
+import {
+  ApplicationContext,
+  ForgeCancelledError,
+  ForgeUnsupportedReasonCode,
+} from "./types";
+
+import type { Result as ResultType } from "better-result";
 import type {
   ForgeAdapter,
   ForgeOperationError,

@@ -1,24 +1,25 @@
+import { For, Show, createMemo, type Accessor, type JSX } from "solid-js";
 import { CommitContext } from "@/features/pr-view/commit-context";
 import { visibleError, visibleValue } from "@/features/pr-view/load-state";
-import { oneLine } from "@/features/pr-view/pr-view-chrome";
 import { patchFileIndex } from "@/features/pr-view/patch-file-index";
-import type {
-  MainView,
-  PrViewContent,
-} from "@/features/pr-view/use-pr-view-content";
+import { oneLine } from "@/features/pr-view/pr-view-chrome";
 import {
   SplitFileDiff,
   type SplitFileDiffScrollTarget,
 } from "@/packages/pierre/solid/diffs";
+import { colors } from "@/theme";
+import { truncateEnd } from "@/utils/truncate";
+
+import type { FileDiffMetadata } from "@pierre/diffs";
+import type {
+  MainView,
+  PrViewContent,
+} from "@/features/pr-view/use-pr-view-content";
 import type {
   ForgeSection,
   PullRequestCommit,
   PullRequestPatch,
 } from "@/services/forge/types";
-import { colors } from "@/theme";
-import { truncateEnd } from "@/utils/truncate";
-import type { FileDiffMetadata } from "@pierre/diffs";
-import { For, Show, createMemo, type Accessor, type JSX } from "solid-js";
 
 const lockFileNames = new Set([
   "bun.lock",

@@ -1,5 +1,4 @@
 import { Result, TaggedError } from "better-result";
-import type { Result as ResultType } from "better-result";
 import {
   ForgeCancelledError,
   ForgeCommandFailedError,
@@ -8,6 +7,8 @@ import {
   ForgeOutputLimitExceededError,
   ForgeTimedOutError,
 } from "./types";
+
+import type { Result as ResultType } from "better-result";
 import type {
   CliExecutionError,
   ForgeKind,

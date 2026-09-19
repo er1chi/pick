@@ -1,9 +1,16 @@
-import type { RepositoryAppContextState } from "@/context/app-context";
+import { For, Show, type Accessor, type JSX } from "solid-js";
 import {
   visibleError,
   visibleValue,
   type LoadState,
 } from "@/features/pr-view/load-state";
+import {
+  CLOSE_AFFORDANCE_GAP,
+  CLOSE_DIFF_LABEL,
+  CLOSE_PR_LABEL,
+  oneLine,
+} from "@/features/pr-view/pr-view-chrome";
+import { persistentMetadataLines } from "@/features/pr-view/pr-view-display";
 import {
   mainViewCommit,
   type MainView,
@@ -15,14 +22,8 @@ import {
 } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { truncateEnd } from "@/utils/truncate";
-import { For, Show, type Accessor, type JSX } from "solid-js";
-import {
-  CLOSE_AFFORDANCE_GAP,
-  CLOSE_DIFF_LABEL,
-  CLOSE_PR_LABEL,
-  oneLine,
-} from "@/features/pr-view/pr-view-chrome";
-import { persistentMetadataLines } from "@/features/pr-view/pr-view-display";
+
+import type { RepositoryAppContextState } from "@/context/app-context";
 
 interface PersistentHeaderProps {
   readonly repositoryName: string;

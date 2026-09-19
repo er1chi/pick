@@ -1,18 +1,19 @@
+import { useBindings } from "@opentui/keymap/solid";
+import { useTerminalDimensions } from "@opentui/solid";
 import { basename } from "node:path";
-import type { RepositoryAppContextState } from "@/context/app-context";
+import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
 import { PaneStore, requestPaneFocus } from "@/context/active-pane-context";
 import { CommitContext } from "@/features/pr-view/commit-context";
 import { visibleValue } from "@/features/pr-view/load-state";
 import { OverviewScreen } from "@/features/pr-view/overview-screen";
+import { patchFileIndex } from "@/features/pr-view/patch-file-index";
 import { MAIN_PANE_CHROME } from "@/features/pr-view/pr-view-chrome";
-import { NoPullRequest, PrViewHeader } from "@/features/pr-view/pr-view-header";
 import {
   presentRepositoryName,
   pullRequestTitleLine,
 } from "@/features/pr-view/pr-view-display";
-import { patchFileIndex } from "@/features/pr-view/patch-file-index";
+import { NoPullRequest, PrViewHeader } from "@/features/pr-view/pr-view-header";
 import { SelectedDiffBody } from "@/features/pr-view/selected-diff";
-import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import {
   mainViewCommit,
   type PrViewContent,
@@ -23,11 +24,11 @@ import {
 } from "@/packages/pierre/solid/diffs";
 import { colors } from "@/theme";
 import { truncateEnd } from "@/utils/truncate";
+
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
-import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
-import { useBindings } from "@opentui/keymap/solid";
-import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
+import type { RepositoryAppContextState } from "@/context/app-context";
+import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 
 export interface PrViewProps {
   readonly state: RepositoryAppContextState;

@@ -1,5 +1,11 @@
 import { useBindings } from "@opentui/keymap/solid";
+import { For, Show } from "solid-js";
 import { requestPaneFocus } from "@/context/active-pane-context";
+import {
+  isPending,
+  visibleError,
+  visibleValue,
+} from "@/features/pr-view/load-state";
 import { SelectableRow } from "@/features/shared/selectable-row";
 import {
   SidebarBox,
@@ -10,16 +16,11 @@ import {
   useSidebarPane,
   type SidebarPaneProps,
 } from "@/features/sidebar/sidebar-box";
-import type { PrTitles } from "@/features/pr-view/use-pr-titles";
-import {
-  isPending,
-  visibleError,
-  visibleValue,
-} from "@/features/pr-view/load-state";
-import type { PullRequestSummary } from "@/services/forge/types";
 import { colors } from "@/theme";
-import { For, Show } from "solid-js";
+
 import type { JSX } from "solid-js";
+import type { PrTitles } from "@/features/pr-view/use-pr-titles";
+import type { PullRequestSummary } from "@/services/forge/types";
 
 function listItems(titles: PrTitles): readonly PullRequestSummary[] {
   return visibleValue(titles.list())?.items ?? [];

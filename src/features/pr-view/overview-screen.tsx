@@ -1,8 +1,10 @@
+import { For, Show, type Accessor, type JSX } from "solid-js";
 import {
   visibleError,
   visibleValue,
   type LoadState,
 } from "@/features/pr-view/load-state";
+import { renderMutedLine } from "@/features/pr-view/pr-view-chrome";
 import {
   checkLine,
   collectionAvailability,
@@ -20,7 +22,8 @@ import {
   reviewerAvailability,
   reviewerNames,
 } from "@/features/pr-view/pr-view-display";
-import { renderMutedLine } from "@/features/pr-view/pr-view-chrome";
+import { colors } from "@/theme";
+
 import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import type {
   ForgeSection,
@@ -34,8 +37,6 @@ import type {
   PullRequestReviewerRequests,
   PullRequestSummary,
 } from "@/services/forge/types";
-import { colors } from "@/theme";
-import { For, Show, type Accessor, type JSX } from "solid-js";
 
 function arrayItems<T>(section: ForgeSection<readonly T[]>): readonly T[] {
   return section.status === "available" ? section.value : [];

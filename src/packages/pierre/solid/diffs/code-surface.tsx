@@ -1,6 +1,7 @@
-import { colors } from "@/theme";
-import type { SelectedLineRange } from "@pierre/diffs";
 import { For, Show, type JSX } from "solid-js";
+import { colors } from "@/theme";
+
+import type { SelectedLineRange } from "@pierre/diffs";
 import type { DisplayRow, DisplayRowKind } from "./utils/display-row";
 
 function kindColor(kind: DisplayRowKind): string {

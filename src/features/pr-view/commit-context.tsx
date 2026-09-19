@@ -1,14 +1,15 @@
+import { For, Show, type Accessor, type JSX } from "solid-js";
 import { oneLine, renderMutedLine } from "@/features/pr-view/pr-view-chrome";
 import {
   commitMessage,
   commitMetaLine,
 } from "@/features/pr-view/pr-view-display";
-import type { PullRequestCommit } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { formatPresentTimestamp } from "@/utils/format-timestamp";
 import { presentText } from "@/utils/present-text";
 import { truncateEnd } from "@/utils/truncate";
-import { For, Show, type Accessor, type JSX } from "solid-js";
+
+import type { PullRequestCommit } from "@/services/forge/types";
 
 function commitMessageLines(
   commit: PullRequestCommit | undefined,

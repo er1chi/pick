@@ -1,8 +1,9 @@
-import { idleLoadState, type LoadState } from "@/features/pr-view/load-state";
-import type { ForgeOperationError } from "@/services/forge/types";
 import { Result } from "better-result";
-import type { Result as ResultType } from "better-result";
 import { createSignal, onCleanup, type Accessor } from "solid-js";
+import { idleLoadState, type LoadState } from "@/features/pr-view/load-state";
+
+import type { Result as ResultType } from "better-result";
+import type { ForgeOperationError } from "@/services/forge/types";
 
 /** Must never reject: a rejected fetch would leave the query loading forever.
  * The ForgeService boundary guarantees this for forge operations. */

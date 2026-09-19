@@ -1,4 +1,5 @@
 import { colors } from "@/theme";
+
 import type { FileTreeVisibleRow } from "@pierre/trees";
 
 export function fileTreeRowLabel(row: FileTreeVisibleRow): string {

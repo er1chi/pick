@@ -1,19 +1,20 @@
-import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
+import { useBindings } from "@opentui/keymap/solid";
+import { toast } from "@tuiparts/toast/solid";
+import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 import {
   useAppContext,
   type RepositorySelectionError,
 } from "@/context/app-context";
+import { SelectableRow } from "@/features/shared/selectable-row";
 import {
   discoverRecentRepositories,
   type RecentRepository,
   type RepositoryDiscoveryError,
 } from "@/services/repo-discovery";
-import { moveInList } from "@/utils/navigation";
-import { SelectableRow } from "@/features/shared/selectable-row";
 import { colors } from "@/theme";
-import { useBindings } from "@opentui/keymap/solid";
-import { toast } from "@tuiparts/toast/solid";
-import { For, Show, createEffect, createSignal, onMount } from "solid-js";
+import { moveInList } from "@/utils/navigation";
+
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 
 const discoveryRootLabel = "~/Developer";
 

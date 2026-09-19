@@ -1,6 +1,6 @@
-import { colors } from "@/theme";
 import { useTerminalDimensions } from "@opentui/solid";
 import { For, Show } from "solid-js";
+import { colors } from "@/theme";
 
 export interface FooterBinding {
   readonly key: string;

@@ -1,10 +1,11 @@
 import { Result, TaggedError } from "better-result";
-import type { Result as ResultType } from "better-result";
 import { lstat, readFile, readdir } from "node:fs/promises";
-import type { Dirent, Stats } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { RepositoryDiscoveryError, type RecentRepository } from "./types";
+
+import type { Result as ResultType } from "better-result";
+import type { Dirent, Stats } from "node:fs";
 
 const DISCOVERY_ROOT_NAME = "Developer";
 const MAX_RECENT_REPOSITORIES = 8;

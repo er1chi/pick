@@ -1,10 +1,6 @@
 import { type } from "arktype";
 import { Result } from "better-result";
-import type { Result as ResultType } from "better-result";
 import * as adapterHelpers from "./adapter-helpers";
-import { ApplicationContext } from "./types";
-import * as githubSchemas from "./github-schemas";
-import { assemblePullRequestOverview } from "./normalization";
 import {
   type GithubDetailsFields,
   type GithubOverviewFields,
@@ -21,6 +17,11 @@ import {
   normalizeReviewComments,
   normalizeReviews,
 } from "./github-normalize";
+import * as githubSchemas from "./github-schemas";
+import { assemblePullRequestOverview } from "./normalization";
+import { ApplicationContext } from "./types";
+
+import type { Result as ResultType } from "better-result";
 import type {
   ForgeAdapter,
   ForgeOperationError,

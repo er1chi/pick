@@ -1,9 +1,10 @@
-import type { Result } from "better-result";
 import { executeCli } from "./cli-execution";
 import {
   ForgeExecutableUnavailableError,
   ForgeVersionCheckFailedError,
 } from "./types";
+
+import type { Result } from "better-result";
 import type { ForgeInitializationError, ForgeKind } from "./types";
 
 export async function checkCli(

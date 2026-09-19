@@ -1,4 +1,3 @@
-import type { FileTree as FileTreeModel } from "@pierre/trees";
 import {
   createEffect,
   createSignal,
@@ -6,6 +5,8 @@ import {
   untrack,
   type Accessor,
 } from "solid-js";
+
+import type { FileTree as FileTreeModel } from "@pierre/trees";
 
 export type FileTreeSelector<TSelected> = (model: FileTreeModel) => TSelected;
 export type FileTreeSelectorEquality<TSelected> = (

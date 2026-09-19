@@ -3,12 +3,12 @@ import { KeymapProvider } from "@opentui/keymap/solid";
 import { render } from "@opentui/solid";
 import { DialogProvider } from "@tuiparts/dialog/solid";
 import { App } from "@/app";
+import { PaneStore } from "@/context/active-pane-context";
 import {
   AppContextProvider,
   initializeAppContext,
 } from "@/context/app-context";
 import { createAppKeymap } from "@/shared/keymap";
-import { PaneStore } from "@/context/active-pane-context";
 
 const renderer = await createCliRenderer({
   clearOnShutdown: true,

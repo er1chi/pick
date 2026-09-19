@@ -1,7 +1,8 @@
+import { Show, type Accessor } from "solid-js";
 import { colors } from "@/theme";
 import { truncateEnd } from "@/utils/truncate";
+
 import type { JSX } from "@opentui/solid";
-import { Show, type Accessor } from "solid-js";
 
 // The main pane gives up the fixed sidebar (32), its own border (2), and its
 // horizontal padding (3) from the terminal width. Header and metadata lines are

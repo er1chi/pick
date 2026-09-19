@@ -1,9 +1,3 @@
-import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
-import { PaneStore } from "@/context/active-pane-context";
-import type { PrTitles } from "@/features/pr-view/use-pr-titles";
-import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
-import { colors } from "@/theme";
-import type { RepositoryPane } from "@/types";
 import {
   Show,
   createEffect,
@@ -11,6 +5,13 @@ import {
   type JSX,
   type Setter,
 } from "solid-js";
+import { PaneStore } from "@/context/active-pane-context";
+import { colors } from "@/theme";
+
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
+import type { PrTitles } from "@/features/pr-view/use-pr-titles";
+import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
+import type { RepositoryPane } from "@/types";
 
 export interface SidebarPaneProps {
   readonly titles: PrTitles;

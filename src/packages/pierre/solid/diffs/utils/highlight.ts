@@ -6,6 +6,7 @@ import {
   type SupportedLanguages,
   type ThemedToken,
 } from "@pierre/diffs";
+
 import type { SplitDisplayRow } from "./split-rows";
 
 /**

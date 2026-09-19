@@ -1,5 +1,6 @@
-import type { FileDiffMetadata, Hunk } from "@pierre/diffs";
 import { displayLineAt } from "./display-row";
+
+import type { FileDiffMetadata, Hunk } from "@pierre/diffs";
 
 /**
  * A single source line within a hunk. Context lines carry both `oldLine` and

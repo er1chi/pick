@@ -1,5 +1,6 @@
-import type { CliRenderer } from "@opentui/core";
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui";
+
+import type { CliRenderer } from "@opentui/core";
 
 export function createAppKeymap(renderer: CliRenderer) {
   const keymap = createDefaultOpenTuiKeymap(renderer);

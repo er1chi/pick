@@ -1,8 +1,9 @@
-import type { Result as ResultType } from "better-result";
 import {
   ForgeCancelledError,
   type ForgeOperationError,
 } from "@/services/forge/types";
+
+import type { Result as ResultType } from "better-result";
 
 export interface IdleLoadState {
   readonly status: "idle";

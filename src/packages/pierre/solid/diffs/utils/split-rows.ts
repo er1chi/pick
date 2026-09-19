@@ -1,6 +1,7 @@
-import type { FileDiffMetadata, Hunk } from "@pierre/diffs";
 import { hunkHeaderRow, type DisplayRow } from "./display-row";
 import { hunkBlocks } from "./hunk-blocks";
+
+import type { FileDiffMetadata, Hunk } from "@pierre/diffs";
 
 /**
  * A single row of a side-by-side (split) diff. Either a hunk header that spans

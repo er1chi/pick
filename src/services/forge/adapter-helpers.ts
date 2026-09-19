@@ -1,10 +1,11 @@
 import { type } from "arktype";
 import { Result } from "better-result";
-import type { Result as ResultType } from "better-result";
 import { checkCli } from "./cli-check";
 import { decodeJson, executeCli } from "./cli-execution";
-import { ForgeIncompatibleResponseError } from "./types";
 import { available, byteLength, failed } from "./normalization";
+import { ForgeIncompatibleResponseError } from "./types";
+
+import type { Result as ResultType } from "better-result";
 import type {
   ForgeInitializationError,
   ForgeKind,

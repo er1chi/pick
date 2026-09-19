@@ -1,4 +1,5 @@
 import { TaggedError } from "better-result";
+
 import type { Result } from "better-result";
 
 export enum ApplicationContext {

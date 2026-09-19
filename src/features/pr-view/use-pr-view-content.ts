@@ -1,3 +1,4 @@
+import { createEffect, createSignal, type Accessor } from "solid-js";
 import { useAppContext } from "@/context/app-context";
 import {
   createCachedQuery,
@@ -5,6 +6,8 @@ import {
   type Fetcher,
 } from "@/features/pr-view/cached-query";
 import { visibleValue, type LoadState } from "@/features/pr-view/load-state";
+
+import type { Result as ResultType } from "better-result";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { ForgeService } from "@/services/forge/forge-service";
 import type {
@@ -18,8 +21,6 @@ import type {
   PullRequestPatch,
   PullRequestReviewsResource,
 } from "@/services/forge/types";
-import type { Result as ResultType } from "better-result";
-import { createEffect, createSignal, type Accessor } from "solid-js";
 
 type OverviewLoadState = LoadState<PullRequestOverview>;
 type DetailsLoadState = LoadState<PullRequestDetails>;

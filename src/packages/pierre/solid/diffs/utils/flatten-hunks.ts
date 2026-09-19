@@ -1,6 +1,7 @@
-import type { FileDiffMetadata, Hunk } from "@pierre/diffs";
 import { hunkHeaderRow, type DisplayRow } from "./display-row";
 import { hunkBlocks, type HunkBlock } from "./hunk-blocks";
+
+import type { FileDiffMetadata, Hunk } from "@pierre/diffs";
 
 function flattenBlock(
   block: HunkBlock,

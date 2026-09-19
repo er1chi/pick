@@ -1,5 +1,6 @@
-import type { FileDiffMetadata } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs";
+
+import type { FileDiffMetadata } from "@pierre/diffs";
 import type { ForgeSection, PullRequestPatch } from "@/services/forge/types";
 
 export interface PatchFileIndex {

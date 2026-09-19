@@ -3,6 +3,7 @@ import { PaneStore, requestPaneFocus } from "@/context/active-pane-context";
 import { CommitsBox } from "@/features/sidebar/commits-box";
 import { FilesBox } from "@/features/sidebar/files-box";
 import { PullRequestsBox } from "@/features/sidebar/pull-requests-box";
+
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 

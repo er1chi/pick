@@ -1,5 +1,6 @@
 import { Result } from "better-result";
 import { GitCommandFailedError, GitUnavailableError } from "./types";
+
 import type { GitRemoteError } from "./types";
 
 export async function readGitRemoteOutput(

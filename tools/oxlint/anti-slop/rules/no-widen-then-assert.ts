@@ -1,4 +1,5 @@
 import { defineRule } from "@oxlint/plugins";
+
 import type { ESTree, Variable } from "@oxlint/plugins";
 
 type BroadTypeKind = "top" | "object" | "record";

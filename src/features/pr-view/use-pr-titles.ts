@@ -1,16 +1,17 @@
+import { Result } from "better-result";
+import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 import { useAppContext } from "@/context/app-context";
-import type {
-  PullRequestList,
-  PullRequestListState,
-} from "@/services/forge/types";
-import { moveInList } from "@/utils/navigation";
 import {
   idleLoadState,
   isCancelled,
   type LoadState,
 } from "@/features/pr-view/load-state";
-import { Result } from "better-result";
-import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
+import { moveInList } from "@/utils/navigation";
+
+import type {
+  PullRequestList,
+  PullRequestListState,
+} from "@/services/forge/types";
 
 export interface PrTitles {
   readonly list: Accessor<LoadState<PullRequestList>>;

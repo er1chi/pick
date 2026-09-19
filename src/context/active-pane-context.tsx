@@ -1,6 +1,7 @@
-import type { RepositoryPane } from "@/types";
 import { createSimpleContext } from "@/utils/create-simple-context";
+
 import type { SetStoreFunction } from "solid-js/store";
+import type { RepositoryPane } from "@/types";
 
 interface PaneState {
   active: RepositoryPane;

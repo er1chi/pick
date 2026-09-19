@@ -1,9 +1,8 @@
 import { useBindings } from "@opentui/keymap/solid";
-import type { FileTree as FileTreeModel } from "@pierre/trees";
+import { For, createEffect, createMemo } from "solid-js";
 import { requestPaneFocus } from "@/context/active-pane-context";
-import { patchFileIndex } from "@/features/pr-view/patch-file-index";
 import { visibleError, visibleValue } from "@/features/pr-view/load-state";
-import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
+import { patchFileIndex } from "@/features/pr-view/patch-file-index";
 import { SelectableRow } from "@/features/shared/selectable-row";
 import {
   EmptyGate,
@@ -22,9 +21,11 @@ import {
   useFileTree,
   useFileTreeSelector,
 } from "@/packages/pierre/solid/trees";
-import type { ForgeSection } from "@/services/forge/types";
-import { For, createEffect, createMemo } from "solid-js";
+
+import type { FileTree as FileTreeModel } from "@pierre/trees";
 import type { JSX } from "solid-js";
+import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
+import type { ForgeSection } from "@/services/forge/types";
 
 type FilesView =
   | { readonly kind: "list"; readonly paths: readonly string[] }

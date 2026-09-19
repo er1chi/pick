@@ -1,5 +1,4 @@
 import { Result } from "better-result";
-import type { Result as ResultType } from "better-result";
 import { ForgejoService } from "./forgejo-service";
 import { GithubService } from "./github-service";
 import {
@@ -8,6 +7,8 @@ import {
   validatePullRequestNumber,
 } from "./normalization";
 import { ApplicationContext, ForgeUnexpectedError } from "./types";
+
+import type { Result as ResultType } from "better-result";
 import type {
   ForgeAdapter,
   ForgeInitializationError,

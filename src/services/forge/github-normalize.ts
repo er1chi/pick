@@ -1,5 +1,4 @@
 import { Result } from "better-result";
-import type { Result as ResultType } from "better-result";
 import {
   available,
   createPullRequestSummary,
@@ -14,6 +13,21 @@ import {
   normalizeUser,
 } from "./normalization";
 import { ApplicationContext } from "./types";
+
+import type { Result as ResultType } from "better-result";
+import type {
+  GithubChecksResponse,
+  GithubCommentPages,
+  GithubCommitPages,
+  GithubDetailsPayload,
+  GithubLinkedIssuesResponse,
+  GithubListItem,
+  GithubOverviewPayload,
+  GithubProjectsResponse,
+  GithubRepositoryPayload,
+  GithubRequestedReviewers,
+  GithubReviewPages,
+} from "./github-schemas";
 import type {
   ForgeOperationError,
   ForgeRepository,
@@ -30,19 +44,6 @@ import type {
   PullRequestReviewerRequests,
   PullRequestSummary,
 } from "./types";
-import type {
-  GithubChecksResponse,
-  GithubCommentPages,
-  GithubCommitPages,
-  GithubDetailsPayload,
-  GithubLinkedIssuesResponse,
-  GithubListItem,
-  GithubOverviewPayload,
-  GithubProjectsResponse,
-  GithubRepositoryPayload,
-  GithubRequestedReviewers,
-  GithubReviewPages,
-} from "./github-schemas";
 
 const kind = ApplicationContext.GitHub;
 

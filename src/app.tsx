@@ -1,3 +1,6 @@
+import { useRenderer } from "@opentui/solid";
+import { Toaster, toast } from "@tuiparts/toast/solid";
+import { createEffect, onMount, Show } from "solid-js";
 import {
   type AppContextState,
   useAppContext,
@@ -16,11 +19,9 @@ import {
   type ForgeInitializationError,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
-import { useRenderer } from "@opentui/solid";
-import { Toaster, toast } from "@tuiparts/toast/solid";
-import { createEffect, onMount, Show } from "solid-js";
-import type { Accessor } from "solid-js";
 import { PaneStore } from "./context/active-pane-context";
+
+import type { Accessor } from "solid-js";
 import type { RepositoryPane } from "./types";
 
 function repositoryAppContextState(

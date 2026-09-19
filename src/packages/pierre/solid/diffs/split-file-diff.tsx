@@ -1,5 +1,3 @@
-import type { FileDiffMetadata, ThemedToken } from "@pierre/diffs";
-import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import {
   createEffect,
   createMemo,
@@ -11,9 +9,12 @@ import {
   type Accessor,
 } from "solid-js";
 import { colors } from "@/theme";
-import type { DisplayRow, DisplayRowKind } from "./utils/display-row";
 import { highlightSplitRows } from "./utils/highlight";
 import { splitRows, type SplitDisplayRow } from "./utils/split-rows";
+
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
+import type { FileDiffMetadata, ThemedToken } from "@pierre/diffs";
+import type { DisplayRow, DisplayRowKind } from "./utils/display-row";
 
 export interface SplitFileDiffScrollTarget {
   scrollBy(lines: number): void;

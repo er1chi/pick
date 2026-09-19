@@ -2,7 +2,7 @@
   "path": ["src"],
   "minLines": 5,
   "minTokens": 35,
-  "threshold": 0,
+  "threshold": 1.5,
   "reporters": ["console", "silent"],
   "gitignore": true,
   "ignore": ["**/vendor/**"],

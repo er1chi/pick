@@ -1,4 +1,4 @@
-import { createMemo } from "solid-js/types/server/reactive.js";
+import { createMemo } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
 
 import type { Pane } from "@/types";

@@ -9,13 +9,13 @@ export interface IdleLoadState {
   readonly status: "idle";
 }
 
-export interface LoadingLoadState<T> {
+interface LoadingLoadState<T> {
   readonly status: "loading";
   /** Last successful result, retained for display while a fresh load runs. */
   readonly previous: ResultType<T, ForgeOperationError> | undefined;
 }
 
-export interface SettledLoadState<T> {
+interface SettledLoadState<T> {
   readonly status: "settled";
   readonly result: ResultType<T, ForgeOperationError>;
   /** Last successful result, retained when the latest load failed. */
@@ -38,7 +38,7 @@ export function idleLoadState(): IdleLoadState {
 
 /** The result a view should render: the settled result when it succeeded,
  * otherwise the last successful result retained across the failure. */
-export function visibleResult<T>(
+function visibleResult<T>(
   state: LoadState<T>,
 ): ResultType<T, ForgeOperationError> | undefined {
   switch (state.status) {

@@ -47,14 +47,14 @@ export type RepositoryAppContextState = Exclude<
   AppContextBase<ApplicationContext.Default> & NoForge
 >;
 
-export class RepositoryDirectoryChangeFailedError extends TaggedError(
+class RepositoryDirectoryChangeFailedError extends TaggedError(
   "RepositoryDirectoryChangeFailedError",
 )<{
   readonly path: string;
   readonly message: string;
 }> {}
 
-export class RepositoryContextInitializationFailedError extends TaggedError(
+class RepositoryContextInitializationFailedError extends TaggedError(
   "RepositoryContextInitializationFailedError",
 )<{
   readonly path: string;

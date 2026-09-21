@@ -1,5 +1,5 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
 import {
@@ -7,6 +7,7 @@ import {
   visibleError,
   visibleValue,
 } from "@/features/pr-view/load-state";
+import { useNavigateList } from "@/hooks/use-navigate-list";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { colors } from "@/theme";
@@ -46,18 +47,13 @@ export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
   const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
   const [_pane, setPane] = PaneStore.use();
   const isFocused = useFocusedPane(Pane.PullRequests);
+  const navigation = useNavigateList({ target: box });
+
+  createEffect(() => navigation.setCount(listItems(props.titles).length));
 
   useBindings(() => ({
     target: box,
     commands: [
-      {
-        name: "pr-list.move-up",
-        run: () => props.titles.moveHighlight(-1),
-      },
-      {
-        name: "pr-list.move-down",
-        run: () => props.titles.moveHighlight(1),
-      },
       {
         name: "pr-list.filter-open",
         run: () => props.titles.setFilter("open"),
@@ -87,8 +83,10 @@ export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
         run: () => {
           // Reopening, even the same PR, starts from a cleared selection so
           // the main view returns to the PR-level context.
+          const summary = listItems(props.titles)[navigation.index()];
           props.content.clearSelection();
-          if (props.titles.openHighlighted()) {
+          if (summary !== undefined) {
+            props.titles.open(summary.number);
             // A newly opened PR exposes its files; focus belongs in the tree.
             setPane({ active: Pane.Files });
           }
@@ -100,10 +98,6 @@ export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
       },
     ],
     bindings: [
-      { key: "k", cmd: "pr-list.move-up" },
-      { key: "up", cmd: "pr-list.move-up" },
-      { key: "j", cmd: "pr-list.move-down" },
-      { key: "down", cmd: "pr-list.move-down" },
       { key: "o", cmd: "pr-list.filter-open" },
       { key: "c", cmd: "pr-list.filter-closed" },
       { key: "a", cmd: "pr-list.filter-all" },
@@ -116,8 +110,8 @@ export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
   }));
 
   useScrollIntoView(() => {
-    const number = props.titles.highlightedNumber();
-    return number === null ? undefined : `pull-request-${number}`;
+    const number = listItems(props.titles)[navigation.index()]?.number;
+    return number === undefined ? undefined : `pull-request-${number}`;
   }, scrollBox);
 
   //useFocusWhenActive(focused, () => pane.focusRequest, box);
@@ -204,7 +198,8 @@ export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
                   <SelectableRow
                     id={`pull-request-${summary.number}`}
                     selected={
-                      summary.number === props.titles.highlightedNumber()
+                      summary.number ===
+                      listItems(props.titles)[navigation.index()]?.number
                     }
                     label={`#${summary.number}`}
                     detail={firstLine(summary.title)}

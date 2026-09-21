@@ -46,12 +46,10 @@ const COMMIT_B: PullRequestCommit = {
 const titles: PrTitles = {
   list: () => idleLoadState(),
   filter: () => "open",
-  highlightedNumber: () => null,
   openedNumber: () => 1,
   setFilter: () => {},
   cycleFilter: () => {},
-  moveHighlight: () => {},
-  openHighlighted: () => false,
+  open: () => {},
   closeOpened: () => {},
   retry: () => {},
 };

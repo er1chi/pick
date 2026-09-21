@@ -3,6 +3,7 @@ import { For, createEffect, createMemo, createSignal } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
 import { mainViewCommit } from "@/features/pr-view/use-pr-view-content";
+import { useNavigateList } from "@/hooks/use-navigate-list";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { colors } from "@/theme";
@@ -21,50 +22,21 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
   const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
   const [_pane, setPane] = PaneStore.use();
   const isFocused = useFocusedPane(Pane.Commits);
-  // Keyboard focus inside the list is local and never activates the commit on
-  // its own; `content.view()` only changes on an explicit Enter.
-  const [highlightedSha, setHighlightedSha] = createSignal<string>();
+  const navigation = useNavigateList({ target: box });
   const opened = () => props.titles.openedNumber() !== null;
   const commits = createMemo<readonly PullRequestCommit[]>(() =>
     opened() ? props.content.commits() : [],
   );
 
-  // Keep exactly one row highlighted: start on the first row without selecting
-  // it, and recover when the list changes or drops the highlighted commit.
-  createEffect(() => {
-    const list = commits();
-    const current = highlightedSha();
-    if (list.length === 0) {
-      if (current !== undefined) {
-        setHighlightedSha(undefined);
-      }
-      return;
-    }
-    if (!list.some((commit) => commit.sha === current)) {
-      setHighlightedSha(list[0]?.sha);
-    }
-  });
+  createEffect(() => navigation.setCount(commits().length));
 
   useScrollIntoView(() => {
-    const sha = highlightedSha();
+    const sha = commits()[navigation.index()]?.sha;
     return sha === undefined ? undefined : `commit-${sha}`;
   }, scrollBox);
 
-  function moveHighlight(offset: number): void {
-    const list = commits();
-    if (list.length === 0) {
-      return;
-    }
-    const index = list.findIndex((commit) => commit.sha === highlightedSha());
-    const next = Math.min(
-      Math.max((index < 0 ? 0 : index) + offset, 0),
-      list.length - 1,
-    );
-    setHighlightedSha(list[next]?.sha);
-  }
-
   function activateHighlighted(): void {
-    const sha = highlightedSha();
+    const sha = commits()[navigation.index()]?.sha;
     if (sha !== undefined) {
       props.content.selectCommit(sha);
     }
@@ -72,13 +44,7 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
 
   useBindings(() => ({
     target: box,
-    bindings: [
-      { key: "j", cmd: () => moveHighlight(1) },
-      { key: "down", cmd: () => moveHighlight(1) },
-      { key: "k", cmd: () => moveHighlight(-1) },
-      { key: "up", cmd: () => moveHighlight(-1) },
-      { key: "return", cmd: activateHighlighted },
-    ],
+    bindings: [{ key: "return", cmd: activateHighlighted }],
   }));
 
   // Content-sized like the Pull Requests box: a fixed height stops the box
@@ -117,7 +83,8 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
               // Accessors, not const booleans: computing these eagerly inside
               // the <For> callback would snapshot the signals once per item,
               // so j/k highlight changes would never re-render the rows.
-              const highlighted = () => commit.sha === highlightedSha();
+              const highlighted = () =>
+                commit.sha === commits()[navigation.index()]?.sha;
               const active = () =>
                 commit.sha === mainViewCommit(props.content.view());
               return (

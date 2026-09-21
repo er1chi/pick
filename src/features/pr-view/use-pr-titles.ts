@@ -6,7 +6,6 @@ import {
   isCancelled,
   type LoadState,
 } from "@/features/pr-view/load-state";
-import { moveInList } from "@/utils/navigation";
 
 import type {
   PullRequestList,
@@ -16,12 +15,10 @@ import type {
 export interface PrTitles {
   readonly list: Accessor<LoadState<PullRequestList>>;
   readonly filter: Accessor<PullRequestListState>;
-  readonly highlightedNumber: Accessor<number | null>;
   readonly openedNumber: Accessor<number | null>;
   readonly setFilter: (filter: PullRequestListState) => void;
   readonly cycleFilter: (offset: number) => void;
-  readonly moveHighlight: (offset: number) => void;
-  readonly openHighlighted: () => boolean;
+  readonly open: (number: number) => void;
   readonly closeOpened: () => void;
   readonly retry: () => void;
 }
@@ -31,9 +28,6 @@ export function usePrTitles(): PrTitles {
   const [list, setList] =
     createSignal<LoadState<PullRequestList>>(idleLoadState());
   const [filter, setFilterSignal] = createSignal<PullRequestListState>("open");
-  const [highlightedNumber, setHighlightedNumber] = createSignal<number | null>(
-    null,
-  );
   const [openedNumber, setOpenedNumber] = createSignal<number | null>(null);
   const [retryVersion, setRetryVersion] = createSignal(0);
 
@@ -56,7 +50,6 @@ export function usePrTitles(): PrTitles {
 
     if (repositoryChanged) {
       lastSuccessfulList = undefined;
-      setHighlightedNumber(null);
       setOpenedNumber(null);
     }
 
@@ -106,13 +99,6 @@ export function usePrTitles(): PrTitles {
 
         lastSuccessfulList = result.value;
         setList({ status: "settled", result, previous: undefined });
-        const currentNumber = highlightedNumber();
-        const selectedItem = result.value.items.find(
-          (item) => item.number === currentNumber,
-        );
-        setHighlightedNumber(
-          selectedItem?.number ?? result.value.items[0]?.number ?? null,
-        );
 
         // An opened pull request only survives while it is still listed for
         // the active filter. A filter change that drops it closes it.
@@ -156,45 +142,8 @@ export function usePrTitles(): PrTitles {
     }
   }
 
-  function moveHighlight(offset: number): void {
-    const currentList = list();
-    if (
-      currentList.status !== "settled" ||
-      currentList.result.isErr() ||
-      currentList.result.value.items.length === 0
-    ) {
-      return;
-    }
-
-    const items = currentList.result.value.items;
-    const currentNumber = highlightedNumber();
-    const currentItem = items.find((item) => item.number === currentNumber);
-    const firstItem = items[0];
-    if (currentItem === undefined && firstItem === undefined) {
-      return;
-    }
-    const anchorItem = currentItem ?? firstItem;
-    if (anchorItem === undefined) {
-      return;
-    }
-    setHighlightedNumber(moveInList(items, anchorItem, offset).number);
-  }
-
-  function openHighlighted(): boolean {
-    const number = highlightedNumber();
-    if (number === null) {
-      return false;
-    }
-    const currentList = list();
-    if (
-      currentList.status !== "settled" ||
-      currentList.result.isErr() ||
-      !currentList.result.value.items.some((item) => item.number === number)
-    ) {
-      return false;
-    }
+  function open(number: number): void {
     setOpenedNumber(number);
-    return true;
   }
 
   function closeOpened(): void {
@@ -209,12 +158,10 @@ export function usePrTitles(): PrTitles {
   return {
     list,
     filter,
-    highlightedNumber,
     openedNumber,
     setFilter,
     cycleFilter,
-    moveHighlight,
-    openHighlighted,
+    open,
     closeOpened,
     retry,
   };

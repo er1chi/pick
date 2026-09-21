@@ -4,6 +4,7 @@ import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
 import { visibleError, visibleValue } from "@/features/pr-view/load-state";
 import { patchFileIndex } from "@/features/pr-view/patch-file-index";
+import { useNavigateList } from "@/hooks/use-navigate-list";
 import {
   areVisibleRowsEqual,
   fileTreeRowLabel,
@@ -115,31 +116,23 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
     getAllVisibleRows,
     areVisibleRowsEqual,
   );
+  const navigation = useNavigateList({ target: box });
 
-  // Keep a keyboard anchor without selecting it: opening a PR must not default
-  // the content selection to the first file.
+  createEffect(() => navigation.setCount(rows().length));
+
   createEffect(() => {
-    if (!opened() || rows().length === 0 || model.getFocusedItem() !== null) {
-      return;
+    const focused = rows().findIndex((row) => row.isFocused);
+    if (focused >= 0) {
+      navigation.setIndex(focused);
     }
-    model.focusFirstItem();
   });
 
-  // Tree navigation only moves the keyboard highlight. It never selects a file
-  // or changes panes, so the main view keeps its previously selected context.
-  function moveFocus(offset: number): void {
-    if (model.getFocusedItem() === null) {
-      if (offset > 0) {
-        model.focusFirstItem();
-      } else {
-        model.focusLastItem();
-      }
-    } else if (offset > 0) {
-      model.focusNextItem();
-    } else {
-      model.focusPreviousItem();
+  createEffect(() => {
+    const next = rows()[navigation.index()];
+    if (next !== undefined && !next.isFocused) {
+      model.focusPath(next.path);
     }
-  }
+  });
 
   // Enter is the explicit activation: a directory expands/collapses in place,
   // while a file is selected and hands focus to the main view.
@@ -168,10 +161,6 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
   useBindings(() => ({
     target: box,
     bindings: [
-      { key: "j", cmd: () => moveFocus(1) },
-      { key: "down", cmd: () => moveFocus(1) },
-      { key: "k", cmd: () => moveFocus(-1) },
-      { key: "up", cmd: () => moveFocus(-1) },
       { key: "return", cmd: activateFocusedItem },
       { key: "right", cmd: () => toggleFocusedDirectory(model) },
       { key: "left", cmd: () => model.focusParentItem() },

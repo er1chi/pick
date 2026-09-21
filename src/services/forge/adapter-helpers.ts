@@ -181,6 +181,55 @@ function executeForgeList(
   );
 }
 
+export interface SharedCliFlight<T> {
+  readonly key: string;
+  readonly controller: AbortController;
+  readonly promise: Promise<ResultType<T, ForgeOperationError>>;
+  waiters: number;
+}
+
+/**
+ * Shares one in-flight CLI call across every waiter and lets each waiter abort
+ * independently. The shared call is cancelled only once the last waiter has
+ * gone away.
+ */
+export function joinSharedCliFlight<T>(
+  flight: SharedCliFlight<T>,
+  signal: AbortSignal | undefined,
+  onAllAborted: () => void,
+  cancelled: () => ResultType<T, ForgeOperationError>,
+): Promise<ResultType<T, ForgeOperationError>> {
+  if (signal?.aborted === true) {
+    return Promise.resolve(cancelled());
+  }
+
+  flight.waiters += 1;
+  let waiting = true;
+  const release = (wasCancelled: boolean): void => {
+    if (!waiting) {
+      return;
+    }
+    waiting = false;
+    flight.waiters -= 1;
+    if (wasCancelled && flight.waiters === 0) {
+      onAllAborted();
+    }
+  };
+  const onAbort = (): void => {
+    release(true);
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  return flight.promise.then((result) => {
+    signal?.removeEventListener("abort", onAbort);
+    if (!waiting) {
+      return cancelled();
+    }
+    release(false);
+    return result;
+  });
+}
+
 export function sectionFromResult<T>(
   result: ResultType<T, ForgeOperationError>,
 ): ForgeSection<T> {

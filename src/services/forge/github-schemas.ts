@@ -40,6 +40,8 @@ export const overviewSchema = type({
   number: schemaPrimitives.safeIntegerSchema,
   body: schemaPrimitives.optionalNullableString,
 });
+const optionalUnknown = type("unknown").optional();
+
 export const detailsSchema = type({
   number: schemaPrimitives.safeIntegerSchema,
   createdAt: schemaPrimitives.optionalDate,
@@ -64,6 +66,19 @@ export const detailsSchema = type({
   reviewDecision: schemaPrimitives.optionalNullableString,
   mergeCommit: mergeCommitSchema.or("null").optional(),
 });
+
+/** One `gh pr view --json` payload. Optional sections stay `unknown` so a
+ * checks or projects mismatch cannot fail details. */
+export const pullRequestViewSchema = type.and(
+  detailsSchema,
+  overviewSchema,
+  type({
+    statusCheckRollup: optionalUnknown,
+    projectItems: optionalUnknown,
+    projectCards: optionalUnknown,
+    closingIssuesReferences: optionalUnknown,
+  }),
+);
 
 export const listItemSchema = type({
   number: schemaPrimitives.safeIntegerSchema,
@@ -177,6 +192,7 @@ export const linkedIssuesResponseSchema = type({
 export type GithubRepositoryPayload = typeof repositorySchema.infer;
 export type GithubOverviewPayload = typeof overviewSchema.infer;
 export type GithubDetailsPayload = typeof detailsSchema.infer;
+export type GithubPullRequestView = typeof pullRequestViewSchema.infer;
 export type GithubListItem = typeof listItemSchema.infer;
 export type GithubCommitPages = typeof commitPagesSchema.infer;
 export type GithubCommentPages = typeof commentPagesSchema.infer;

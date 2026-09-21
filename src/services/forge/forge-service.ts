@@ -19,9 +19,11 @@ import type {
   PullRequestCommit,
   PullRequestDetails,
   PullRequestDevelopment,
+  PullRequestDocument,
   PullRequestList,
   PullRequestListOptions,
   PullRequestListState,
+  PullRequestLoadOptions,
   PullRequestOverview,
   PullRequestOverviewOptions,
   PullRequestPatch,
@@ -114,6 +116,15 @@ export class ForgeService {
         );
         return Result.ok(pullRequests);
       }),
+    );
+  }
+
+  public loadPullRequest(
+    number: number,
+    options?: PullRequestLoadOptions,
+  ): Promise<Result<PullRequestDocument, ForgeOperationError>> {
+    return this.fetchResource(number, options, (value) =>
+      this.adapter.loadPullRequest(value, options),
     );
   }
 

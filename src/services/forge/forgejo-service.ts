@@ -5,6 +5,7 @@ import {
   addCommentTruncation,
   assemblePullRequestOverview,
   createPullRequestSummary,
+  failed,
   incompatible,
   normalizeDate,
   normalizeLabel,
@@ -35,17 +36,18 @@ import type {
   PullRequestComment,
   PullRequestDetails,
   PullRequestDevelopment,
+  PullRequestDocument,
+  PullRequestDocumentUpdate,
   PullRequestLinkedIssue,
   PullRequestList,
   PullRequestListOptions,
   PullRequestOverview,
   PullRequestOverviewOptions,
+  PullRequestLoadOptions,
   PullRequestPatch,
   PullRequestRef,
   PullRequestProject,
   PullRequestResourceOptions,
-  PullRequestReview,
-  PullRequestReviewComment,
   PullRequestReviewerRequests,
   PullRequestReviewsResource,
   PullRequestSummary,
@@ -159,55 +161,7 @@ type ForgejoComment = typeof commentSchema.infer;
 type ForgejoBranch = typeof branchSchema.infer;
 type ForgejoDetailsFields = PullRequestDetails;
 
-interface ForgejoViewFlight {
-  readonly key: string;
-  readonly controller: AbortController;
-  readonly promise: Promise<
-    ResultType<ForgejoViewPayload, ForgeOperationError>
-  >;
-  waiters: number;
-}
-
-/**
- * Shares one in-flight `pr view` call across every waiter and lets each waiter
- * abort independently. The shared call is only cancelled once the last waiter
- * has gone away.
- */
-function joinViewFlight(
-  flight: ForgejoViewFlight,
-  signal: AbortSignal | undefined,
-  onAllAborted: () => void,
-): Promise<ResultType<ForgejoViewPayload, ForgeOperationError>> {
-  if (signal?.aborted === true) {
-    return Promise.resolve(cancelledView());
-  }
-
-  flight.waiters += 1;
-  let waiting = true;
-  const release = (cancelled: boolean): void => {
-    if (!waiting) {
-      return;
-    }
-    waiting = false;
-    flight.waiters -= 1;
-    if (cancelled && flight.waiters === 0) {
-      onAllAborted();
-    }
-  };
-  const onAbort = (): void => {
-    release(true);
-  };
-  signal?.addEventListener("abort", onAbort, { once: true });
-
-  return flight.promise.then((result) => {
-    signal?.removeEventListener("abort", onAbort);
-    if (!waiting) {
-      return cancelledView();
-    }
-    release(false);
-    return result;
-  });
-}
+type ForgejoViewFlight = adapterHelpers.SharedCliFlight<ForgejoViewPayload>;
 
 function cancelledView(): ResultType<ForgejoViewPayload, ForgeOperationError> {
   return Result.err(
@@ -258,6 +212,17 @@ export class ForgejoService implements ForgeAdapter {
     );
   }
 
+  public loadPullRequest(
+    number: number,
+    options: PullRequestLoadOptions = {},
+  ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
+    return adapterHelpers.withForgeRepository(
+      (signal) => this.getRepository(signal),
+      options.signal,
+      (repository) => this.assemblePullRequest(number, repository, options),
+    );
+  }
+
   public getPullRequestOverview(
     number: number,
     options: PullRequestOverviewOptions = {},
@@ -283,17 +248,11 @@ export class ForgejoService implements ForgeAdapter {
       return view;
     }
 
-    const fields = normalizeOverviewFields(view.value, number);
-    if (fields.isErr()) {
-      return fields;
-    }
-
-    return Result.ok(
-      assemblePullRequestOverview(
-        repository,
-        fields.value,
-        addCommentTruncation(conversationComments, view.value.comments ?? null),
-      ),
+    return overviewFromView(
+      view.value,
+      repository,
+      number,
+      conversationComments,
     );
   }
 
@@ -366,17 +325,7 @@ export class ForgejoService implements ForgeAdapter {
     options: PullRequestResourceOptions = {},
   ): Promise<ResultType<PullRequestReviewsResource, ForgeOperationError>> {
     const loaded = await this.readForgejoView(number, options.signal);
-    return loaded.map(({ payload }) => ({
-      reviews: unsupported<readonly PullRequestReview[]>(
-        ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
-        "The Forgejo CLI does not expose submitted pull request reviews",
-      ),
-      reviewComments: unsupported<readonly PullRequestReviewComment[]>(
-        ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
-        "The Forgejo CLI does not expose inline review comments",
-      ),
-      requestedReviewers: normalizeRequestedReviewers(payload),
-    }));
+    return loaded.map(({ payload }) => reviewsFromView(payload));
   }
 
   public async getPullRequestDetails(
@@ -422,6 +371,75 @@ export class ForgejoService implements ForgeAdapter {
     );
   }
 
+  private async assemblePullRequest(
+    number: number,
+    repository: ForgeRepository,
+    options: PullRequestLoadOptions,
+  ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
+    const signal = options.signal;
+    const publish = (update: PullRequestDocumentUpdate): void => {
+      if (signal?.aborted === true) {
+        return;
+      }
+      options.onUpdate?.(update);
+    };
+
+    const diffTask = this.readPatch(number, repository.fullName, signal).then(
+      (diff) => {
+        publish({ diff });
+        return diff;
+      },
+    );
+    const viewTask = this.getView(number, repository.fullName, signal);
+    const commentsTask = this.readComments(number, repository.fullName, signal);
+    const [commits, checks, development] = await Promise.all([
+      this.getPullRequestCommits(number, { signal }),
+      this.getPullRequestChecks(number, { signal }),
+      this.getPullRequestDevelopment(number, { signal }),
+    ]);
+    const commitsSection = sectionValue(commits);
+    const checksSection = sectionValue(checks);
+    const developmentSection = development.isOk()
+      ? development.value
+      : {
+          projects: failed<readonly PullRequestProject[]>(development.error),
+          linkedIssues: failed<readonly PullRequestLinkedIssue[]>(
+            development.error,
+          ),
+        };
+    publish({
+      commits: commitsSection,
+      checks: checksSection,
+      development: developmentSection,
+    });
+
+    const [view, comments] = await Promise.all([viewTask, commentsTask]);
+
+    const details = view.isErr()
+      ? Result.err(view.error)
+      : normalizeDetailsFields(view.value, repository, number);
+    const reviews = view.isErr()
+      ? failedReviews(view.error)
+      : reviewsFromView(view.value);
+    publish({ details, reviews });
+
+    const overview = view.isErr()
+      ? Result.err(view.error)
+      : overviewFromView(view.value, repository, number, comments);
+    publish({ overview });
+
+    const diff = await diffTask;
+    return Result.ok({
+      overview,
+      details,
+      diff,
+      commits: commitsSection,
+      reviews,
+      checks: checksSection,
+      development: developmentSection,
+    });
+  }
+
   private getView(
     number: number,
     repository: string,
@@ -437,7 +455,13 @@ export class ForgejoService implements ForgeAdapter {
       flight = this.startViewFlight(key, number, repository);
       this.viewFlights.set(key, flight);
     }
-    return joinViewFlight(flight, signal, () => this.finishViewFlight(flight));
+    const current = flight;
+    return adapterHelpers.joinSharedCliFlight(
+      current,
+      signal,
+      () => this.finishViewFlight(current),
+      cancelledView,
+    );
   }
 
   private startViewFlight(
@@ -685,6 +709,55 @@ function normalizeBranch(
     sha: payload.sha ?? null,
     repository,
   }));
+}
+
+function sectionValue<T>(
+  result: ResultType<ForgeSection<T>, ForgeOperationError>,
+): ForgeSection<T> {
+  return result.isOk() ? result.value : failed(result.error);
+}
+
+function failedReviews(error: ForgeOperationError): PullRequestReviewsResource {
+  return {
+    reviews: failed(error),
+    reviewComments: failed(error),
+    requestedReviewers: failed(error),
+  };
+}
+
+function reviewsFromView(
+  payload: ForgejoViewPayload,
+): PullRequestReviewsResource {
+  return {
+    reviews: unsupported(
+      ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
+      "The Forgejo CLI does not expose submitted pull request reviews",
+    ),
+    reviewComments: unsupported(
+      ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
+      "The Forgejo CLI does not expose inline review comments",
+    ),
+    requestedReviewers: normalizeRequestedReviewers(payload),
+  };
+}
+
+function overviewFromView(
+  payload: ForgejoViewPayload,
+  repository: ForgeRepository,
+  number: number,
+  conversationComments: ForgeSection<readonly PullRequestComment[]>,
+): ResultType<PullRequestOverview, ForgeOperationError> {
+  const fields = normalizeOverviewFields(payload, number);
+  if (fields.isErr()) {
+    return fields;
+  }
+  return Result.ok(
+    assemblePullRequestOverview(
+      repository,
+      fields.value,
+      addCommentTruncation(conversationComments, payload.comments ?? null),
+    ),
+  );
 }
 
 function normalizeRequestedReviewers(

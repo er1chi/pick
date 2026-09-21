@@ -350,12 +350,44 @@ export interface PullRequestResourceOptions {
   readonly signal?: AbortSignal;
 }
 
+/** One pull request. Each field settles on its own; absent fields in an update
+ * have not finished yet. */
+export interface PullRequestDocument {
+  readonly overview: Result<PullRequestOverview, ForgeOperationError>;
+  readonly details: Result<PullRequestDetails, ForgeOperationError>;
+  readonly diff: ForgeSection<PullRequestPatch>;
+  readonly commits: ForgeSection<readonly PullRequestCommit[]>;
+  readonly reviews: PullRequestReviewsResource;
+  readonly checks: ForgeSection<readonly PullRequestCheck[]>;
+  readonly development: PullRequestDevelopment;
+}
+
+export type PullRequestDocumentUpdate = {
+  readonly [Key in keyof PullRequestDocument]?: PullRequestDocument[Key];
+};
+
+export interface PullRequestLoadOptions {
+  readonly signal?: AbortSignal;
+  /** Called as each part of the document settles, before the load resolves. */
+  readonly onUpdate?: (update: PullRequestDocumentUpdate) => void;
+}
+
 export interface ForgeAdapter {
   readonly kind: ForgeKind;
 
   getPullRequests(
     options?: PullRequestListOptions,
   ): Promise<Result<PullRequestList, ForgeOperationError>>;
+
+  /**
+   * Loads one pull request. GitHub issues a single `pr view` for the fields
+   * that command can return, and separate calls for paginated collections and
+   * the patch. `onUpdate` fires as each part settles.
+   */
+  loadPullRequest(
+    number: number,
+    options?: PullRequestLoadOptions,
+  ): Promise<Result<PullRequestDocument, ForgeOperationError>>;
 
   getPullRequestOverview(
     number: number,

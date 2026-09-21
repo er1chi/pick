@@ -2,7 +2,6 @@ import { type } from "arktype";
 import { Result } from "better-result";
 import * as adapterHelpers from "./adapter-helpers";
 import {
-  type GithubDetailsFields,
   type GithubOverviewFields,
   normalizeChecks,
   normalizeCommits,
@@ -18,24 +17,36 @@ import {
   normalizeReviews,
 } from "./github-normalize";
 import * as githubSchemas from "./github-schemas";
-import { assemblePullRequestOverview } from "./normalization";
-import { ApplicationContext } from "./types";
+import {
+  assemblePullRequestOverview,
+  available,
+  failed,
+} from "./normalization";
+import { ApplicationContext, ForgeCancelledError } from "./types";
 
 import type { Result as ResultType } from "better-result";
+import type { SharedCliFlight } from "./adapter-helpers";
+import type { GithubPullRequestView } from "./github-schemas";
 import type {
   ForgeAdapter,
   ForgeOperationError,
   ForgeRepository,
   ForgeSection,
   PullRequestCheck,
+  PullRequestComment,
   PullRequestCommit,
   PullRequestDetails,
   PullRequestDevelopment,
+  PullRequestDocument,
+  PullRequestDocumentUpdate,
+  PullRequestLinkedIssue,
   PullRequestList,
   PullRequestListOptions,
+  PullRequestLoadOptions,
   PullRequestOverview,
   PullRequestOverviewOptions,
   PullRequestPatch,
+  PullRequestProject,
   PullRequestResourceOptions,
   PullRequestReviewsResource,
   PullRequestSummary,
@@ -43,6 +54,8 @@ import type {
 
 const executableName = "gh";
 const kind = ApplicationContext.GitHub;
+const pullRequestViewFields =
+  "number,body,createdAt,updatedAt,closedAt,mergedAt,mergedBy,baseRefName,baseRefOid,headRefName,headRefOid,headRepository,additions,deletions,changedFiles,labels,assignees,milestone,maintainerCanModify,mergeable,mergeStateStatus,reviewDecision,mergeCommit,statusCheckRollup,projectItems,projectCards,closingIssuesReferences";
 
 export class GithubService implements ForgeAdapter {
   public readonly kind = kind;
@@ -50,6 +63,11 @@ export class GithubService implements ForgeAdapter {
   private readonly repositoryReader: (
     signal: AbortSignal | undefined,
   ) => Promise<ResultType<ForgeRepository, ForgeOperationError>>;
+
+  private readonly viewFlights = new Map<
+    string,
+    SharedCliFlight<GithubPullRequestView>
+  >();
 
   private constructor(private readonly cwd: string) {
     this.repositoryReader = adapterHelpers.createCachedForgeRepositoryReader(
@@ -95,11 +113,27 @@ export class GithubService implements ForgeAdapter {
     );
   }
 
+  public loadPullRequest(
+    number: number,
+    options: PullRequestLoadOptions = {},
+  ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
+    return adapterHelpers.withForgeRepository(
+      this.repositoryReader,
+      options.signal,
+      (repository) =>
+        this.loadRepositoryPullRequest(number, repository, options),
+    );
+  }
+
   public getPullRequestOverview(
     number: number,
     options: PullRequestOverviewOptions = {},
   ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
-    return this.readGithubOverviewForSelection(number, options.signal);
+    return adapterHelpers.withForgeRepository(
+      this.repositoryReader,
+      options.signal,
+      (repository) => this.readOverview(number, repository, options.signal),
+    );
   }
 
   public getCommitPatch(
@@ -114,73 +148,6 @@ export class GithubService implements ForgeAdapter {
     ]);
   }
 
-  private readGithubOverviewForSelection(
-    number: number,
-    signal: AbortSignal | undefined,
-  ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
-    return adapterHelpers.withForgeRepository(
-      this.repositoryReader,
-      signal,
-      (repository) => this.readGithubOverview(number, repository, signal),
-    );
-  }
-
-  private async readGithubOverview(
-    number: number,
-    repository: ForgeRepository,
-    signal: AbortSignal | undefined,
-  ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
-    const [fields, conversationComments] = await Promise.all([
-      this.getOverviewFields(repository, number, signal),
-      this.readSection(
-        [
-          "api",
-          "--paginate",
-          "--slurp",
-          pathForApi(repository, ["issues", String(number), "comments"]),
-        ],
-        githubSchemas.commentPagesSchema,
-        normalizeConversationComments,
-        "GitHub paginated response did not match the schema",
-        signal,
-      ),
-    ]);
-    if (fields.isErr()) {
-      return fields;
-    }
-
-    return Result.ok(
-      assemblePullRequestOverview(
-        repository,
-        fields.value,
-        conversationComments,
-      ),
-    );
-  }
-
-  private async getOverviewFields(
-    repository: ForgeRepository,
-    number: number,
-    signal: AbortSignal | undefined,
-  ): Promise<ResultType<GithubOverviewFields, ForgeOperationError>> {
-    return adapterHelpers.executeForgeJson(
-      kind,
-      executableName,
-      this.cwd,
-      [
-        "pr",
-        "view",
-        String(number),
-        "--repo",
-        repository.fullName,
-        "--json",
-        "number,body",
-      ],
-      (cause) => decodeOverviewFields(cause, number),
-      signal,
-    );
-  }
-
   public async getPullRequestDetails(
     number: number,
     options: PullRequestResourceOptions = {},
@@ -189,23 +156,14 @@ export class GithubService implements ForgeAdapter {
       this.repositoryReader,
       options.signal,
       async (repository) => {
-        const details = await adapterHelpers.executeForgeJson(
-          kind,
-          executableName,
-          this.cwd,
-          [
-            "pr",
-            "view",
-            String(number),
-            "--repo",
-            repository.fullName,
-            "--json",
-            "number,createdAt,updatedAt,closedAt,mergedAt,mergedBy,baseRefName,baseRefOid,headRefName,headRefOid,headRepository,additions,deletions,changedFiles,labels,assignees,milestone,maintainerCanModify,mergeable,mergeStateStatus,reviewDecision,mergeCommit",
-          ],
-          (cause) => decodeDetailsFields(cause, repository, number),
+        const view = await this.getView(
+          number,
+          repository.fullName,
           options.signal,
         );
-        return details;
+        return view.andThen((payload) =>
+          normalizeDetails(payload, repository, number),
+        );
       },
     );
   }
@@ -234,21 +192,8 @@ export class GithubService implements ForgeAdapter {
     return adapterHelpers.withForgeRepository(
       this.repositoryReader,
       options.signal,
-      async (repository) => {
-        const commits = await this.readSection(
-          [
-            "api",
-            "--paginate",
-            "--slurp",
-            pathForApi(repository, ["pulls", String(number), "commits"]),
-          ],
-          githubSchemas.commitPagesSchema,
-          normalizeCommits,
-          "GitHub paginated response did not match the schema",
-          options.signal,
-        );
-        return Result.ok(commits);
-      },
+      async (repository) =>
+        Result.ok(await this.readCommits(repository, number, options.signal)),
     );
   }
 
@@ -259,56 +204,8 @@ export class GithubService implements ForgeAdapter {
     return adapterHelpers.withForgeRepository(
       this.repositoryReader,
       options.signal,
-      async (repository) => {
-        const [reviews, reviewComments, requestedReviewers] = await Promise.all(
-          [
-            this.readSection(
-              [
-                "api",
-                "--paginate",
-                "--slurp",
-                pathForApi(repository, ["pulls", String(number), "reviews"]),
-              ],
-              githubSchemas.reviewPagesSchema,
-              normalizeReviews,
-              "GitHub paginated response did not match the schema",
-              options.signal,
-            ),
-            this.readSection(
-              [
-                "api",
-                "--paginate",
-                "--slurp",
-                pathForApi(repository, ["pulls", String(number), "comments"]),
-              ],
-              githubSchemas.commentPagesSchema,
-              normalizeReviewComments,
-              "GitHub paginated response did not match the schema",
-              options.signal,
-            ),
-            this.readSection(
-              [
-                "api",
-                pathForApi(repository, [
-                  "pulls",
-                  String(number),
-                  "requested_reviewers",
-                ]),
-              ],
-              githubSchemas.requestedReviewersSchema,
-              normalizeRequestedReviewers,
-              "GitHub response did not match the schema",
-              options.signal,
-            ),
-          ],
-        );
-        const value: PullRequestReviewsResource = {
-          reviews,
-          reviewComments,
-          requestedReviewers,
-        };
-        return Result.ok(value);
-      },
+      async (repository) =>
+        Result.ok(await this.readReviews(repository, number, options.signal)),
     );
   }
 
@@ -322,22 +219,14 @@ export class GithubService implements ForgeAdapter {
       this.repositoryReader,
       options.signal,
       async (repository) => {
-        const checks = await this.readSection(
-          [
-            "pr",
-            "view",
-            String(number),
-            "--repo",
-            repository.fullName,
-            "--json",
-            "statusCheckRollup",
-          ],
-          githubSchemas.checksResponseSchema,
-          normalizeChecks,
-          "GitHub optional PR response did not match the schema",
+        const view = await this.getView(
+          number,
+          repository.fullName,
           options.signal,
         );
-        return Result.ok(checks);
+        return Result.ok(
+          view.isOk() ? this.checksSection(view.value) : failed(view.error),
+        );
       },
     );
   }
@@ -350,45 +239,381 @@ export class GithubService implements ForgeAdapter {
       this.repositoryReader,
       options.signal,
       async (repository) => {
-        const [projects, linkedIssues] = await Promise.all([
-          this.readSection(
-            [
-              "pr",
-              "view",
-              String(number),
-              "--repo",
-              repository.fullName,
-              "--json",
-              "projectItems,projectCards",
-            ],
-            githubSchemas.projectsResponseSchema,
-            normalizeProjects,
-            "GitHub optional PR response did not match the schema",
-            options.signal,
-          ),
-          this.readSection(
-            [
-              "pr",
-              "view",
-              String(number),
-              "--repo",
-              repository.fullName,
-              "--json",
-              "closingIssuesReferences",
-            ],
-            githubSchemas.linkedIssuesResponseSchema,
-            (payload) => normalizeLinkedIssues(payload, repository),
-            "GitHub optional PR response did not match the schema",
-            options.signal,
-          ),
-        ]);
-        return Result.ok({ projects, linkedIssues });
+        const view = await this.getView(
+          number,
+          repository.fullName,
+          options.signal,
+        );
+        if (view.isErr()) {
+          return Result.ok({
+            projects: failed(view.error),
+            linkedIssues: failed(view.error),
+          });
+        }
+        return Result.ok(this.developmentSection(view.value, repository));
       },
     );
   }
 
   private getRepository(signal: AbortSignal | undefined) {
     return this.repositoryReader(signal);
+  }
+
+  private async loadRepositoryPullRequest(
+    number: number,
+    repository: ForgeRepository,
+    options: PullRequestLoadOptions,
+  ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
+    const signal = options.signal;
+    const publish = (update: PullRequestDocumentUpdate): void => {
+      if (signal?.aborted === true) {
+        return;
+      }
+      options.onUpdate?.(update);
+    };
+
+    const commitsTask = this.readCommits(repository, number, signal).then(
+      (commits) => {
+        publish({ commits });
+        return commits;
+      },
+    );
+    const reviewsTask = this.readReviews(repository, number, signal).then(
+      (reviews) => {
+        publish({ reviews });
+        return reviews;
+      },
+    );
+    const diffTask = this.readPullRequestDiff(repository, number, signal).then(
+      (diff) => {
+        publish({ diff });
+        return diff;
+      },
+    );
+    const commentsTask = this.readConversationComments(
+      repository,
+      number,
+      signal,
+    );
+    const view = await this.getView(number, repository.fullName, signal);
+    const projected = view.isOk()
+      ? this.projectView(view.value, repository, number)
+      : failedView(view.error);
+    publish({
+      details: projected.details,
+      checks: projected.checks,
+      development: projected.development,
+    });
+
+    const comments = await commentsTask;
+    const overview = projected.overview.isErr()
+      ? projected.overview
+      : Result.ok(
+          assemblePullRequestOverview(
+            repository,
+            projected.overview.value,
+            comments,
+          ),
+        );
+    publish({ overview });
+
+    const [commits, reviews, diff] = await Promise.all([
+      commitsTask,
+      reviewsTask,
+      diffTask,
+    ]);
+    return Result.ok({
+      overview,
+      details: projected.details,
+      diff,
+      commits,
+      reviews,
+      checks: projected.checks,
+      development: projected.development,
+    });
+  }
+
+  private readOverview(
+    number: number,
+    repository: ForgeRepository,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
+    return Promise.all([
+      this.getView(number, repository.fullName, signal),
+      this.readConversationComments(repository, number, signal),
+    ]).then(([view, conversationComments]) => {
+      if (view.isErr()) {
+        return view;
+      }
+      const fields = normalizeOverview(view.value, number);
+      if (fields.isErr()) {
+        return fields;
+      }
+      return Result.ok(
+        assemblePullRequestOverview(
+          repository,
+          fields.value,
+          conversationComments,
+        ),
+      );
+    });
+  }
+
+  private readConversationComments(
+    repository: ForgeRepository,
+    number: number,
+    signal: AbortSignal | undefined,
+  ): Promise<ForgeSection<readonly PullRequestComment[]>> {
+    return this.readSection(
+      [
+        "api",
+        "--paginate",
+        "--slurp",
+        pathForApi(repository, ["issues", String(number), "comments"]),
+      ],
+      githubSchemas.commentPagesSchema,
+      normalizeConversationComments,
+      "GitHub paginated response did not match the schema",
+      signal,
+    );
+  }
+
+  private readCommits(
+    repository: ForgeRepository,
+    number: number,
+    signal: AbortSignal | undefined,
+  ): Promise<ForgeSection<readonly PullRequestCommit[]>> {
+    return this.readSection(
+      [
+        "api",
+        "--paginate",
+        "--slurp",
+        pathForApi(repository, ["pulls", String(number), "commits"]),
+      ],
+      githubSchemas.commitPagesSchema,
+      normalizeCommits,
+      "GitHub paginated response did not match the schema",
+      signal,
+    );
+  }
+
+  private async readReviews(
+    repository: ForgeRepository,
+    number: number,
+    signal: AbortSignal | undefined,
+  ): Promise<PullRequestReviewsResource> {
+    const [reviews, reviewComments, requestedReviewers] = await Promise.all([
+      this.readSection(
+        [
+          "api",
+          "--paginate",
+          "--slurp",
+          pathForApi(repository, ["pulls", String(number), "reviews"]),
+        ],
+        githubSchemas.reviewPagesSchema,
+        normalizeReviews,
+        "GitHub paginated response did not match the schema",
+        signal,
+      ),
+      this.readSection(
+        [
+          "api",
+          "--paginate",
+          "--slurp",
+          pathForApi(repository, ["pulls", String(number), "comments"]),
+        ],
+        githubSchemas.commentPagesSchema,
+        normalizeReviewComments,
+        "GitHub paginated response did not match the schema",
+        signal,
+      ),
+      this.readSection(
+        [
+          "api",
+          pathForApi(repository, [
+            "pulls",
+            String(number),
+            "requested_reviewers",
+          ]),
+        ],
+        githubSchemas.requestedReviewersSchema,
+        normalizeRequestedReviewers,
+        "GitHub response did not match the schema",
+        signal,
+      ),
+    ]);
+    return { reviews, reviewComments, requestedReviewers };
+  }
+
+  private readPullRequestDiff(
+    repository: ForgeRepository,
+    number: number,
+    signal: AbortSignal | undefined,
+  ): Promise<ForgeSection<PullRequestPatch>> {
+    return adapterHelpers.readForgePatch(
+      kind,
+      executableName,
+      this.cwd,
+      [
+        "pr",
+        "diff",
+        String(number),
+        "--repo",
+        repository.fullName,
+        "--color",
+        "never",
+      ],
+      signal,
+    );
+  }
+
+  private getView(
+    number: number,
+    repository: string,
+    signal: AbortSignal | undefined,
+  ): Promise<ResultType<GithubPullRequestView, ForgeOperationError>> {
+    if (signal?.aborted === true) {
+      return Promise.resolve(cancelledView());
+    }
+
+    const key = `${repository}#${number}`;
+    let flight = this.viewFlights.get(key);
+    if (flight === undefined) {
+      flight = this.startViewFlight(key, number, repository);
+      this.viewFlights.set(key, flight);
+    }
+    const current = flight;
+    return adapterHelpers.joinSharedCliFlight(
+      current,
+      signal,
+      () => this.finishViewFlight(current),
+      cancelledView,
+    );
+  }
+
+  private startViewFlight(
+    key: string,
+    number: number,
+    repository: string,
+  ): SharedCliFlight<GithubPullRequestView> {
+    const controller = new AbortController();
+    const promise = adapterHelpers
+      .executeForgeJson(
+        kind,
+        executableName,
+        this.cwd,
+        [
+          "pr",
+          "view",
+          String(number),
+          "--repo",
+          repository,
+          "--json",
+          pullRequestViewFields,
+        ],
+        decodePullRequestView,
+        controller.signal,
+      )
+      .then((result) => {
+        if (this.viewFlights.get(key)?.controller === controller) {
+          this.viewFlights.delete(key);
+        }
+        return result;
+      });
+    return { key, controller, promise, waiters: 0 };
+  }
+
+  private finishViewFlight(
+    flight: SharedCliFlight<GithubPullRequestView>,
+  ): void {
+    if (this.viewFlights.get(flight.key) !== flight) {
+      return;
+    }
+    this.viewFlights.delete(flight.key);
+    flight.controller.abort();
+  }
+
+  private projectView(
+    payload: GithubPullRequestView,
+    repository: ForgeRepository,
+    number: number,
+  ): ViewProjection {
+    return {
+      overview: normalizeOverview(payload, number),
+      details: normalizeDetails(payload, repository, number),
+      checks: this.checksSection(payload),
+      development: this.developmentSection(payload, repository),
+    };
+  }
+
+  private checksSection(
+    payload: GithubPullRequestView,
+  ): ForgeSection<readonly PullRequestCheck[]> {
+    const statusCheckRollup = payload.statusCheckRollup;
+    if (statusCheckRollup === undefined || statusCheckRollup === null) {
+      return available([]);
+    }
+    return adapterHelpers.sectionFromResult(
+      adapterHelpers
+        .parseForgeSchema(
+          kind,
+          githubSchemas.checksResponseSchema,
+          { statusCheckRollup },
+          "GitHub optional PR response did not match the schema",
+        )
+        .andThen(normalizeChecks),
+    );
+  }
+
+  private developmentSection(
+    payload: GithubPullRequestView,
+    repository: ForgeRepository,
+  ): PullRequestDevelopment {
+    return {
+      projects: this.projectsSection(payload),
+      linkedIssues: this.linkedIssuesSection(payload, repository),
+    };
+  }
+
+  private projectsSection(
+    payload: GithubPullRequestView,
+  ): ForgeSection<readonly PullRequestProject[]> {
+    return adapterHelpers.sectionFromResult(
+      adapterHelpers
+        .parseForgeSchema(
+          kind,
+          githubSchemas.projectsResponseSchema,
+          {
+            projectItems: payload.projectItems ?? null,
+            projectCards: payload.projectCards ?? null,
+          },
+          "GitHub optional PR response did not match the schema",
+        )
+        .andThen(normalizeProjects),
+    );
+  }
+
+  private linkedIssuesSection(
+    payload: GithubPullRequestView,
+    repository: ForgeRepository,
+  ): ForgeSection<readonly PullRequestLinkedIssue[]> {
+    const closingIssuesReferences = payload.closingIssuesReferences;
+    if (
+      closingIssuesReferences === undefined ||
+      closingIssuesReferences === null
+    ) {
+      return available([]);
+    }
+    return adapterHelpers.sectionFromResult(
+      adapterHelpers
+        .parseForgeSchema(
+          kind,
+          githubSchemas.linkedIssuesResponseSchema,
+          { closingIssuesReferences },
+          "GitHub optional PR response did not match the schema",
+        )
+        .andThen((linked) => normalizeLinkedIssues(linked, repository)),
+    );
   }
 
   private async readSection<Raw, T>(
@@ -464,35 +689,46 @@ function decodeGithubList(
     .andThen(normalizeListPayload);
 }
 
-function decodeOverviewFields(
-  cause: unknown,
-  expectedNumber: number,
-): ResultType<GithubOverviewFields, ForgeOperationError> {
-  return adapterHelpers
-    .parseForgeSchema(
-      kind,
-      githubSchemas.overviewSchema,
-      cause,
-      "GitHub pull request overview response did not match the schema",
-    )
-    .andThen((payload) => normalizeOverview(payload, expectedNumber));
+interface ViewProjection {
+  readonly overview: ResultType<GithubOverviewFields, ForgeOperationError>;
+  readonly details: ResultType<PullRequestDetails, ForgeOperationError>;
+  readonly checks: ForgeSection<readonly PullRequestCheck[]>;
+  readonly development: PullRequestDevelopment;
 }
 
-function decodeDetailsFields(
-  cause: unknown,
-  repository: ForgeRepository,
-  expectedNumber: number,
-): ResultType<GithubDetailsFields, ForgeOperationError> {
-  return adapterHelpers
-    .parseForgeSchema(
+function failedView(error: ForgeOperationError): ViewProjection {
+  return {
+    overview: Result.err(error),
+    details: Result.err(error),
+    checks: failed(error),
+    development: {
+      projects: failed(error),
+      linkedIssues: failed(error),
+    },
+  };
+}
+
+function cancelledView(): ResultType<
+  GithubPullRequestView,
+  ForgeOperationError
+> {
+  return Result.err(
+    new ForgeCancelledError({
       kind,
-      githubSchemas.detailsSchema,
-      cause,
-      "GitHub pull request details response did not match the schema",
-    )
-    .andThen((payload) =>
-      normalizeDetails(payload, repository, expectedNumber),
-    );
+      message: "The GitHub pull request view request was cancelled",
+    }),
+  );
+}
+
+function decodePullRequestView(
+  cause: unknown,
+): ResultType<GithubPullRequestView, ForgeOperationError> {
+  return adapterHelpers.parseForgeSchema(
+    kind,
+    githubSchemas.pullRequestViewSchema,
+    cause,
+    "GitHub pull request view response did not match the schema",
+  );
 }
 
 function pathForApi(

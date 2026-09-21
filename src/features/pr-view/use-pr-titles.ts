@@ -28,7 +28,6 @@ export function usePrTitles(): PrTitles {
   const [retryVersion, setRetryVersion] = createSignal(0);
 
   let requestGeneration = 0;
-  let activeRepositoryKey = "";
   let listController: AbortController | undefined;
   let lastSuccessfulList: PullRequestList | undefined;
 
@@ -36,17 +35,10 @@ export function usePrTitles(): PrTitles {
     const state = forgeContext.state();
     const selectedFilter = filter();
     retryVersion();
-    const repositoryKey = `${state.cwd}:${state.kind}`;
-    const repositoryChanged = repositoryKey !== activeRepositoryKey;
     const generation = ++requestGeneration;
-    activeRepositoryKey = repositoryKey;
 
     listController?.abort();
     listController = undefined;
-
-    if (repositoryChanged) {
-      lastSuccessfulList = undefined;
-    }
 
     const forge = state.forge;
     if (forge === undefined) {
@@ -59,7 +51,7 @@ export function usePrTitles(): PrTitles {
     setList({
       status: "loading",
       previous:
-        !repositoryChanged && lastSuccessfulList !== undefined
+        lastSuccessfulList !== undefined
           ? Result.ok(lastSuccessfulList)
           : undefined,
     });
@@ -72,7 +64,6 @@ export function usePrTitles(): PrTitles {
       .then((result) => {
         if (
           generation !== requestGeneration ||
-          repositoryKey !== activeRepositoryKey ||
           filter() !== selectedFilter ||
           controller.signal.aborted
         ) {

@@ -112,21 +112,8 @@ function RepositoryShell(props: {
 }) {
   const [box, setBox] = createSignal<BoxRenderable>();
   const [pane, setPane] = PaneStore.use();
-  const forgeContext = useForgeContext();
   const viewContext = useViewContext();
   const contextLabel = repositoryContextLabel(props.state.kind);
-
-  let repositoryKey = "";
-  createEffect(() => {
-    const state = forgeContext.state();
-    const key = `${state.cwd}:${state.kind}`;
-    const changed = repositoryKey !== "" && repositoryKey !== key;
-    repositoryKey = key;
-    if (changed) {
-      viewContext.close();
-    }
-  });
-
   const titles = usePrTitles();
   const content = usePrViewContent();
 

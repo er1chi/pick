@@ -1,6 +1,6 @@
 import { Result } from "better-result";
 import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
-import { useAppContext } from "@/context/app-context";
+import { useForgeContext } from "@/context/forge-context";
 import {
   idleLoadState,
   isCancelled,
@@ -15,20 +15,16 @@ import type {
 export interface PrTitles {
   readonly list: Accessor<LoadState<PullRequestList>>;
   readonly filter: Accessor<PullRequestListState>;
-  readonly openedNumber: Accessor<number | null>;
   readonly setFilter: (filter: PullRequestListState) => void;
   readonly cycleFilter: (offset: number) => void;
-  readonly open: (number: number) => void;
-  readonly closeOpened: () => void;
   readonly retry: () => void;
 }
 
 export function usePrTitles(): PrTitles {
-  const appContext = useAppContext();
+  const forgeContext = useForgeContext();
   const [list, setList] =
     createSignal<LoadState<PullRequestList>>(idleLoadState());
   const [filter, setFilterSignal] = createSignal<PullRequestListState>("open");
-  const [openedNumber, setOpenedNumber] = createSignal<number | null>(null);
   const [retryVersion, setRetryVersion] = createSignal(0);
 
   let requestGeneration = 0;
@@ -37,7 +33,7 @@ export function usePrTitles(): PrTitles {
   let lastSuccessfulList: PullRequestList | undefined;
 
   createEffect(() => {
-    const state = appContext.state();
+    const state = forgeContext.state();
     const selectedFilter = filter();
     retryVersion();
     const repositoryKey = `${state.cwd}:${state.kind}`;
@@ -50,7 +46,6 @@ export function usePrTitles(): PrTitles {
 
     if (repositoryChanged) {
       lastSuccessfulList = undefined;
-      setOpenedNumber(null);
     }
 
     const forge = state.forge;
@@ -99,16 +94,6 @@ export function usePrTitles(): PrTitles {
 
         lastSuccessfulList = result.value;
         setList({ status: "settled", result, previous: undefined });
-
-        // An opened pull request only survives while it is still listed for
-        // the active filter. A filter change that drops it closes it.
-        const opened = openedNumber();
-        if (
-          opened !== null &&
-          !result.value.items.some((item) => item.number === opened)
-        ) {
-          setOpenedNumber(null);
-        }
       });
 
     onCleanup(() => {
@@ -142,14 +127,6 @@ export function usePrTitles(): PrTitles {
     }
   }
 
-  function open(number: number): void {
-    setOpenedNumber(number);
-  }
-
-  function closeOpened(): void {
-    setOpenedNumber(null);
-  }
-
   function retry(): void {
     listController?.abort();
     setRetryVersion((version) => version + 1);
@@ -158,11 +135,8 @@ export function usePrTitles(): PrTitles {
   return {
     list,
     filter,
-    openedNumber,
     setFilter,
     cycleFilter,
-    open,
-    closeOpened,
     retry,
   };
 }

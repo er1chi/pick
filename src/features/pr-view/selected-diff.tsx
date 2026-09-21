@@ -11,10 +11,8 @@ import { colors } from "@/theme";
 import { truncateEnd } from "@/utils/truncate";
 
 import type { FileDiffMetadata } from "@pierre/diffs";
-import type {
-  MainView,
-  PrViewContent,
-} from "@/features/pr-view/use-pr-view-content";
+import type { ActiveView } from "@/context/view-context";
+import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import type {
   ForgeSection,
   PullRequestCommit,
@@ -76,7 +74,7 @@ const lockedNotice =
 
 interface SelectedDiffProps {
   readonly content: PrViewContent;
-  readonly view: Extract<MainView, { kind: "diff" }>;
+  readonly view: Extract<ActiveView, { kind: "diff" }>;
   readonly commit: PullRequestCommit | undefined;
   readonly revealLocked: boolean;
   readonly maxWidth: number;

@@ -2,6 +2,7 @@ import { useBindings } from "@opentui/keymap/solid";
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
+import { useViewContext } from "@/context/view-context";
 import {
   isPending,
   visibleError,
@@ -19,7 +20,7 @@ import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "solid-js";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { PullRequestSummary } from "@/services/forge/types";
-import type { SidebarPaneProps } from "../types";
+import type { PullRequestPaneProps } from "../types";
 
 function listItems(titles: PrTitles): readonly PullRequestSummary[] {
   return visibleValue(titles.list())?.items ?? [];
@@ -42,11 +43,12 @@ function listIsPending(titles: PrTitles): boolean {
   return isPending(titles.list());
 }
 
-export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
+export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
   const [box, setBox] = createSignal<BoxRenderable>();
   const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
   const [_pane, setPane] = PaneStore.use();
   const isFocused = useFocusedPane(Pane.PullRequests);
+  const viewContext = useViewContext();
   const navigation = useNavigateList({ target: box });
 
   createEffect(() => navigation.setCount(listItems(props.titles).length));
@@ -81,20 +83,17 @@ export function PullRequestsBox(props: SidebarPaneProps): JSX.Element {
       {
         name: "pr-list.open",
         run: () => {
-          // Reopening, even the same PR, starts from a cleared selection so
-          // the main view returns to the PR-level context.
           const summary = listItems(props.titles)[navigation.index()];
-          props.content.clearSelection();
-          if (summary !== undefined) {
-            props.titles.open(summary.number);
-            // A newly opened PR exposes its files; focus belongs in the tree.
+          const repository = visibleValue(props.titles.list())?.repository;
+          if (summary !== undefined && repository !== undefined) {
+            viewContext.openPullRequest(repository, summary.number);
             setPane({ active: Pane.Files });
           }
         },
       },
       {
         name: "pr-list.close",
-        run: () => props.titles.closeOpened(),
+        run: () => viewContext.close(),
       },
     ],
     bindings: [

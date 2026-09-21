@@ -26,21 +26,9 @@ export function Sidebar(props: SidebarProps) {
       overflow="hidden"
       gap={0}
     >
-      <FilesBox
-        titles={props.titles}
-        content={props.content}
-        rowWidth={SIDEBAR_ROW_WIDTH}
-      />
-      <CommitsBox
-        titles={props.titles}
-        content={props.content}
-        rowWidth={SIDEBAR_ROW_WIDTH}
-      />
-      <PullRequestsBox
-        titles={props.titles}
-        content={props.content}
-        rowWidth={SIDEBAR_ROW_WIDTH}
-      />
+      <FilesBox content={props.content} rowWidth={SIDEBAR_ROW_WIDTH} />
+      <CommitsBox content={props.content} rowWidth={SIDEBAR_ROW_WIDTH} />
+      <PullRequestsBox titles={props.titles} rowWidth={SIDEBAR_ROW_WIDTH} />
     </box>
   );
 }

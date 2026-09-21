@@ -1,8 +1,21 @@
 import { useBindings } from "@opentui/keymap/solid";
 import { useTerminalDimensions } from "@opentui/solid";
 import { basename } from "node:path";
-import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  Show,
+  type Accessor,
+} from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
+import {
+  useViewContext,
+  viewCommit,
+  viewPullRequest,
+  type ActiveView,
+} from "@/context/view-context";
 import { CommitContext } from "@/features/pr-view/commit-context";
 import { visibleValue } from "@/features/pr-view/load-state";
 import { OverviewScreen } from "@/features/pr-view/overview-screen";
@@ -14,10 +27,7 @@ import {
 } from "@/features/pr-view/pr-view-display";
 import { NoPullRequest, PrViewHeader } from "@/features/pr-view/pr-view-header";
 import { SelectedDiffBody } from "@/features/pr-view/selected-diff";
-import {
-  mainViewCommit,
-  type PrViewContent,
-} from "@/features/pr-view/use-pr-view-content";
+import { type PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import {
   prewarmSplitHighlights,
   type SplitFileDiffScrollTarget,
@@ -29,11 +39,11 @@ import { truncateEnd } from "@/utils/truncate";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import type { RepositoryAppContextState } from "@/context/app-context";
+import type { RepositoryForgeContextState } from "@/context/forge-context";
 import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 
 export interface PrViewProps {
-  readonly state: RepositoryAppContextState;
+  readonly state: RepositoryForgeContextState;
   readonly titles: PrTitles;
   readonly content: PrViewContent;
 }
@@ -44,7 +54,8 @@ export function PrView(props: PrViewProps) {
   const dimensions = useTerminalDimensions();
   const contentWidth = () =>
     Math.max(16, dimensions().width - MAIN_PANE_CHROME);
-  const view = () => props.content.view();
+  const viewContext = useViewContext();
+  const view = () => viewContext.view();
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
   const [overviewScroll, setOverviewScroll] = createSignal<
     ScrollBoxRenderable | undefined
@@ -57,10 +68,10 @@ export function PrView(props: PrViewProps) {
   const localName = () => basename(currentState().cwd) || currentState().cwd;
   const repositoryName = () =>
     visibleValue(props.titles.list())?.repository.fullName ?? localName();
-  const openedNumber = () => props.titles.openedNumber();
+  const opened = () => viewPullRequest(view());
   const summary = () => {
-    const number = openedNumber();
-    if (number === null) {
+    const number = opened()?.number;
+    if (number === undefined) {
       return undefined;
     }
     return visibleValue(props.titles.list())?.items.find(
@@ -69,7 +80,8 @@ export function PrView(props: PrViewProps) {
   };
   const currentDetails = () => visibleValue(props.content.details());
   const selectedCommitValue = createMemo(() => {
-    const sha = mainViewCommit(view());
+    const current = view();
+    const sha = current === undefined ? undefined : viewCommit(current);
     if (sha === undefined) {
       return undefined;
     }
@@ -88,7 +100,7 @@ export function PrView(props: PrViewProps) {
     return pullRequestTitleLine(item.title, item.number);
   };
   const headerKey = () => {
-    const number = openedNumber();
+    const number = opened()?.number;
     const details = currentDetails();
     const detailsKey =
       details === undefined ? "pending" : `ready:${details.number}`;
@@ -96,7 +108,7 @@ export function PrView(props: PrViewProps) {
   };
 
   function scrollContent(lines: number): void {
-    if (view().kind === "diff") {
+    if (view()?.kind === "diff") {
       diffScroll()?.scrollBy(lines);
       return;
     }
@@ -107,16 +119,12 @@ export function PrView(props: PrViewProps) {
   }
 
   const closeOpened = (): void => {
-    props.content.clearSelection();
-    props.titles.closeOpened();
+    viewContext.close();
     setPane({ active: Pane.PullRequests });
   };
 
-  // Returns the Main pane from a file or commit diff to the PR overview.
-  // `clearSelection` also puts the Files pane back on PR-level files, and
-  // requesting focus for `files` hands keyboard focus back to the tree.
   const closeDiff = (): void => {
-    props.content.clearSelection();
+    viewContext.clearSelection();
     const overview = overviewScroll();
     if (overview !== undefined) {
       overview.scrollTop = 0;
@@ -171,7 +179,7 @@ export function PrView(props: PrViewProps) {
       return;
     }
     const overview = overviewScroll();
-    if (view().kind !== "diff" && overview !== undefined) {
+    if (view()?.kind !== "diff" && overview !== undefined) {
       overview.focus();
       return;
     }
@@ -187,7 +195,7 @@ export function PrView(props: PrViewProps) {
     on(
       view,
       (current) => {
-        if (current.kind === "diff") {
+        if (current?.kind === "diff") {
           diffScroll()?.reset();
           return;
         }
@@ -200,10 +208,9 @@ export function PrView(props: PrViewProps) {
     ),
   );
 
-  function mainViewContent(): JSX.Element {
-    const current = view();
+  function mainViewContent(current: ActiveView): JSX.Element {
     switch (current.kind) {
-      case "overview":
+      case "pr":
         return (
           <scrollbox
             ref={setOverviewScroll}
@@ -277,33 +284,34 @@ export function PrView(props: PrViewProps) {
         setPane({ active: Pane.Main });
       }}
     >
-      <Show
-        when={openedNumber() !== null}
-        fallback={<NoPullRequest state={currentState()} />}
-      >
-        <PrViewHeader
-          view={view()}
-          detailsState={props.content.details()}
-          repositoryName={headerRepositoryName()}
-          titleLine={titleLine()}
-          headerKey={headerKey()}
-          maxWidth={contentWidth()}
-        />
-        {mainViewContent()}
-        <box
-          height={1}
-          width="100%"
-          flexGrow={0}
-          flexShrink={0}
-          overflow="hidden"
-        >
-          <text fg={colors.dim} wrapMode="none" truncate>
-            {truncateEnd(
-              "j/k scroll · e lock files · x close PR",
-              contentWidth(),
-            )}
-          </text>
-        </box>
+      <Show when={view()} fallback={<NoPullRequest state={currentState()} />}>
+        {(current: Accessor<ActiveView>) => (
+          <>
+            <PrViewHeader
+              view={current()}
+              detailsState={props.content.details()}
+              repositoryName={headerRepositoryName()}
+              titleLine={titleLine()}
+              headerKey={headerKey()}
+              maxWidth={contentWidth()}
+            />
+            {mainViewContent(current())}
+            <box
+              height={1}
+              width="100%"
+              flexGrow={0}
+              flexShrink={0}
+              overflow="hidden"
+            >
+              <text fg={colors.dim} wrapMode="none" truncate>
+                {truncateEnd(
+                  "j/k scroll · e lock files · x close PR",
+                  contentWidth(),
+                )}
+              </text>
+            </box>
+          </>
+        )}
       </Show>
     </box>
   );

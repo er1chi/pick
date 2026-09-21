@@ -5,9 +5,10 @@ import { DialogProvider } from "@tuiparts/dialog/solid";
 import { App } from "@/app";
 import { PaneStore } from "@/context/active-pane-context";
 import {
-  AppContextProvider,
-  initializeAppContext,
-} from "@/context/app-context";
+  ForgeContextProvider,
+  initializeForgeContext,
+} from "@/context/forge-context";
+import { ViewContextProvider } from "@/context/view-context";
 import { createAppKeymap } from "@/shared/keymap";
 
 const renderer = await createCliRenderer({
@@ -16,19 +17,21 @@ const renderer = await createCliRenderer({
   targetFps: 30,
 });
 const keymap = createAppKeymap(renderer);
-const appContext = await initializeAppContext();
+const forgeContext = await initializeForgeContext();
 
 await render(
   () => (
-    <AppContextProvider value={appContext}>
-      <PaneStore.Provider>
-        <KeymapProvider keymap={keymap}>
-          <DialogProvider>
-            <App />
-          </DialogProvider>
-        </KeymapProvider>
-      </PaneStore.Provider>
-    </AppContextProvider>
+    <ForgeContextProvider value={forgeContext}>
+      <ViewContextProvider>
+        <PaneStore.Provider>
+          <KeymapProvider keymap={keymap}>
+            <DialogProvider>
+              <App />
+            </DialogProvider>
+          </KeymapProvider>
+        </PaneStore.Provider>
+      </ViewContextProvider>
+    </ForgeContextProvider>
   ),
   renderer,
 );

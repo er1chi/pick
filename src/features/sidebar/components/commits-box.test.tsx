@@ -11,13 +11,17 @@ import {
   type Setter,
 } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
+import {
+  pullRequestViewId,
+  ViewContextProvider,
+  type ActiveView,
+} from "@/context/view-context";
 import { idleLoadState } from "@/features/pr-view/load-state";
 import { createAppKeymap } from "@/shared/keymap";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { CommitsBox } from "./commits-box";
 
-import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import type { PullRequestCommit } from "@/services/forge/types";
 
@@ -43,15 +47,10 @@ const COMMIT_B: PullRequestCommit = {
   url: null,
 };
 
-const titles: PrTitles = {
-  list: () => idleLoadState(),
-  filter: () => "open",
-  openedNumber: () => 1,
-  setFilter: () => {},
-  cycleFilter: () => {},
-  open: () => {},
-  closeOpened: () => {},
-  retry: () => {},
+const openPullRequest: ActiveView = {
+  kind: "pr",
+  id: pullRequestViewId({ owner: "octocat", name: "hello" }, 1),
+  number: 1,
 };
 
 const content: PrViewContent = {
@@ -62,12 +61,7 @@ const content: PrViewContent = {
   reviews: () => idleLoadState(),
   checks: () => idleLoadState(),
   development: () => idleLoadState(),
-  // Overview: no commit is activated, so the only highlight is keyboard-driven.
-  view: () => ({ kind: "overview" }),
-  selectFile: () => {},
-  selectCommit: () => {},
   currentPatch: () => idleLoadState(),
-  clearSelection: () => {},
   retry: () => {},
 };
 
@@ -80,8 +74,10 @@ function CommitsBoxHarness(): JSX.Element {
   return (
     <PaneStore.Provider>
       <KeymapProvider keymap={keymap()}>
-        <FocusCommitsPane />
-        <CommitsBox titles={titles} content={content} rowWidth={30} />
+        <ViewContextProvider initialView={openPullRequest}>
+          <FocusCommitsPane />
+          <CommitsBox content={content} rowWidth={30} />
+        </ViewContextProvider>
       </KeymapProvider>
     </PaneStore.Provider>
   );
@@ -112,14 +108,16 @@ function CommitsBoxLayoutHarness(props: {
   return (
     <PaneStore.Provider>
       <KeymapProvider keymap={keymap()}>
-        <box flexDirection="column" width={40} height={20}>
-          <box flexGrow={1} minHeight={0} overflow="hidden">
-            <For each={Array.from({ length: fileRows() })}>
-              {(_, index) => <text id={`file-row-${index()}`}>file</text>}
-            </For>
+        <ViewContextProvider initialView={openPullRequest}>
+          <box flexDirection="column" width={40} height={20}>
+            <box flexGrow={1} minHeight={0} overflow="hidden">
+              <For each={Array.from({ length: fileRows() })}>
+                {(_, index) => <text id={`file-row-${index()}`}>file</text>}
+              </For>
+            </box>
+            <CommitsBox content={reactiveContent} rowWidth={30} />
           </box>
-          <CommitsBox titles={titles} content={reactiveContent} rowWidth={30} />
-        </box>
+        </ViewContextProvider>
       </KeymapProvider>
     </PaneStore.Provider>
   );

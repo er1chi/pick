@@ -2,6 +2,7 @@ import { useBindings } from "@opentui/keymap/solid";
 import { For, createEffect, createMemo, createSignal } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
+import { useViewContext } from "@/context/view-context";
 import { visibleError, visibleValue } from "@/features/pr-view/load-state";
 import { patchFileIndex } from "@/features/pr-view/patch-file-index";
 import {
@@ -85,7 +86,8 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
   const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
   const [_pane, setPane] = PaneStore.use();
   const isFocused = useFocusedPane(Pane.Files);
-  const opened = () => props.titles.openedNumber() !== null;
+  const viewContext = useViewContext();
+  const opened = () => viewContext.view() !== undefined;
   const filesView = createMemo<FilesView>(() => {
     if (!opened()) {
       return { kind: "list", paths: [] };
@@ -145,7 +147,7 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
       item.toggle();
       return;
     }
-    props.content.selectFile(item.getPath());
+    viewContext.selectFile(item.getPath());
     setPane({ active: Pane.Main });
   }
 

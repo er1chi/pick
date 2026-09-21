@@ -3,9 +3,9 @@ import { toast } from "@tuiparts/toast/solid";
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import {
-  useAppContext,
+  useForgeContext,
   type RepositorySelectionError,
-} from "@/context/app-context";
+} from "@/context/forge-context";
 import {
   discoverRecentRepositories,
   type RecentRepository,
@@ -19,7 +19,7 @@ import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 const discoveryRootLabel = "~/Developer";
 
 export function Default() {
-  const appContext = useAppContext();
+  const forgeContext = useForgeContext();
   const [repositories, setRepositories] = createSignal<
     readonly RecentRepository[]
   >([]);
@@ -93,11 +93,13 @@ export function Default() {
 
     // `selectRepository` never rejects: every failure mode is a tagged error
     // carried in the `Result`.
-    void appContext.selectRepository(selectedRepository.path).then((result) => {
-      if (result.isErr()) {
-        notifyRepositorySelectionError(result.error, selectedRepository.name);
-      }
-    });
+    void forgeContext
+      .selectRepository(selectedRepository.path)
+      .then((result) => {
+        if (result.isErr()) {
+          notifyRepositorySelectionError(result.error, selectedRepository.name);
+        }
+      });
   }
 
   useBindings(() => ({

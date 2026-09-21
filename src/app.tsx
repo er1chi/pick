@@ -3,10 +3,15 @@ import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
 import { createEffect, createSignal, onMount, Show } from "solid-js";
 import {
-  type AppContextState,
-  useAppContext,
-  type RepositoryAppContextState,
-} from "@/context/app-context";
+  type ForgeContextState,
+  useForgeContext,
+  type RepositoryForgeContextState,
+} from "@/context/forge-context";
+import {
+  pullRequestViewId,
+  useViewContext,
+  viewPullRequest,
+} from "@/context/view-context";
 import { Default } from "@/features/default/default";
 import { Footer, type FooterBinding } from "@/features/footer/footer";
 import { Menubar } from "@/features/menubar/menubar";
@@ -26,14 +31,14 @@ import { Pane } from "./types";
 import type { BoxRenderable } from "@opentui/core";
 import type { Accessor } from "solid-js";
 
-function repositoryAppContextState(
-  state: AppContextState,
-): RepositoryAppContextState | undefined {
+function repositoryForgeContextState(
+  state: ForgeContextState,
+): RepositoryForgeContextState | undefined {
   return state.kind === ApplicationContext.Default ? undefined : state;
 }
 
 function repositoryContextLabel(
-  kind: RepositoryAppContextState["kind"],
+  kind: RepositoryForgeContextState["kind"],
 ): string {
   if (kind === ApplicationContext.Local) {
     return "Local Git";
@@ -45,7 +50,7 @@ function repositoryContextLabel(
 }
 
 function repositoryFooterBindings(
-  kind: RepositoryAppContextState["kind"],
+  kind: RepositoryForgeContextState["kind"],
   pane: Pane,
 ): readonly FooterBinding[] {
   if (kind === ApplicationContext.Local) {
@@ -102,12 +107,47 @@ function notifyCliInitializationError(error: ForgeInitializationError) {
   toast.warning(`${service} CLI (${executable}) ${reason}.`);
 }
 
-function RepositoryShell(props: { readonly state: RepositoryAppContextState }) {
+function RepositoryShell(props: {
+  readonly state: RepositoryForgeContextState;
+}) {
   const [box, setBox] = createSignal<BoxRenderable>();
   const [pane, setPane] = PaneStore.use();
+  const forgeContext = useForgeContext();
+  const viewContext = useViewContext();
   const contextLabel = repositoryContextLabel(props.state.kind);
+
+  let repositoryKey = "";
+  createEffect(() => {
+    const state = forgeContext.state();
+    const key = `${state.cwd}:${state.kind}`;
+    const changed = repositoryKey !== "" && repositoryKey !== key;
+    repositoryKey = key;
+    if (changed) {
+      viewContext.close();
+    }
+  });
+
   const titles = usePrTitles();
-  const content = usePrViewContent(titles);
+  const content = usePrViewContent();
+
+  createEffect(() => {
+    const opened = viewPullRequest(viewContext.view());
+    const list = titles.list();
+    if (
+      opened === undefined ||
+      list.status !== "settled" ||
+      list.result.isErr()
+    ) {
+      return;
+    }
+    const { repository, items } = list.result.value;
+    const stillListed = items.some(
+      (item) => pullRequestViewId(repository, item.number) === opened.id,
+    );
+    if (!stillListed) {
+      viewContext.close();
+    }
+  });
 
   useBindings(() => ({
     target: box,
@@ -173,14 +213,14 @@ function DefaultWelcome() {
 
 export function App() {
   const renderer = useRenderer();
-  const appContext = useAppContext();
+  const forgeContext = useForgeContext();
 
   onMount(() => {
     renderer.setTerminalTitle("Pick");
   });
 
   createEffect(() => {
-    const state = appContext.state();
+    const state = forgeContext.state();
     if (
       state.kind !== ApplicationContext.Default &&
       state.kind !== ApplicationContext.Local &&
@@ -193,10 +233,10 @@ export function App() {
   return (
     <box width="100%" height="100%" backgroundColor={colors.background}>
       <Show
-        when={repositoryAppContextState(appContext.state())}
+        when={repositoryForgeContextState(forgeContext.state())}
         fallback={<DefaultWelcome />}
       >
-        {(state: Accessor<RepositoryAppContextState>) => (
+        {(state: Accessor<RepositoryForgeContextState>) => (
           <RepositoryShell state={state()} />
         )}
       </Show>

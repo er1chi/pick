@@ -1,5 +1,6 @@
-import { createEffect, createSignal, type Accessor } from "solid-js";
-import { useAppContext } from "@/context/app-context";
+import { createEffect, type Accessor } from "solid-js";
+import { useForgeContext } from "@/context/forge-context";
+import { useViewContext, viewCommit } from "@/context/view-context";
 import {
   createCachedQuery,
   type CachedQuery,
@@ -8,7 +9,6 @@ import {
 import { visibleValue, type LoadState } from "@/features/pr-view/load-state";
 
 import type { Result as ResultType } from "better-result";
-import type { PrTitles } from "@/features/pr-view/use-pr-titles";
 import type { ForgeService } from "@/services/forge/forge-service";
 import type {
   ForgeOperationError,
@@ -30,26 +30,6 @@ type ReviewsLoadState = LoadState<PullRequestReviewsResource>;
 type ChecksLoadState = LoadState<ForgeSection<readonly PullRequestCheck[]>>;
 type DevelopmentLoadState = LoadState<PullRequestDevelopment>;
 
-/** The three main-pane screens. `usePrViewContent` owns the one value that
- * selects between them; callers derive a path or sha from it. */
-export type MainView =
-  | { readonly kind: "overview" }
-  | { readonly kind: "commit"; readonly sha: string }
-  | {
-      readonly kind: "diff";
-      readonly path: string;
-      readonly commit?: string;
-    };
-
-/** The commit a view is anchored to, if any (commit context or a commit
- * diff). Overview and commit-free diffs return `undefined`. */
-export function mainViewCommit(view: MainView): string | undefined {
-  if (view.kind === "commit") {
-    return view.sha;
-  }
-  return view.kind === "diff" ? view.commit : undefined;
-}
-
 export interface PrViewContent {
   readonly overview: Accessor<OverviewLoadState>;
   readonly details: Accessor<DetailsLoadState>;
@@ -60,19 +40,9 @@ export interface PrViewContent {
   readonly reviews: Accessor<ReviewsLoadState>;
   readonly checks: Accessor<ChecksLoadState>;
   readonly development: Accessor<DevelopmentLoadState>;
-  /** The one main-pane view: overview, commit context, or a file diff. */
-  readonly view: Accessor<MainView>;
-  readonly selectFile: (path: string) => void;
-  /**
-   * `selectCommit(sha)` shows that commit's context and eagerly loads its
-   * patch; `selectCommit(undefined)` returns to the overview.
-   */
-  readonly selectCommit: (sha: string | undefined) => void;
   /** The selected commit's patch when a commit is selected, otherwise the pull
    * request diff patch. The Files pane and the main diff both read this. */
   readonly currentPatch: Accessor<DiffLoadState>;
-  /** Clears commit, file, and commit-patch state for the open PR. */
-  readonly clearSelection: () => void;
   readonly retry: () => void;
 }
 
@@ -188,8 +158,9 @@ function eagerRow<T>(
   };
 }
 
-export function usePrViewContent(titles: PrTitles): PrViewContent {
-  const appContext = useAppContext();
+export function usePrViewContent(): PrViewContent {
+  const forgeContext = useForgeContext();
+  const viewContext = useViewContext();
 
   const overview = createCachedQuery<PullRequestOverview>({
     isCacheable: (value) => !sectionFailed(value.conversationComments),
@@ -240,25 +211,18 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     }
   }
 
-  const [view, setView] = createSignal<MainView>({ kind: "overview" });
-  let selectedKey: string | undefined;
-
   function currentSelection(): Selection | undefined {
-    const state = appContext.state();
-    const number = titles.openedNumber();
-    const list = visibleValue(titles.list());
-    if (state.forge === undefined || number === null || list === undefined) {
+    const state = forgeContext.state();
+    const opened = viewContext.view();
+    if (state.forge === undefined || opened === undefined) {
       return undefined;
     }
 
-    const { repository } = list;
-    const contextKey = [
-      state.kind,
-      state.cwd,
-      repository.url ?? repository.fullName,
-      repository.fullName,
-    ].join(":");
-    return { forge: state.forge, number, cacheKey: `${contextKey}#${number}` };
+    return {
+      forge: state.forge,
+      number: opened.number,
+      cacheKey: `${state.kind}:${opened.id}`,
+    };
   }
 
   function loadCommitPatch(
@@ -282,23 +246,16 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
   // The Files pane and the main diff must never disagree about which patch
   // they show, so both derive it from the one view value.
   function currentPatch(): DiffLoadState {
-    return mainViewCommit(view()) === undefined
-      ? diff.state()
-      : commitPatch.state();
+    const opened = viewContext.view();
+    if (opened !== undefined && viewCommit(opened) !== undefined) {
+      return commitPatch.state();
+    }
+    return diff.state();
   }
 
-  // The single source of truth for what should be loaded right now. `show`
-  // ignores repeat calls for the same key, so this can run on every list or
-  // context change. A key change means a different PR or repository: all
-  // selection and pending query state is dropped before the new key loads.
   createEffect(() => {
+    const opened = viewContext.view();
     const selection = currentSelection();
-    const key = selection?.cacheKey;
-    if (key !== selectedKey) {
-      selectedKey = key;
-      clearSelection();
-    }
-
     if (selection === undefined) {
       resetEager();
       commitPatch.reset();
@@ -307,9 +264,7 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
 
     loadEager(selection);
 
-    // A selected commit's patch is independent of any screen, so it loads
-    // eagerly here and is dropped as soon as the commit is cleared.
-    const sha = mainViewCommit(view());
+    const sha = opened === undefined ? undefined : viewCommit(opened);
     if (sha !== undefined) {
       loadCommitPatch(selection, sha);
     } else {
@@ -317,33 +272,14 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     }
   });
 
-  // Selecting a commit switches to its context and clears any open file.
-  // `selectFile` keeps the current commit context, if there is one.
-  function selectCommit(sha: string | undefined): void {
-    setView(sha === undefined ? { kind: "overview" } : { kind: "commit", sha });
-  }
-
-  function selectFile(path: string): void {
-    const commit = mainViewCommit(view());
-    setView(
-      commit === undefined
-        ? { kind: "diff", path }
-        : { kind: "diff", path, commit },
-    );
-  }
-
-  function clearSelection(): void {
-    setView({ kind: "overview" });
-    commitPatch.reset();
-  }
-
   function retry(): void {
+    const opened = viewContext.view();
     const selection = currentSelection();
     if (selection === undefined) {
       return;
     }
     loadEager(selection, true);
-    const sha = mainViewCommit(view());
+    const sha = opened === undefined ? undefined : viewCommit(opened);
     if (sha !== undefined) {
       loadCommitPatch(selection, sha, true);
     }
@@ -357,11 +293,7 @@ export function usePrViewContent(titles: PrTitles): PrViewContent {
     reviews: reviews.state,
     checks: checks.state,
     development: development.state,
-    view,
-    selectFile,
-    selectCommit,
     currentPatch,
-    clearSelection,
     retry,
   };
 }

@@ -2,7 +2,7 @@ import { useBindings } from "@opentui/keymap/solid";
 import { For, createEffect, createMemo, createSignal } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
-import { mainViewCommit } from "@/features/pr-view/use-pr-view-content";
+import { useViewContext, viewCommit } from "@/context/view-context";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
@@ -23,7 +23,8 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
   const [_pane, setPane] = PaneStore.use();
   const isFocused = useFocusedPane(Pane.Commits);
   const navigation = useNavigateList({ target: box });
-  const opened = () => props.titles.openedNumber() !== null;
+  const viewContext = useViewContext();
+  const opened = () => viewContext.view() !== undefined;
   const commits = createMemo<readonly PullRequestCommit[]>(() =>
     opened() ? props.content.commits() : [],
   );
@@ -38,7 +39,7 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
   function activateHighlighted(): void {
     const sha = commits()[navigation.index()]?.sha;
     if (sha !== undefined) {
-      props.content.selectCommit(sha);
+      viewContext.selectCommit(sha);
     }
   }
 
@@ -85,8 +86,12 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
               // so j/k highlight changes would never re-render the rows.
               const highlighted = () =>
                 commit.sha === commits()[navigation.index()]?.sha;
-              const active = () =>
-                commit.sha === mainViewCommit(props.content.view());
+              const active = () => {
+                const current = viewContext.view();
+                return (
+                  current !== undefined && commit.sha === viewCommit(current)
+                );
+              };
               return (
                 <box
                   width="100%"

@@ -1,4 +1,5 @@
 import { For, Show, type Accessor, type JSX } from "solid-js";
+import { viewCommit, type ActiveView } from "@/context/view-context";
 import {
   visibleError,
   visibleValue,
@@ -12,10 +13,6 @@ import {
 } from "@/features/pr-view/pr-view-chrome";
 import { persistentMetadataLines } from "@/features/pr-view/pr-view-display";
 import {
-  mainViewCommit,
-  type MainView,
-} from "@/features/pr-view/use-pr-view-content";
-import {
   ApplicationContext,
   type ForgeInitializationError,
   type PullRequestDetails,
@@ -23,7 +20,7 @@ import {
 import { colors } from "@/theme";
 import { truncateEnd } from "@/utils/truncate";
 
-import type { RepositoryAppContextState } from "@/context/app-context";
+import type { RepositoryForgeContextState } from "@/context/forge-context";
 
 interface PersistentHeaderProps {
   readonly repositoryName: string;
@@ -76,8 +73,8 @@ function PersistentHeader(props: PersistentHeaderProps): JSX.Element {
   );
 }
 
-function contextBanner(view: MainView): string {
-  const commit = mainViewCommit(view);
+function contextBanner(view: ActiveView): string {
+  const commit = viewCommit(view);
   const path = view.kind === "diff" ? view.path : undefined;
   // The full SHA stays in the commit metadata below; the fixed context line
   // only needs a short, stable reference.
@@ -95,7 +92,7 @@ function contextBanner(view: MainView): string {
 }
 
 interface PrViewHeaderProps {
-  readonly view: MainView;
+  readonly view: ActiveView;
   readonly detailsState: LoadState<PullRequestDetails>;
   readonly repositoryName: string;
   readonly titleLine: string | undefined;
@@ -104,7 +101,7 @@ interface PrViewHeaderProps {
 }
 
 export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
-  const diffContextSelected = () => props.view.kind !== "overview";
+  const diffContextSelected = () => props.view.kind !== "pr";
   const closeAffordancesWidth = () =>
     CLOSE_PR_LABEL.length +
     (diffContextSelected()
@@ -215,13 +212,13 @@ function initializationErrorDescription(
 }
 
 function forgeInitializationError(
-  state: RepositoryAppContextState,
+  state: RepositoryForgeContextState,
 ): ForgeInitializationError | undefined {
   return state.kind === ApplicationContext.Local ? undefined : state.forgeError;
 }
 
 export function NoPullRequest(props: {
-  readonly state: RepositoryAppContextState;
+  readonly state: RepositoryForgeContextState;
 }): JSX.Element {
   const forgeError = () => forgeInitializationError(props.state);
   return (

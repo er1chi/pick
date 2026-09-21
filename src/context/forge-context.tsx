@@ -13,7 +13,7 @@ import type { JSX } from "@opentui/solid";
 import type { Result as ResultType } from "better-result";
 import type { Accessor } from "solid-js";
 
-interface AppContextBase<T extends ApplicationContext> {
+interface ForgeContextBase<T extends ApplicationContext> {
   readonly cwd: string;
   readonly kind: T;
 }
@@ -31,20 +31,22 @@ interface ForgeErrorState extends NoForge {
   readonly forgeError: ForgeInitializationError;
 }
 
-type RemoteAppContextState = AppContextBase<ForgeKind> &
+type RemoteForgeContextState = ForgeContextBase<ForgeKind> &
   (ExistingForgeState | ForgeErrorState);
 
-type LocalAppContextState = (
-  | AppContextBase<ApplicationContext.Default>
-  | AppContextBase<ApplicationContext.Local>
+type LocalForgeContextState = (
+  | ForgeContextBase<ApplicationContext.Default>
+  | ForgeContextBase<ApplicationContext.Local>
 ) &
   NoForge;
 
-export type AppContextState = LocalAppContextState | RemoteAppContextState;
+export type ForgeContextState =
+  | LocalForgeContextState
+  | RemoteForgeContextState;
 
-export type RepositoryAppContextState = Exclude<
-  AppContextState,
-  AppContextBase<ApplicationContext.Default> & NoForge
+export type RepositoryForgeContextState = Exclude<
+  ForgeContextState,
+  ForgeContextBase<ApplicationContext.Default> & NoForge
 >;
 
 class RepositoryDirectoryChangeFailedError extends TaggedError(
@@ -91,9 +93,9 @@ function isGithubRemoteUrl(url: string): boolean {
     .unwrapOr(false);
 }
 
-export async function initializeAppContext(
+export async function initializeForgeContext(
   cwd = process.cwd(),
-): Promise<AppContextState> {
+): Promise<ForgeContextState> {
   const activeCwd = resolve(cwd);
   const remoteOutput = await readGitRemoteOutput(activeCwd);
   if (remoteOutput.isErr()) {
@@ -135,22 +137,22 @@ export async function initializeAppContext(
   };
 }
 
-type AppContextProviderProps = {
-  readonly value: AppContextState;
+type ForgeContextProviderProps = {
+  readonly value: ForgeContextState;
   readonly children: JSX.Element;
 };
 
-export type AppContextValue = {
-  readonly state: Accessor<AppContextState>;
+export type ForgeContextValue = {
+  readonly state: Accessor<ForgeContextState>;
   readonly selectRepository: (
     repositoryPath: string,
   ) => Promise<RepositorySelectionResult>;
 };
 
-const AppContext = createContext<AppContextValue>();
+const ForgeContext = createContext<ForgeContextValue>();
 
-export function AppContextProvider(
-  props: AppContextProviderProps,
+export function ForgeContextProvider(
+  props: ForgeContextProviderProps,
 ): JSX.Element {
   const [state, setState] = createSignal(props.value);
 
@@ -159,7 +161,7 @@ export function AppContextProvider(
   ): Promise<RepositorySelectionResult> => {
     const path = resolve(repositoryPath);
     const initialization = await Result.tryPromise({
-      try: () => initializeAppContext(path),
+      try: () => initializeForgeContext(path),
       catch: (cause) =>
         new RepositoryContextInitializationFailedError({
           path,
@@ -191,17 +193,21 @@ export function AppContextProvider(
     return Result.ok();
   };
 
-  const context: AppContextValue = { state, selectRepository };
+  const context: ForgeContextValue = { state, selectRepository };
 
   return (
-    <AppContext.Provider value={context}>{props.children}</AppContext.Provider>
+    <ForgeContext.Provider value={context}>
+      {props.children}
+    </ForgeContext.Provider>
   );
 }
 
-export function useAppContext(): AppContextValue {
-  const context = useContext(AppContext);
+export function useForgeContext(): ForgeContextValue {
+  const context = useContext(ForgeContext);
   if (context === undefined) {
-    throw new Error("useAppContext must be used within an AppContextProvider");
+    throw new Error(
+      "useForgeContext must be used within a ForgeContextProvider",
+    );
   }
 
   return context;

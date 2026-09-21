@@ -4,7 +4,6 @@ import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
 import { visibleError, visibleValue } from "@/features/pr-view/load-state";
 import { patchFileIndex } from "@/features/pr-view/patch-file-index";
-import { useNavigateList } from "@/hooks/use-navigate-list";
 import {
   areVisibleRowsEqual,
   fileTreeRowLabel,
@@ -14,6 +13,7 @@ import {
   useFileTreeSelector,
 } from "@/packages/pierre/solid/trees";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
+import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { Pane } from "@/types";
 import { EmptyGate } from "./empty-gate";

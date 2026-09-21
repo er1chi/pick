@@ -7,8 +7,8 @@ import {
   visibleError,
   visibleValue,
 } from "@/features/pr-view/load-state";
-import { useNavigateList } from "@/hooks/use-navigate-list";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
+import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { colors } from "@/theme";
 import { Pane } from "@/types";

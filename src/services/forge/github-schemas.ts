@@ -36,13 +36,13 @@ const milestoneSchema = type({
 });
 const mergeCommitSchema = type({ oid: "string" });
 
-export const overviewSchema = type({
+const overviewSchema = type({
   number: schemaPrimitives.safeIntegerSchema,
   body: schemaPrimitives.optionalNullableString,
 });
 const optionalUnknown = type("unknown").optional();
 
-export const detailsSchema = type({
+const detailsSchema = type({
   number: schemaPrimitives.safeIntegerSchema,
   createdAt: schemaPrimitives.optionalDate,
   updatedAt: schemaPrimitives.optionalDate,
@@ -135,7 +135,7 @@ export const requestedReviewersSchema = type({
   users: userSchema.array(),
   teams: teamSchema.array(),
 });
-const checkSchema = type({
+export const checkSchema = type({
   name: schemaPrimitives.optionalNullableString,
   context: schemaPrimitives.optionalNullableString,
   status: schemaPrimitives.optionalNullableString,
@@ -150,14 +150,14 @@ const checkSchema = type({
   workflowName: schemaPrimitives.optionalNullableString,
   workflow: schemaPrimitives.optionalNullableString,
 });
-const projectItemSchema = type({
+export const projectItemSchema = type({
   id: "string",
   title: "string",
   number: schemaPrimitives.optionalNumber,
   url: schemaPrimitives.optionalNullableString,
   state: schemaPrimitives.optionalNullableString,
 });
-const projectCardSchema = type({
+export const projectCardSchema = type({
   id: type("number | string"),
   project: type({
     id: type("number | string"),
@@ -167,7 +167,7 @@ const projectCardSchema = type({
     state: schemaPrimitives.optionalNullableString,
   }),
 });
-const linkedIssueSchema = type({
+export const linkedIssueSchema = type({
   number: schemaPrimitives.safeIntegerSchema,
   title: schemaPrimitives.optionalNullableString,
   state: "string",
@@ -178,19 +178,8 @@ const linkedIssueSchema = type({
 export const commitPagesSchema = commitSchema.array().array();
 export const commentPagesSchema = commentSchema.array().array();
 export const reviewPagesSchema = reviewSchema.array().array();
-export const checksResponseSchema = type({
-  statusCheckRollup: checkSchema.array(),
-});
-export const projectsResponseSchema = type({
-  projectItems: projectItemSchema.array().or("null").optional(),
-  projectCards: projectCardSchema.array().or("null").optional(),
-});
-export const linkedIssuesResponseSchema = type({
-  closingIssuesReferences: linkedIssueSchema.array(),
-});
 
 export type GithubRepositoryPayload = typeof repositorySchema.infer;
-export type GithubOverviewPayload = typeof overviewSchema.infer;
 export type GithubDetailsPayload = typeof detailsSchema.infer;
 export type GithubPullRequestView = typeof pullRequestViewSchema.infer;
 export type GithubListItem = typeof listItemSchema.infer;
@@ -198,7 +187,7 @@ export type GithubCommitPages = typeof commitPagesSchema.infer;
 export type GithubCommentPages = typeof commentPagesSchema.infer;
 export type GithubReviewPages = typeof reviewPagesSchema.infer;
 export type GithubRequestedReviewers = typeof requestedReviewersSchema.infer;
-export type GithubChecksResponse = typeof checksResponseSchema.infer;
-export type GithubProjectsResponse = typeof projectsResponseSchema.infer;
-export type GithubLinkedIssuesResponse =
-  typeof linkedIssuesResponseSchema.infer;
+export type GithubCheck = typeof checkSchema.infer;
+export type GithubProjectItem = typeof projectItemSchema.infer;
+export type GithubProjectCard = typeof projectCardSchema.infer;
+export type GithubLinkedIssue = typeof linkedIssueSchema.infer;

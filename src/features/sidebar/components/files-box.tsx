@@ -37,8 +37,6 @@ function sectionProblemMessage(section: SectionProblem, label: string): string {
       return section.reason.diagnostic;
     case "failed":
       return `Could not load ${label}: ${section.error.message}`;
-    case "not-requested":
-      return `${label} are not available.`;
   }
 }
 

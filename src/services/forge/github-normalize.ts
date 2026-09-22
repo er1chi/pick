@@ -1,7 +1,5 @@
 import { Result } from "better-result";
 import {
-  available,
-  createPullRequestSummary,
   incompatible,
   normalizeDate,
   normalizeGithubState,
@@ -9,21 +7,23 @@ import {
   normalizeLabel,
   normalizeMilestone,
   normalizeRepository,
-  normalizeTeam,
+  normalizeTeams,
   normalizeUser,
+  normalizeUsers,
 } from "./normalization";
+import { available } from "./section";
 import { ApplicationContext } from "./types";
 
 import type { Result as ResultType } from "better-result";
 import type {
-  GithubChecksResponse,
+  GithubCheck,
   GithubCommentPages,
   GithubCommitPages,
   GithubDetailsPayload,
-  GithubLinkedIssuesResponse,
+  GithubLinkedIssue,
   GithubListItem,
-  GithubOverviewPayload,
-  GithubProjectsResponse,
+  GithubProjectCard,
+  GithubProjectItem,
   GithubRepositoryPayload,
   GithubRequestedReviewers,
   GithubReviewPages,
@@ -31,7 +31,6 @@ import type {
 import type {
   ForgeOperationError,
   ForgeRepository,
-  ForgeTeam,
   PullRequestCheck,
   PullRequestComment,
   PullRequestCommit,
@@ -48,7 +47,6 @@ import type {
 const kind = ApplicationContext.GitHub;
 
 export type GithubOverviewFields = Pick<PullRequestOverview, "number" | "body">;
-export type GithubDetailsFields = PullRequestDetails;
 
 export function normalizeRepositoryPayload(
   payload: GithubRepositoryPayload,
@@ -62,25 +60,11 @@ export function normalizeListPayload(
   return Result.ok(payload.map(normalizeSummary));
 }
 
-export function normalizeOverview(
-  payload: GithubOverviewPayload,
-  expectedNumber: number,
-): ResultType<GithubOverviewFields, ForgeOperationError> {
-  if (payload.number !== expectedNumber) {
-    return incompatible(
-      kind,
-      `GitHub pull request overview number did not match ${expectedNumber}`,
-    );
-  }
-
-  return Result.ok({ number: payload.number, body: payload.body ?? null });
-}
-
 export function normalizeDetails(
   payload: GithubDetailsPayload,
   repository: ForgeRepository,
   expectedNumber: number,
-): ResultType<GithubDetailsFields, ForgeOperationError> {
+): ResultType<PullRequestDetails, ForgeOperationError> {
   if (payload.number !== expectedNumber) {
     return incompatible(
       kind,
@@ -127,10 +111,7 @@ export function normalizeDetails(
       reviewComments: null,
     },
     labels: (payload.labels ?? []).map(normalizeLabel),
-    assignees: (payload.assignees ?? []).flatMap((user) => {
-      const normalized = normalizeUser(user);
-      return normalized === null ? [] : [normalized];
-    }),
+    assignees: normalizeUsers(payload.assignees),
     milestone:
       payload.milestone === null
         ? null
@@ -212,26 +193,21 @@ export function normalizeRequestedReviewers(
   payload: GithubRequestedReviewers,
 ): ResultType<PullRequestReviewerRequests, ForgeOperationError> {
   return Result.ok({
-    users: payload.users.flatMap((user) => {
-      const normalized = normalizeUser(user);
-      return normalized === null ? [] : [normalized];
-    }),
-    teams: payload.teams
-      .map((team) => normalizeTeam(team))
-      .filter((team): team is ForgeTeam => team !== null),
+    users: normalizeUsers(payload.users),
+    teams: normalizeTeams(payload.teams),
   });
 }
 
 export function normalizeChecks(
-  payload: GithubChecksResponse,
+  checks: readonly GithubCheck[],
 ): ResultType<readonly PullRequestCheck[], ForgeOperationError> {
-  const checks: PullRequestCheck[] = [];
-  for (const check of payload.statusCheckRollup) {
+  const normalized: PullRequestCheck[] = [];
+  for (const check of checks) {
     const name = check.name ?? check.context;
     if (name === null || name === undefined || name.length === 0) {
       return incompatible(kind, "GitHub check response did not include a name");
     }
-    checks.push({
+    normalized.push({
       name,
       status: check.status ?? check.state ?? "unknown",
       conclusion: check.conclusion ?? null,
@@ -242,14 +218,15 @@ export function normalizeChecks(
       workflow: check.workflowName ?? check.workflow ?? null,
     });
   }
-  return Result.ok(checks);
+  return Result.ok(normalized);
 }
 
 export function normalizeProjects(
-  payload: GithubProjectsResponse,
+  projectItems: readonly GithubProjectItem[] | null | undefined,
+  projectCards: readonly GithubProjectCard[] | null | undefined,
 ): ResultType<readonly PullRequestProject[], ForgeOperationError> {
   const projects: PullRequestProject[] = [];
-  for (const project of payload.projectItems ?? []) {
+  for (const project of projectItems ?? []) {
     projects.push({
       id: project.id,
       title: project.title,
@@ -259,7 +236,7 @@ export function normalizeProjects(
       kind: "v2",
     });
   }
-  for (const card of payload.projectCards ?? []) {
+  for (const card of projectCards ?? []) {
     projects.push({
       id: String(card.project.id),
       title: card.project.name,
@@ -273,11 +250,11 @@ export function normalizeProjects(
 }
 
 export function normalizeLinkedIssues(
-  payload: GithubLinkedIssuesResponse,
+  issues: readonly GithubLinkedIssue[],
   repository: ForgeRepository,
 ): ResultType<readonly PullRequestLinkedIssue[], ForgeOperationError> {
-  const issues: PullRequestLinkedIssue[] = [];
-  for (const issue of payload.closingIssuesReferences) {
+  const normalized: PullRequestLinkedIssue[] = [];
+  for (const issue of issues) {
     let issueRepository = repository;
     if (issue.repository !== null && issue.repository !== undefined) {
       const normalizedRepository = normalizeRepository(
@@ -290,28 +267,28 @@ export function normalizeLinkedIssues(
       }
       issueRepository = normalizedRepository.value;
     }
-    issues.push({
+    normalized.push({
       repository: issueRepository,
       number: issue.number,
       title: issue.title ?? null,
-      state: normalizeGithubState(issue.state, undefined),
+      state: normalizeGithubState(issue.state),
       url: issue.url ?? null,
       relation: "closing-reference",
     });
   }
-  return Result.ok(issues);
+  return Result.ok(normalized);
 }
 
 function normalizeSummary(payload: GithubListItem): PullRequestSummary {
-  return createPullRequestSummary(
-    payload.number,
-    payload.title,
-    normalizeGithubState(payload.state, undefined),
-    payload.isDraft ?? null,
-    normalizeUser(payload.author),
-    normalizeDate(payload.updatedAt),
-    payload.url ?? null,
-  );
+  return {
+    number: payload.number,
+    title: payload.title,
+    state: normalizeGithubState(payload.state),
+    isDraft: payload.isDraft ?? null,
+    author: normalizeUser(payload.author),
+    updatedAt: normalizeDate(payload.updatedAt),
+    url: payload.url ?? null,
+  };
 }
 
 function normalizeMergeable(value: string | null | undefined): boolean | null {

@@ -31,7 +31,7 @@ export class ForgeVersionCheckFailedError extends TaggedError(
   "ForgeVersionCheckFailedError",
 )<{
   readonly kind: ForgeKind;
-  readonly exitCode: number;
+  readonly cause: CliExecutionError;
   readonly message: string;
 }> {}
 
@@ -263,14 +263,7 @@ export interface PullRequestPatch {
   readonly byteLength: number;
 }
 
-export enum ForgeUnsupportedReasonCode {
-  ProviderDoesNotExpose = "provider-does-not-expose",
-  CliDoesNotProvideJson = "cli-does-not-provide-json",
-  ProviderResponseDoesNotInclude = "provider-response-does-not-include",
-}
-
-export interface ForgeUnsupportedReason {
-  readonly code: ForgeUnsupportedReasonCode;
+interface ForgeUnsupportedReason {
   readonly diagnostic: string;
 }
 
@@ -287,9 +280,6 @@ export type ForgeSection<T> =
   | {
       readonly status: "failed";
       readonly error: ForgeOperationError;
-    }
-  | {
-      readonly status: "not-requested";
     };
 
 export interface PullRequestOverview {
@@ -342,10 +332,6 @@ export interface PullRequestListOptions {
   readonly state?: PullRequestListState;
 }
 
-export interface PullRequestOverviewOptions {
-  readonly signal?: AbortSignal;
-}
-
 export interface PullRequestResourceOptions {
   readonly signal?: AbortSignal;
 }
@@ -377,45 +363,6 @@ export interface ForgeAdapter {
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestDocument, ForgeOperationError>>;
-
-  getPullRequestOverview(
-    number: number,
-    options?: PullRequestOverviewOptions,
-  ): Promise<Result<PullRequestOverview, ForgeOperationError>>;
-
-  getPullRequestDetails(
-    number: number,
-    options?: PullRequestResourceOptions,
-  ): Promise<Result<PullRequestDetails, ForgeOperationError>>;
-
-  getPullRequestDiff(
-    number: number,
-    options?: PullRequestResourceOptions,
-  ): Promise<Result<ForgeSection<PullRequestPatch>, ForgeOperationError>>;
-
-  getPullRequestCommits(
-    number: number,
-    options?: PullRequestResourceOptions,
-  ): Promise<
-    Result<ForgeSection<readonly PullRequestCommit[]>, ForgeOperationError>
-  >;
-
-  getPullRequestReviews(
-    number: number,
-    options?: PullRequestResourceOptions,
-  ): Promise<Result<PullRequestReviewsResource, ForgeOperationError>>;
-
-  getPullRequestChecks(
-    number: number,
-    options?: PullRequestResourceOptions,
-  ): Promise<
-    Result<ForgeSection<readonly PullRequestCheck[]>, ForgeOperationError>
-  >;
-
-  getPullRequestDevelopment(
-    number: number,
-    options?: PullRequestResourceOptions,
-  ): Promise<Result<PullRequestDevelopment, ForgeOperationError>>;
 
   /**
    * The change introduced by a single commit, as a patch of that commit against

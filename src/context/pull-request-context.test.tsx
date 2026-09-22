@@ -12,7 +12,7 @@ import {
   ViewContextProvider,
   type ViewContextValue,
 } from "@/context/view-context";
-import { available } from "@/services/forge/normalization";
+import { available } from "@/services/forge/section";
 import { ApplicationContext } from "@/services/forge/types";
 
 import type { JSX } from "solid-js";

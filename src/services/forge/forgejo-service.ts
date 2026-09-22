@@ -1,35 +1,30 @@
 import { type } from "arktype";
 import { Result } from "better-result";
-import * as adapterHelpers from "./adapter-helpers";
+import { ForgeAdapterBase, ForgeCli } from "./forge-cli";
 import {
   addCommentTruncation,
-  assemblePullRequestOverview,
-  createPullRequestSummary,
-  failed,
   incompatible,
   normalizeDate,
   normalizeLabel,
   normalizeMilestone,
+  normalizeOverviewFields,
   normalizeRepository,
   normalizeState,
-  normalizeTeam,
+  normalizeTeams,
   normalizeUser,
-  unsupported,
+  normalizeUsers,
 } from "./normalization";
 import * as schemaPrimitives from "./schema-primitives";
-import {
-  ApplicationContext,
-  ForgeCancelledError,
-  ForgeUnsupportedReasonCode,
-} from "./types";
+import { failed, unsupported } from "./section";
+import { ApplicationContext } from "./types";
 
 import type { Result as ResultType } from "better-result";
+import type { CliRunner } from "./forge-cli";
 import type {
   ForgeAdapter,
   ForgeOperationError,
   ForgeRepository,
   ForgeSection,
-  ForgeTeam,
   ForgeUser,
   PullRequestCheck,
   PullRequestCommit,
@@ -37,22 +32,33 @@ import type {
   PullRequestDetails,
   PullRequestDevelopment,
   PullRequestDocument,
-  PullRequestLinkedIssue,
   PullRequestList,
   PullRequestListOptions,
   PullRequestOverview,
-  PullRequestOverviewOptions,
   PullRequestPatch,
   PullRequestRef,
-  PullRequestProject,
   PullRequestResourceOptions,
   PullRequestReviewerRequests,
   PullRequestReviewsResource,
   PullRequestSummary,
 } from "./types";
 
-const executableName = "fj";
+const executable = "fj";
 const kind = ApplicationContext.Forgejo;
+const unsupportedCommits = unsupported<readonly PullRequestCommit[]>(
+  "The Forgejo CLI does not provide structured pull request commits",
+);
+const unsupportedChecks = unsupported<readonly PullRequestCheck[]>(
+  "The Forgejo CLI exposes pull request status only as human-readable output",
+);
+const unsupportedDevelopment: PullRequestDevelopment = {
+  projects: unsupported(
+    "Forgejo pull request projects are not exposed by the current CLI",
+  ),
+  linkedIssues: unsupported(
+    "Forgejo linked issue data is not exposed by the current CLI",
+  ),
+};
 const userSchema = type({
   login: "string",
   id: schemaPrimitives.optionalIdentifier,
@@ -157,40 +163,25 @@ type ForgejoViewPayload = typeof viewSchema.infer;
 type ForgejoIssue = typeof issueSchema.infer;
 type ForgejoComment = typeof commentSchema.infer;
 type ForgejoBranch = typeof branchSchema.infer;
-type ForgejoDetailsFields = PullRequestDetails;
 
-function cancelledView(): ResultType<ForgejoViewPayload, ForgeOperationError> {
-  return Result.err(
-    new ForgeCancelledError({
-      kind,
-      message: "The Forgejo pull request view request was cancelled",
-    }),
-  );
-}
-
-export class ForgejoService implements ForgeAdapter {
-  public readonly kind = kind;
-
-  private readonly repositoryReader: (
-    signal: AbortSignal | undefined,
-  ) => Promise<ResultType<ForgeRepository, ForgeOperationError>>;
-
-  /** Successful `fj pr view` payloads. A later read of the same pull request reuses one instead of starting another command. */
-  private readonly pullRequestViews = new Map<string, ForgejoViewPayload>();
-
-  public static initialize(cwd: string) {
-    return adapterHelpers.initializeForgeAdapter(
-      kind,
-      executableName,
-      cwd,
-      () => new ForgejoService(cwd),
+export class ForgejoService extends ForgeAdapterBase implements ForgeAdapter {
+  constructor(cli: ForgeCli) {
+    super(
+      cli,
+      cli.cachedJson(["--json", "repo", "view"], decodeRepository(cli)),
     );
+  }
+
+  public static async initialize(cwd: string, run?: CliRunner) {
+    const initialized = await ForgeCli.initialize(kind, executable, cwd, run);
+    return initialized.map((cli) => new ForgejoService(cli));
   }
 
   public async getPullRequests(
     listOptions: PullRequestListOptions = {},
   ): Promise<ResultType<PullRequestList, ForgeOperationError>> {
-    return adapterHelpers.loadForgePullRequestList(
+    return this.cli.pullRequestList(
+      this.repository,
       (repository, _limit, state) => [
         "--json",
         "pr",
@@ -200,11 +191,7 @@ export class ForgejoService implements ForgeAdapter {
         "--repo",
         repository.fullName,
       ],
-      normalizeList,
-      (signal) => this.getRepository(signal),
-      kind,
-      executableName,
-      this.cwd,
+      decodeList(this.cli),
       listOptions,
     );
   }
@@ -213,43 +200,8 @@ export class ForgejoService implements ForgeAdapter {
     number: number,
     options: PullRequestResourceOptions = {},
   ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
-    return adapterHelpers.withForgeRepository(
-      (signal) => this.getRepository(signal),
-      options.signal,
-      (repository) => this.assemblePullRequest(number, repository, options),
-    );
-  }
-
-  public async getPullRequestOverview(
-    number: number,
-    options: PullRequestOverviewOptions = {},
-  ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
-    return adapterHelpers.withForgeRepository(
-      (signal) => this.getRepository(signal),
-      options.signal,
-      (repository) =>
-        this.readForgejoOverview(number, repository, options.signal),
-    );
-  }
-
-  private async readForgejoOverview(
-    number: number,
-    repository: ForgeRepository,
-    signal: AbortSignal | undefined,
-  ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
-    const [view, conversationComments] = await Promise.all([
-      this.getView(number, repository.fullName, signal),
-      this.readComments(number, repository.fullName, signal),
-    ]);
-    if (view.isErr()) {
-      return view;
-    }
-
-    return overviewFromView(
-      view.value,
-      repository,
-      number,
-      conversationComments,
+    return this.withRepository(options.signal, (repository) =>
+      this.assemblePullRequest(number, repository, options),
     );
   }
 
@@ -259,104 +211,8 @@ export class ForgejoService implements ForgeAdapter {
   ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
     return Result.ok(
       unsupported<PullRequestPatch>(
-        ForgeUnsupportedReasonCode.CliDoesNotProvideJson,
         "The Forgejo CLI does not expose a diff for an individual commit",
       ),
-    );
-  }
-
-  public async getPullRequestCommits(
-    _number: number,
-    _options: PullRequestResourceOptions = {},
-  ): Promise<
-    ResultType<ForgeSection<readonly PullRequestCommit[]>, ForgeOperationError>
-  > {
-    return Result.ok(
-      unsupported<readonly PullRequestCommit[]>(
-        ForgeUnsupportedReasonCode.CliDoesNotProvideJson,
-        "The Forgejo CLI does not provide structured pull request commits",
-      ),
-    );
-  }
-
-  public async getPullRequestChecks(
-    _number: number,
-    _options: PullRequestResourceOptions = {},
-  ): Promise<
-    ResultType<ForgeSection<readonly PullRequestCheck[]>, ForgeOperationError>
-  > {
-    return Result.ok(
-      unsupported<readonly PullRequestCheck[]>(
-        ForgeUnsupportedReasonCode.CliDoesNotProvideJson,
-        "The Forgejo CLI exposes pull request status only as human-readable output",
-      ),
-    );
-  }
-
-  public async getPullRequestDevelopment(
-    _number: number,
-    _options: PullRequestResourceOptions = {},
-  ): Promise<ResultType<PullRequestDevelopment, ForgeOperationError>> {
-    return Result.ok({
-      projects: unsupported<readonly PullRequestProject[]>(
-        ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
-        "Forgejo pull request projects are not exposed by the current CLI",
-      ),
-      linkedIssues: unsupported<readonly PullRequestLinkedIssue[]>(
-        ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
-        "Forgejo linked issue data is not exposed by the current CLI",
-      ),
-    });
-  }
-
-  public async getPullRequestReviews(
-    number: number,
-    options: PullRequestResourceOptions = {},
-  ): Promise<ResultType<PullRequestReviewsResource, ForgeOperationError>> {
-    const loaded = await this.readForgejoView(number, options.signal);
-    return loaded.map(({ payload }) => reviewsFromView(payload));
-  }
-
-  public async getPullRequestDetails(
-    number: number,
-    options: PullRequestResourceOptions = {},
-  ): Promise<ResultType<PullRequestDetails, ForgeOperationError>> {
-    const loaded = await this.readForgejoView(number, options.signal);
-    return loaded.andThen(({ repository, payload }) =>
-      normalizeDetailsFields(payload, repository, number),
-    );
-  }
-
-  private async readForgejoView(
-    number: number,
-    signal: AbortSignal | undefined,
-  ): Promise<
-    ResultType<
-      { repository: ForgeRepository; payload: ForgejoViewPayload },
-      ForgeOperationError
-    >
-  > {
-    return adapterHelpers.withForgeRepository(
-      (innerSignal) => this.getRepository(innerSignal),
-      signal,
-      async (repository) => {
-        const view = await this.getView(number, repository.fullName, signal);
-        return view.map((payload) => ({ repository, payload }));
-      },
-    );
-  }
-
-  public async getPullRequestDiff(
-    number: number,
-    options: PullRequestResourceOptions = {},
-  ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
-    const repository = await this.getRepository(options.signal);
-    if (repository.isErr()) {
-      return repository;
-    }
-
-    return Result.ok(
-      await this.readPatch(number, repository.value.fullName, options.signal),
     );
   }
 
@@ -364,30 +220,40 @@ export class ForgejoService implements ForgeAdapter {
     number: number,
     repository: ForgeRepository,
     options: PullRequestResourceOptions,
-  ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
+  ): Promise<PullRequestDocument> {
     const signal = options.signal;
-    const diffTask = this.readPatch(number, repository.fullName, signal);
+    const diffTask = this.cli.patch(
+      [
+        "--json",
+        "pr",
+        "view",
+        String(number),
+        "--repo",
+        repository.fullName,
+        "diff",
+      ],
+      signal,
+    );
     const viewTask = this.readPullRequestView(
       number,
       repository.fullName,
       signal,
     );
-    const commentsTask = this.readComments(number, repository.fullName, signal);
-    const [commits, checks, development] = await Promise.all([
-      this.getPullRequestCommits(number, { signal }),
-      this.getPullRequestChecks(number, { signal }),
-      this.getPullRequestDevelopment(number, { signal }),
-    ]);
-    const commitsSection = sectionValue(commits);
-    const checksSection = sectionValue(checks);
-    const developmentSection = development.isOk()
-      ? development.value
-      : {
-          projects: failed<readonly PullRequestProject[]>(development.error),
-          linkedIssues: failed<readonly PullRequestLinkedIssue[]>(
-            development.error,
-          ),
-        };
+    const commentsTask = this.cli.section(
+      [
+        "--json",
+        "pr",
+        "view",
+        String(number),
+        "--repo",
+        repository.fullName,
+        "comments",
+      ],
+      commentsSchema,
+      decodeComments,
+      "Forgejo comments response did not match the schema",
+      signal,
+    );
 
     const [view, comments] = await Promise.all([viewTask, commentsTask]);
 
@@ -403,184 +269,96 @@ export class ForgejoService implements ForgeAdapter {
       : overviewFromView(view.value, repository, number, comments);
 
     const diff = await diffTask;
-    return Result.ok({
+    return {
       overview,
       details,
       diff,
-      commits: commitsSection,
+      commits: unsupportedCommits,
       reviews,
-      checks: checksSection,
-      development: developmentSection,
-    });
+      checks: unsupportedChecks,
+      development: unsupportedDevelopment,
+    };
   }
 
-  private async getView(
+  private readPullRequestView(
     number: number,
     repository: string,
     signal: AbortSignal | undefined,
   ): Promise<ResultType<ForgejoViewPayload, ForgeOperationError>> {
-    if (signal?.aborted === true) {
-      return cancelledView();
-    }
-    const cached = this.pullRequestViews.get(`${repository}#${number}`);
-    if (cached !== undefined) {
-      return Result.ok(cached);
-    }
-    return this.readPullRequestView(number, repository, signal);
-  }
-
-  private async readPullRequestView(
-    number: number,
-    repository: string,
-    signal: AbortSignal | undefined,
-  ): Promise<ResultType<ForgejoViewPayload, ForgeOperationError>> {
-    if (signal?.aborted === true) {
-      return cancelledView();
-    }
-    const result = await adapterHelpers.executeForgeJson(
-      kind,
-      executableName,
-      this.cwd,
+    return this.cli.json(
       ["--json", "pr", "view", String(number), "--repo", repository],
-      normalizeViewPayload,
+      decodeView(this.cli),
       signal,
-    );
-    if (result.isOk()) {
-      this.pullRequestViews.set(`${repository}#${number}`, result.value);
-    }
-    return result;
-  }
-
-  private getRepository(signal: AbortSignal | undefined) {
-    return this.repositoryReader(signal);
-  }
-
-  private async readComments(
-    number: number,
-    repository: string,
-    signal: AbortSignal | undefined,
-  ): Promise<ForgeSection<readonly PullRequestComment[]>> {
-    const result = await adapterHelpers.executeForgeJson(
-      kind,
-      executableName,
-      this.cwd,
-      [
-        "--json",
-        "pr",
-        "view",
-        String(number),
-        "--repo",
-        repository,
-        "comments",
-      ],
-      normalizeComments,
-      signal,
-    );
-    return adapterHelpers.sectionFromResult(result);
-  }
-
-  private async readPatch(
-    number: number,
-    repository: string,
-    signal: AbortSignal | undefined,
-  ): Promise<ForgeSection<PullRequestPatch>> {
-    return adapterHelpers.readForgePatch(
-      kind,
-      executableName,
-      this.cwd,
-      ["--json", "pr", "view", String(number), "--repo", repository, "diff"],
-      signal,
-    );
-  }
-
-  private constructor(private readonly cwd: string) {
-    this.repositoryReader = adapterHelpers.createCachedForgeRepositoryReader(
-      ["--json", "repo", "view"],
-      normalizeRepositoryPayload,
-      kind,
-      executableName,
-      cwd,
     );
   }
 }
 
-function normalizeRepositoryPayload(
-  cause: unknown,
-): ResultType<ForgeRepository, ForgeOperationError> {
-  const payload = adapterHelpers.parseForgeSchema(
-    kind,
-    repositorySchema,
-    cause,
-    "Forgejo repository response did not match the schema",
-  );
-  if (payload.isErr()) {
-    return payload;
-  }
-  return normalizeRepository(
-    kind,
-    payload.value.full_name,
-    payload.value.html_url ?? payload.value.url,
-  );
-}
-
-function normalizeList(
-  cause: unknown,
-): ResultType<readonly PullRequestSummary[], ForgeOperationError> {
-  return adapterHelpers
-    .parseForgeSchema(
-      kind,
-      issueSchema.array(),
+function decodeRepository(cli: ForgeCli) {
+  return (cause: unknown): ResultType<ForgeRepository, ForgeOperationError> => {
+    const payload = cli.parse(
+      repositorySchema,
       cause,
-      "Forgejo pull request list did not match the schema",
-    )
-    .map((payload) => payload.map(normalizeSummary));
+      "Forgejo repository response did not match the schema",
+    );
+    if (payload.isErr()) {
+      return payload;
+    }
+    return normalizeRepository(
+      kind,
+      payload.value.full_name,
+      payload.value.html_url ?? payload.value.url,
+    );
+  };
+}
+
+function decodeList(cli: ForgeCli) {
+  return (
+    cause: unknown,
+  ): ResultType<readonly PullRequestSummary[], ForgeOperationError> =>
+    cli
+      .parse(
+        issueSchema.array(),
+        cause,
+        "Forgejo pull request list did not match the schema",
+      )
+      .map((payload) => payload.map(normalizeSummary));
+}
+
+function decodeView(cli: ForgeCli) {
+  return (
+    cause: unknown,
+  ): ResultType<ForgejoViewPayload, ForgeOperationError> =>
+    cli.parse(
+      viewSchema,
+      cause,
+      "Forgejo pull request response did not match the schema",
+    );
+}
+
+function decodeComments(
+  payload: readonly ForgejoComment[],
+): ResultType<readonly PullRequestComment[], ForgeOperationError> {
+  return Result.ok(payload.map(normalizeComment));
 }
 
 function normalizeSummary(payload: ForgejoIssue): PullRequestSummary {
   const pullRequest = payload.pull_request;
-  return createPullRequestSummary(
-    payload.number,
-    payload.title,
-    normalizeState(payload.state, pullRequest?.merged === true),
-    pullRequest?.draft ?? null,
-    normalizeUser(payload.user),
-    normalizeDate(payload.updated_at),
-    payload.html_url ?? payload.url ?? null,
-  );
-}
-
-function normalizeViewPayload(
-  cause: unknown,
-): ResultType<ForgejoViewPayload, ForgeOperationError> {
-  return adapterHelpers.parseForgeSchema(
-    kind,
-    viewSchema,
-    cause,
-    "Forgejo pull request response did not match the schema",
-  );
-}
-
-function normalizeOverviewFields(
-  payload: ForgejoViewPayload,
-  expectedNumber: number,
-): ResultType<
-  Pick<PullRequestOverview, "number" | "body">,
-  ForgeOperationError
-> {
-  if (payload.number !== expectedNumber) {
-    return incompatible(
-      kind,
-      `Forgejo pull request overview number did not match ${expectedNumber}`,
-    );
-  }
-  return Result.ok({ number: payload.number, body: payload.body ?? null });
+  return {
+    number: payload.number,
+    title: payload.title,
+    state: normalizeState(payload.state, pullRequest?.merged === true),
+    isDraft: pullRequest?.draft ?? null,
+    author: normalizeUser(payload.user),
+    updatedAt: normalizeDate(payload.updated_at),
+    url: payload.html_url ?? payload.url ?? null,
+  };
 }
 
 function normalizeDetailsFields(
   payload: ForgejoViewPayload,
   repository: ForgeRepository,
   expectedNumber: number,
-): ResultType<ForgejoDetailsFields, ForgeOperationError> {
+): ResultType<PullRequestDetails, ForgeOperationError> {
   if (payload.number !== expectedNumber) {
     return incompatible(
       kind,
@@ -629,7 +407,6 @@ function normalizeDetailsFields(
       mergeable: payload.mergeable ?? null,
       mergeState: null,
       reviewDecision: unsupported(
-        ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
         "Forgejo review decision is not exposed by the current CLI",
       ),
       mergeCommitSha: payload.merge_commit_sha ?? null,
@@ -664,12 +441,6 @@ function normalizeBranch(
   }));
 }
 
-function sectionValue<T>(
-  result: ResultType<ForgeSection<T>, ForgeOperationError>,
-): ForgeSection<T> {
-  return result.isOk() ? result.value : failed(result.error);
-}
-
 function failedReviews(error: ForgeOperationError): PullRequestReviewsResource {
   return {
     reviews: failed(error),
@@ -683,11 +454,9 @@ function reviewsFromView(
 ): PullRequestReviewsResource {
   return {
     reviews: unsupported(
-      ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
       "The Forgejo CLI does not expose submitted pull request reviews",
     ),
     reviewComments: unsupported(
-      ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
       "The Forgejo CLI does not expose inline review comments",
     ),
     requestedReviewers: normalizeRequestedReviewers(payload),
@@ -700,17 +469,18 @@ function overviewFromView(
   number: number,
   conversationComments: ForgeSection<readonly PullRequestComment[]>,
 ): ResultType<PullRequestOverview, ForgeOperationError> {
-  const fields = normalizeOverviewFields(payload, number);
+  const fields = normalizeOverviewFields(kind, payload, number);
   if (fields.isErr()) {
     return fields;
   }
-  return Result.ok(
-    assemblePullRequestOverview(
-      repository,
-      fields.value,
-      addCommentTruncation(conversationComments, payload.comments ?? null),
+  return Result.ok({
+    repository,
+    ...fields.value,
+    conversationComments: addCommentTruncation(
+      conversationComments,
+      payload.comments ?? null,
     ),
-  );
+  });
 }
 
 function normalizeRequestedReviewers(
@@ -721,18 +491,12 @@ function normalizeRequestedReviewers(
     payload.requested_reviewers_teams === undefined
   ) {
     return unsupported(
-      ForgeUnsupportedReasonCode.ProviderResponseDoesNotInclude,
       "Forgejo did not include requested reviewer fields in the PR response",
     );
   }
 
-  const users = (payload.requested_reviewers ?? []).flatMap((user) => {
-    const normalized = normalizeUser(user);
-    return normalized === null ? [] : [normalized];
-  });
-  const teams = (payload.requested_reviewers_teams ?? [])
-    .map((team) => normalizeTeam(team))
-    .filter((team): team is ForgeTeam => team !== null);
+  const users = normalizeUsers(payload.requested_reviewers);
+  const teams = normalizeTeams(payload.requested_reviewers_teams);
 
   return {
     status: "available",
@@ -751,23 +515,7 @@ function normalizeAssignees(payload: ForgejoViewPayload): readonly ForgeUser[] {
   ) {
     users = [payload.assignee];
   }
-  return users.flatMap((user) => {
-    const normalized = normalizeUser(user);
-    return normalized === null ? [] : [normalized];
-  });
-}
-
-function normalizeComments(
-  cause: unknown,
-): ResultType<readonly PullRequestComment[], ForgeOperationError> {
-  return adapterHelpers
-    .parseForgeSchema(
-      kind,
-      commentsSchema,
-      cause,
-      "Forgejo comments response did not match the schema",
-    )
-    .map((payload) => payload.map(normalizeComment));
+  return normalizeUsers(users);
 }
 
 function normalizeComment(payload: ForgejoComment): PullRequestComment {

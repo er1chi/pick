@@ -6,7 +6,7 @@ import {
   viewCommit,
   viewPullRequest,
 } from "@/context/view-context";
-import { failed } from "@/services/forge/normalization";
+import { failed } from "@/services/forge/section";
 
 import type { Accessor } from "solid-js";
 import type { ForgeService } from "@/services/forge/forge-service";

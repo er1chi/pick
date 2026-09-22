@@ -1,9 +1,5 @@
 import { Result } from "better-result";
-import { ForgeUnsupportedReasonCode, PullRequestState } from "./types";
-import {
-  ForgeIncompatibleResponseError,
-  ForgeInvalidRequestError,
-} from "./types";
+import { ForgeIncompatibleResponseError, PullRequestState } from "./types";
 
 import type {
   ForgeKind,
@@ -11,13 +7,11 @@ import type {
   ForgeRepository,
   ForgeSection,
   ForgeTeam,
-  ForgeUnsupportedReason,
   ForgeUser,
   PullRequestComment,
   PullRequestLabel,
   PullRequestMilestone,
   PullRequestOverview,
-  PullRequestSummary,
 } from "./types";
 
 export interface ForgeUserPayload {
@@ -103,7 +97,15 @@ export function normalizeUser(
   };
 }
 
-export function normalizeTeam(
+export function normalizeUsers(
+  payloads: readonly ForgeUserPayload[] | null | undefined,
+): readonly ForgeUser[] {
+  return (payloads ?? [])
+    .map(normalizeUser)
+    .filter((user): user is ForgeUser => user !== null);
+}
+
+function normalizeTeam(
   payload: ForgeTeamPayload | null | undefined,
 ): ForgeTeam | null {
   if (payload === null || payload === undefined) {
@@ -118,12 +120,12 @@ export function normalizeTeam(
   };
 }
 
-export function assemblePullRequestOverview(
-  repository: ForgeRepository,
-  fields: Pick<PullRequestOverview, "number" | "body">,
-  conversationComments: ForgeSection<readonly PullRequestComment[]>,
-): PullRequestOverview {
-  return { repository, ...fields, conversationComments };
+export function normalizeTeams(
+  payloads: readonly ForgeTeamPayload[] | null | undefined,
+): readonly ForgeTeam[] {
+  return (payloads ?? [])
+    .map(normalizeTeam)
+    .filter((team): team is ForgeTeam => team !== null);
 }
 
 export function addCommentTruncation(
@@ -139,16 +141,19 @@ export function addCommentTruncation(
   };
 }
 
-export function createPullRequestSummary(
-  number: number,
-  title: string,
-  state: PullRequestState,
-  isDraft: boolean | null,
-  author: ForgeUser | null,
-  updatedAt: string | null,
-  url: string | null,
-): PullRequestSummary {
-  return { number, title, state, isDraft, author, updatedAt, url };
+export function normalizeOverviewFields(
+  kind: ForgeKind,
+  payload: { readonly number: number; readonly body?: string | null },
+  expectedNumber: number,
+): Result<Pick<PullRequestOverview, "number" | "body">, ForgeOperationError> {
+  if (payload.number !== expectedNumber) {
+    return incompatible(
+      kind,
+      `${kind} pull request number did not match ${expectedNumber}`,
+    );
+  }
+
+  return Result.ok({ number: payload.number, body: payload.body ?? null });
 }
 
 export function normalizeLabel(payload: ForgeLabelPayload): PullRequestLabel {
@@ -195,7 +200,7 @@ export function normalizeState(
 
 export function normalizeGithubState(
   state: string,
-  mergedAt: string | Date | null | undefined,
+  mergedAt?: string | Date | null,
 ): PullRequestState {
   if (
     (mergedAt !== null && mergedAt !== undefined) ||
@@ -219,58 +224,9 @@ export function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
 
-export function available<T>(value: T, truncated = false): ForgeSection<T> {
-  return { status: "available", value, truncated };
-}
-
-export function unsupported<T>(
-  code: ForgeUnsupportedReasonCode,
-  diagnostic: string,
-): ForgeSection<T> {
-  const reason: ForgeUnsupportedReason = { code, diagnostic };
-  return { status: "unsupported", reason };
-}
-
-export function failed<T>(error: ForgeOperationError): ForgeSection<T> {
-  return { status: "failed", error };
-}
-
 export function incompatible<T>(
   kind: ForgeKind,
   message: string,
 ): Result<T, ForgeOperationError> {
   return Result.err(new ForgeIncompatibleResponseError({ kind, message }));
-}
-
-export function invalidRequest<T>(
-  kind: ForgeKind,
-  message: string,
-): Result<T, ForgeOperationError> {
-  return Result.err(new ForgeInvalidRequestError({ kind, message }));
-}
-
-export function validateCommitSha(
-  kind: ForgeKind,
-  sha: string,
-): Result<string, ForgeOperationError> {
-  if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
-    return invalidRequest(
-      kind,
-      "Commit SHA must be 7 to 40 hexadecimal characters",
-    );
-  }
-  return Result.ok(sha);
-}
-
-export function validatePullRequestNumber(
-  kind: ForgeKind,
-  number: number,
-): Result<number, ForgeOperationError> {
-  if (!Number.isSafeInteger(number) || number <= 0) {
-    return invalidRequest(
-      kind,
-      "Pull request number must be a positive safe integer",
-    );
-  }
-  return Result.ok(number);
 }

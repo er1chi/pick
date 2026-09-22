@@ -1,6 +1,7 @@
+import { fileDisplayRows } from "./file-lines";
+
 import type { FileContents } from "@pierre/diffs";
 import type { DisplayRow, DisplayRowKind } from "./display-row";
-import { fileDisplayRows } from "./file-lines";
 
 const MARKER_START = "<<<<<<<";
 const MARKER_BASE = "|||||||";

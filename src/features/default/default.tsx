@@ -1,49 +1,25 @@
-import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
+import { useBindings } from "@opentui/keymap/solid";
+import { toast } from "@tuiparts/toast/solid";
+import { For, Show, createEffect, createSignal, onMount } from "solid-js";
+import { SelectableRow } from "@/components/selectable-row";
 import {
-  RepositorySelectionErrorCode,
-  useAppContext,
+  useForgeContext,
   type RepositorySelectionError,
-} from "@/context/app-context";
+} from "@/context/forge-context";
 import {
   discoverRecentRepositories,
   type RecentRepository,
   type RepositoryDiscoveryError,
 } from "@/services/repo-discovery";
-import { moveInList } from "@/utils/navigation";
 import { colors } from "@/theme";
-import { useBindings } from "@opentui/keymap/solid";
-import { toast } from "@tuiparts/toast/solid";
-import { For, Show, createEffect, createSignal, onMount } from "solid-js";
+import { moveInList } from "@/utils/navigation";
+
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 
 const discoveryRootLabel = "~/Developer";
 
-function RepositoryRow(props: {
-  readonly repository: RecentRepository;
-  readonly selected: boolean;
-}) {
-  return (
-    <box
-      id={props.repository.path}
-      flexDirection="row"
-      gap={1}
-      width="100%"
-      backgroundColor={props.selected ? colors.selected : undefined}
-    >
-      <text fg={props.selected ? colors.blue : colors.dim}>
-        {props.selected ? ">" : " "}
-      </text>
-      <text fg={colors.foreground}>
-        <strong>{props.repository.name}</strong>
-      </text>
-      <text fg={props.selected ? colors.foreground : colors.dim}>
-        {props.repository.displayPath}
-      </text>
-    </box>
-  );
-}
-
 export function Default() {
-  const appContext = useAppContext();
+  const forgeContext = useForgeContext();
   const [repositories, setRepositories] = createSignal<
     readonly RecentRepository[]
   >([]);
@@ -97,19 +73,15 @@ export function Default() {
     error: RepositorySelectionError,
     repositoryName: string,
   ): void {
-    switch (error.code) {
-      case RepositorySelectionErrorCode.DirectoryChangeFailed:
-        toast.error(`Could not open ${repositoryName}.`);
-        return;
-      case RepositorySelectionErrorCode.ContextInitializationFailed:
-        toast.error(`Could not initialize ${repositoryName}.`);
-        return;
-      case RepositorySelectionErrorCode.TransitionInProgress:
-        return;
-    }
+    error.match({
+      RepositoryDirectoryChangeFailedError: () =>
+        toast.error(`Could not open ${repositoryName}.`),
+      RepositoryContextInitializationFailedError: () =>
+        toast.error(`Could not initialize ${repositoryName}.`),
+    });
   }
 
-  function activateSelectedRepository(): void {
+  async function activateSelectedRepository(): Promise<void> {
     const currentRepositories = repositories();
     const currentSelectedPath = selectedPath();
     const selectedRepository = currentRepositories.find(
@@ -119,16 +91,12 @@ export function Default() {
       return;
     }
 
-    void appContext
-      .selectRepository(selectedRepository.path)
-      .then((result) => {
-        if (result.isErr()) {
-          notifyRepositorySelectionError(result.error, selectedRepository.name);
-        }
-      })
-      .catch(() => {
-        toast.error(`Could not open ${selectedRepository.name}.`);
-      });
+    // `selectRepository` never rejects: every failure mode is a tagged error
+    // carried in the `Result`.
+    const result = await forgeContext.selectRepository(selectedRepository.path);
+    if (result.isErr()) {
+      notifyRepositorySelectionError(result.error, selectedRepository.name);
+    }
   }
 
   useBindings(() => ({
@@ -157,23 +125,26 @@ export function Default() {
   }));
 
   onMount(() => {
-    void discoverRecentRepositories()
-      .then((result) => {
-        result.match({
-          ok: (discoveredRepositories) => {
-            setRepositories(discoveredRepositories);
-            setDiscoveryError(undefined);
-          },
-          err: (error) => {
-            setRepositories([]);
-            setDiscoveryError(error);
-          },
-        });
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    void loadRecentRepositories();
   });
+
+  async function loadRecentRepositories(): Promise<void> {
+    try {
+      const result = await discoverRecentRepositories();
+      result.match({
+        ok: (discoveredRepositories) => {
+          setRepositories(discoveredRepositories);
+          setDiscoveryError(undefined);
+        },
+        err: (error) => {
+          setRepositories([]);
+          setDiscoveryError(error);
+        },
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   return (
     <box
@@ -220,8 +191,10 @@ export function Default() {
             >
               <For each={repositories()}>
                 {(repository) => (
-                  <RepositoryRow
-                    repository={repository}
+                  <SelectableRow
+                    id={repository.path}
+                    label={repository.name}
+                    detail={repository.displayPath}
                     selected={repository.path === selectedPath()}
                   />
                 )}

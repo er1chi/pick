@@ -1,5 +1,6 @@
 export { FileTree, type FileTreeProps } from "./file-tree";
 export { FileTreeRow } from "./file-tree-row";
+export { fileTreeRowLabel, fileTreeRowPrefix } from "./file-tree-row";
 export { useFileTree, type UseFileTreeResult } from "./hooks/use-file-tree";
 export {
   useFileTreeSearch,
@@ -12,4 +13,5 @@ export {
 } from "./hooks/use-file-tree-selector";
 export { useFileTreeSelection } from "./hooks/use-file-tree-selection";
 export { areArraysEqual } from "./utils/arrays";
+export { areVisibleRowsEqual, getAllVisibleRows } from "./utils/visible-rows";
 export type { FileTree as FileTreeModel } from "@pierre/trees";

@@ -1,7 +1,8 @@
-import type { FileContents } from "@pierre/diffs";
 import { createMemo } from "solid-js";
 import { FileLike } from "./file-like";
 import { fileDisplayRows } from "./utils/file-lines";
+
+import type { FileContents } from "@pierre/diffs";
 import type { FileViewProps } from "./types";
 
 export interface FileProps<

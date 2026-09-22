@@ -1,12 +1,13 @@
-import type { ChangeTypes, FileDiffMetadata } from "@pierre/diffs";
 import { createMemo } from "solid-js";
-import { AnnotatedCodeSurface } from "./code-surface";
 import { CodeHeader } from "./code-header";
+import { AnnotatedCodeSurface } from "./code-surface";
 import {
   diffAnnotationsForRow,
   diffFileLevelAnnotations,
 } from "./utils/annotations";
 import { flattenHunks } from "./utils/flatten-hunks";
+
+import type { ChangeTypes, FileDiffMetadata } from "@pierre/diffs";
 import type { DiffBaseProps } from "./types";
 
 export type { FileDiffMetadata };

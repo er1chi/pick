@@ -1,6 +1,7 @@
 import { getSingularPatch } from "@pierre/diffs";
 import { createMemo, splitProps } from "solid-js";
 import { FileDiff } from "./file-diff";
+
 import type { DiffBaseProps } from "./types";
 
 export interface PatchDiffProps<

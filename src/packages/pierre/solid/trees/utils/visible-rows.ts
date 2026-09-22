@@ -1,8 +1,9 @@
+import { areArrayItemsEqual } from "./arrays";
+
 import type {
   FileTree as FileTreeModel,
   FileTreeVisibleRow,
 } from "@pierre/trees";
-import { areArrayItemsEqual } from "./arrays";
 
 export function getAllVisibleRows(
   model: FileTreeModel,

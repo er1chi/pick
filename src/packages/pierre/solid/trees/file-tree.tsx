@@ -1,17 +1,18 @@
-import { colors } from "@/theme";
-import type { BoxRenderable, InputRenderable } from "@opentui/core";
 import { useBindings } from "@opentui/keymap/solid";
+import { For, Show, createSignal, type JSX } from "solid-js";
+import { colors } from "@/theme";
+import { FileTreeRow } from "./file-tree-row";
+import { useFileTreeSearch } from "./hooks/use-file-tree-search";
+import { useFileTreeSelector } from "./hooks/use-file-tree-selector";
+import { areVisibleRowsEqual, getAllVisibleRows } from "./utils/visible-rows";
+
+import type { BoxRenderable, InputRenderable } from "@opentui/core";
 import type {
   FileTree as FileTreeModel,
   FileTreeDirectoryHandle,
   FileTreeItemHandle,
   FileTreeVisibleRow,
 } from "@pierre/trees";
-import { For, Show, createSignal, type JSX } from "solid-js";
-import { FileTreeRow } from "./file-tree-row";
-import { useFileTreeSearch } from "./hooks/use-file-tree-search";
-import { useFileTreeSelector } from "./hooks/use-file-tree-selector";
-import { areVisibleRowsEqual, getAllVisibleRows } from "./utils/visible-rows";
 
 export interface FileTreeProps {
   header?: JSX.Element;

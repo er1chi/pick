@@ -1,5 +1,18 @@
 {
   "printWidth": 80,
   "useTabs": false,
-  "ignorePatterns": ["vendor/**", "node_modules/**"]
+  "ignorePatterns": ["vendor/**", "node_modules/**"],
+  "sortImports": {
+    "newlinesBetween": false,
+    "groups": [
+      ["value-builtin", "value-external"],
+      "value-internal",
+      ["value-parent", "value-sibling", "value-index"],
+      { "newlinesBetween": true },
+      ["type-builtin", "type-external"],
+      "type-internal",
+      ["type-parent", "type-sibling", "type-index"],
+      "unknown"
+    ]
+  }
 }

@@ -1,0 +1,254 @@
+import { RGBA, type BoxRenderable } from "@opentui/core";
+import { KeymapProvider } from "@opentui/keymap/solid";
+import { testRender, useRenderer } from "@opentui/solid";
+import { describe, expect, test } from "bun:test";
+import {
+  createMemo,
+  createSignal,
+  For,
+  onMount,
+  type Accessor,
+  type JSX,
+  type Setter,
+} from "solid-js";
+import { PaneStore } from "@/context/active-pane-context";
+import {
+  PullRequestProvider,
+  type PullRequestContextValue,
+} from "@/context/pull-request-context";
+import {
+  pullRequestViewId,
+  ViewContextProvider,
+  type ActiveView,
+} from "@/context/view-context";
+import { createAppKeymap } from "@/shared/keymap";
+import { colors } from "@/theme";
+import { Pane } from "@/types";
+import { CommitsBox } from "../../components/commits-box";
+
+import type {
+  PullRequestCommit,
+  PullRequestDocument,
+} from "@/services/forge/types";
+
+type TestSetup = Awaited<ReturnType<typeof testRender>>;
+
+const COMMIT_A: PullRequestCommit = {
+  sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  message: "add sidebar layout",
+  author: null,
+  committer: null,
+  authoredAt: null,
+  committedAt: null,
+  url: null,
+};
+
+const COMMIT_B: PullRequestCommit = {
+  sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  message: "fix commits highlight",
+  author: null,
+  committer: null,
+  authoredAt: null,
+  committedAt: null,
+  url: null,
+};
+
+const openPullRequest: ActiveView = {
+  kind: "pr",
+  id: pullRequestViewId({ owner: "octocat", name: "hello" }, 1),
+  number: 1,
+};
+
+function pullRequestValue(
+  commits: Accessor<readonly PullRequestCommit[]>,
+): PullRequestContextValue {
+  return {
+    data: () => {
+      // SAFETY: CommitsBox only reads `commits` from the document.
+      const document = {
+        commits: {
+          status: "available" as const,
+          value: commits(),
+          truncated: false,
+        },
+      } as PullRequestDocument;
+      return document;
+    },
+    phase: () => "ready",
+    error: () => undefined,
+    refresh() {},
+  };
+}
+
+const listedPullRequest = pullRequestValue(() => [COMMIT_A, COMMIT_B]);
+
+/** Mounts CommitsBox. Defaults the active pane to Commits so `j` is received. */
+function CommitsBoxHarness(props: { readonly pane?: Pane }): JSX.Element {
+  const renderer = useRenderer();
+  // Create the keymap once; it needs the renderer, not per-render setup.
+  const keymap = createMemo(() => createAppKeymap(renderer));
+  return (
+    <PaneStore.Provider>
+      <KeymapProvider keymap={keymap()}>
+        <ViewContextProvider initialView={openPullRequest}>
+          <PullRequestProvider value={listedPullRequest}>
+            <SetActivePane pane={props.pane ?? Pane.Commits} />
+            <CommitsBox rowWidth={30} />
+          </PullRequestProvider>
+        </ViewContextProvider>
+      </KeymapProvider>
+    </PaneStore.Provider>
+  );
+}
+
+function SetActivePane(props: { readonly pane: Pane }): null {
+  const [_pane, setPane] = PaneStore.use();
+  onMount(() => setPane({ active: props.pane }));
+  return null;
+}
+
+interface LayoutHarnessControls {
+  readonly setCommits: Setter<readonly PullRequestCommit[]>;
+  readonly setFileRows: Setter<number>;
+}
+
+function CommitsBoxLayoutHarness(props: {
+  readonly ready: (controls: LayoutHarnessControls) => void;
+}): JSX.Element {
+  const renderer = useRenderer();
+  const keymap = createMemo(() => createAppKeymap(renderer));
+  const [commits, setCommits] = createSignal<readonly PullRequestCommit[]>([]);
+  const [fileRows, setFileRows] = createSignal(1);
+  const pullRequest = pullRequestValue(commits);
+
+  onMount(() => props.ready({ setCommits, setFileRows }));
+
+  return (
+    <PaneStore.Provider>
+      <KeymapProvider keymap={keymap()}>
+        <ViewContextProvider initialView={openPullRequest}>
+          <PullRequestProvider value={pullRequest}>
+            <box flexDirection="column" width={40} height={20}>
+              <box flexGrow={1} minHeight={0} overflow="hidden">
+                <For each={Array.from({ length: fileRows() })}>
+                  {(_, index) => <text id={`file-row-${index()}`}>file</text>}
+                </For>
+              </box>
+              <CommitsBox rowWidth={30} />
+            </box>
+          </PullRequestProvider>
+        </ViewContextProvider>
+      </KeymapProvider>
+    </PaneStore.Provider>
+  );
+}
+
+/** SelectableRow paints its selected background with `colors.border`. */
+const selectedBackground = RGBA.fromHex(colors.border).toInts();
+
+function rowBackground(setup: TestSetup, sha: string): readonly number[] {
+  const row = setup.renderer.root.findDescendantById(`commit-${sha}`);
+  if (row === undefined) {
+    throw new Error(`missing commit row renderable: ${sha}`);
+  }
+  // SAFETY: `commit-<sha>` ids are only assigned to SelectableRow's box.
+  return (row as BoxRenderable).backgroundColor.toInts();
+}
+
+function isSelected(setup: TestSetup, sha: string): boolean {
+  const background = rowBackground(setup, sha);
+  return selectedBackground.every(
+    (channel, index) => channel === background[index],
+  );
+}
+
+function commitsBoxHeight(setup: TestSetup): number {
+  const node = setup.renderer.root.findDescendantById(Pane.Commits);
+  if (node === undefined) {
+    throw new Error("missing commits box renderable");
+  }
+  // SAFETY: Pane.Commits is only assigned to the commits SidebarBox.
+  return (node as BoxRenderable).height;
+}
+
+describe("CommitsBox", () => {
+  test("j moves the keyboard highlight from the first to the second commit", async () => {
+    const setup = await testRender(() => <CommitsBoxHarness />, {
+      width: 40,
+      height: 12,
+    });
+    try {
+      await setup.waitFor(() => isSelected(setup, COMMIT_A.sha));
+
+      // First paint: the first commit row carries the selected background.
+      expect(isSelected(setup, COMMIT_A.sha)).toBe(true);
+      expect(isSelected(setup, COMMIT_B.sha)).toBe(false);
+
+      setup.mockInput.pressKey("j");
+      await setup.waitFor(() => isSelected(setup, COMMIT_B.sha));
+
+      // The highlight moves: second row selected, first row cleared.
+      expect(isSelected(setup, COMMIT_B.sha)).toBe(true);
+      expect(isSelected(setup, COMMIT_A.sha)).toBe(false);
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("unfocused pane with no open commit selects no row", async () => {
+    const setup = await testRender(
+      () => <CommitsBoxHarness pane={Pane.PullRequests} />,
+      { width: 40, height: 12 },
+    );
+    try {
+      await setup.waitFor(() => {
+        const first = setup.renderer.root.findDescendantById(
+          `commit-${COMMIT_A.sha}`,
+        );
+        const second = setup.renderer.root.findDescendantById(
+          `commit-${COMMIT_B.sha}`,
+        );
+        return (
+          first !== undefined &&
+          second !== undefined &&
+          !isSelected(setup, COMMIT_A.sha) &&
+          !isSelected(setup, COMMIT_B.sha)
+        );
+      });
+      expect(isSelected(setup, COMMIT_A.sha)).toBe(false);
+      expect(isSelected(setup, COMMIT_B.sha)).toBe(false);
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("grows from its empty row to a stable capped height", async () => {
+    let controls: LayoutHarnessControls | undefined;
+    const setup = await testRender(
+      () => <CommitsBoxLayoutHarness ready={(value) => (controls = value)} />,
+      { width: 40, height: 20 },
+    );
+
+    try {
+      await setup.waitFor(() => controls !== undefined);
+      expect(commitsBoxHeight(setup)).toBe(3);
+
+      controls?.setCommits(
+        Array.from({ length: 20 }, (_, index) => ({
+          ...COMMIT_A,
+          sha: String(index).padStart(40, "0"),
+        })),
+      );
+      await setup.waitFor(() => commitsBoxHeight(setup) === 15);
+
+      controls?.setFileRows(20);
+      await setup.waitFor(
+        () =>
+          setup.renderer.root.findDescendantById("file-row-19") !== undefined,
+      );
+      expect(commitsBoxHeight(setup)).toBe(15);
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+});

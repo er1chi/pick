@@ -37,13 +37,11 @@ import type {
   PullRequestDetails,
   PullRequestDevelopment,
   PullRequestDocument,
-  PullRequestDocumentUpdate,
   PullRequestLinkedIssue,
   PullRequestList,
   PullRequestListOptions,
   PullRequestOverview,
   PullRequestOverviewOptions,
-  PullRequestLoadOptions,
   PullRequestPatch,
   PullRequestRef,
   PullRequestProject,
@@ -214,7 +212,7 @@ export class ForgejoService implements ForgeAdapter {
 
   public loadPullRequest(
     number: number,
-    options: PullRequestLoadOptions = {},
+    options: PullRequestResourceOptions = {},
   ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
     return adapterHelpers.withForgeRepository(
       (signal) => this.getRepository(signal),
@@ -374,22 +372,10 @@ export class ForgejoService implements ForgeAdapter {
   private async assemblePullRequest(
     number: number,
     repository: ForgeRepository,
-    options: PullRequestLoadOptions,
+    options: PullRequestResourceOptions,
   ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
     const signal = options.signal;
-    const publish = (update: PullRequestDocumentUpdate): void => {
-      if (signal?.aborted === true) {
-        return;
-      }
-      options.onUpdate?.(update);
-    };
-
-    const diffTask = this.readPatch(number, repository.fullName, signal).then(
-      (diff) => {
-        publish({ diff });
-        return diff;
-      },
-    );
+    const diffTask = this.readPatch(number, repository.fullName, signal);
     const viewTask = this.getView(number, repository.fullName, signal);
     const commentsTask = this.readComments(number, repository.fullName, signal);
     const [commits, checks, development] = await Promise.all([
@@ -407,11 +393,6 @@ export class ForgejoService implements ForgeAdapter {
             development.error,
           ),
         };
-    publish({
-      commits: commitsSection,
-      checks: checksSection,
-      development: developmentSection,
-    });
 
     const [view, comments] = await Promise.all([viewTask, commentsTask]);
 
@@ -421,12 +402,10 @@ export class ForgejoService implements ForgeAdapter {
     const reviews = view.isErr()
       ? failedReviews(view.error)
       : reviewsFromView(view.value);
-    publish({ details, reviews });
 
     const overview = view.isErr()
       ? Result.err(view.error)
       : overviewFromView(view.value, repository, number, comments);
-    publish({ overview });
 
     const diff = await diffTask;
     return Result.ok({

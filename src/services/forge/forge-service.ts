@@ -23,7 +23,6 @@ import type {
   PullRequestList,
   PullRequestListOptions,
   PullRequestListState,
-  PullRequestLoadOptions,
   PullRequestOverview,
   PullRequestOverviewOptions,
   PullRequestPatch,
@@ -121,7 +120,7 @@ export class ForgeService {
 
   public loadPullRequest(
     number: number,
-    options?: PullRequestLoadOptions,
+    options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestDocument, ForgeOperationError>> {
     return this.fetchResource(number, options, (value) =>
       this.adapter.loadPullRequest(value, options),

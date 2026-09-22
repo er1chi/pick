@@ -38,11 +38,9 @@ import type {
   PullRequestDetails,
   PullRequestDevelopment,
   PullRequestDocument,
-  PullRequestDocumentUpdate,
   PullRequestLinkedIssue,
   PullRequestList,
   PullRequestListOptions,
-  PullRequestLoadOptions,
   PullRequestOverview,
   PullRequestOverviewOptions,
   PullRequestPatch,
@@ -115,7 +113,7 @@ export class GithubService implements ForgeAdapter {
 
   public loadPullRequest(
     number: number,
-    options: PullRequestLoadOptions = {},
+    options: PullRequestResourceOptions = {},
   ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
     return adapterHelpers.withForgeRepository(
       this.repositoryReader,
@@ -262,34 +260,12 @@ export class GithubService implements ForgeAdapter {
   private async loadRepositoryPullRequest(
     number: number,
     repository: ForgeRepository,
-    options: PullRequestLoadOptions,
+    options: PullRequestResourceOptions,
   ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
     const signal = options.signal;
-    const publish = (update: PullRequestDocumentUpdate): void => {
-      if (signal?.aborted === true) {
-        return;
-      }
-      options.onUpdate?.(update);
-    };
-
-    const commitsTask = this.readCommits(repository, number, signal).then(
-      (commits) => {
-        publish({ commits });
-        return commits;
-      },
-    );
-    const reviewsTask = this.readReviews(repository, number, signal).then(
-      (reviews) => {
-        publish({ reviews });
-        return reviews;
-      },
-    );
-    const diffTask = this.readPullRequestDiff(repository, number, signal).then(
-      (diff) => {
-        publish({ diff });
-        return diff;
-      },
-    );
+    const commitsTask = this.readCommits(repository, number, signal);
+    const reviewsTask = this.readReviews(repository, number, signal);
+    const diffTask = this.readPullRequestDiff(repository, number, signal);
     const commentsTask = this.readConversationComments(
       repository,
       number,
@@ -299,11 +275,6 @@ export class GithubService implements ForgeAdapter {
     const projected = view.isOk()
       ? this.projectView(view.value, repository, number)
       : failedView(view.error);
-    publish({
-      details: projected.details,
-      checks: projected.checks,
-      development: projected.development,
-    });
 
     const comments = await commentsTask;
     const overview = projected.overview.isErr()
@@ -315,7 +286,6 @@ export class GithubService implements ForgeAdapter {
             comments,
           ),
         );
-    publish({ overview });
 
     const [commits, reviews, diff] = await Promise.all([
       commitsTask,

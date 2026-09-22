@@ -1,8 +1,8 @@
 import { Result } from "better-result";
-import { ForgeCommandFailedError } from "./types";
+import { ForgeCommandFailedError } from "../types";
 
-import type { CliRunner } from "./forge-cli";
-import type { CliExecutionError, ForgeKind } from "./types";
+import type { CliRunner } from "../forge-cli";
+import type { CliExecutionError, ForgeKind } from "../types";
 
 interface RecordedCall {
   readonly executable: string;

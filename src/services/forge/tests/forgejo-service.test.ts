@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { ForgejoService } from "../forgejo-service";
+import { ApplicationContext, PullRequestState } from "../types";
 import { createFakeCli, exact, stdout } from "./fake-cli-runner";
-import { ForgejoService } from "./forgejo-service";
-import { ApplicationContext, PullRequestState } from "./types";
 
 import type { Result as ResultType } from "better-result";
 import type { CannedCommand, FakeCli } from "./fake-cli-runner";

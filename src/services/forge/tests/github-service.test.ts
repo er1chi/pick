@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createFakeCli, exact, fails, prefix, stdout } from "./fake-cli-runner";
-import { ForgeCli } from "./forge-cli";
-import { GithubService } from "./github-service";
+import { ForgeCli } from "../forge-cli";
+import { GithubService } from "../github-service";
 import {
   ApplicationContext,
   ForgeCommandFailedError,
@@ -9,7 +8,8 @@ import {
   ForgeExecutableUnavailableError,
   ForgeInvalidJsonError,
   ForgeVersionCheckFailedError,
-} from "./types";
+} from "../types";
+import { createFakeCli, exact, fails, prefix, stdout } from "./fake-cli-runner";
 
 import type { Result as ResultType } from "better-result";
 import type { CannedCommand, FakeCli } from "./fake-cli-runner";

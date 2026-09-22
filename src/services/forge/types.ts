@@ -92,7 +92,6 @@ export class ForgeIncompatibleResponseError extends TaggedError(
   readonly message: string;
 }> {}
 
-/** Raised by the service boundary when an operation throws unexpectedly. */
 export class ForgeUnexpectedError extends TaggedError("ForgeUnexpectedError")<{
   readonly kind: ForgeKind;
   readonly cause: unknown;
@@ -336,7 +335,6 @@ export interface PullRequestResourceOptions {
   readonly signal?: AbortSignal;
 }
 
-/** The loaded fields of one pull request. */
 export interface PullRequestDocument {
   readonly overview: Result<PullRequestOverview, ForgeOperationError>;
   readonly details: Result<PullRequestDetails, ForgeOperationError>;
@@ -354,11 +352,6 @@ export interface ForgeAdapter {
     options?: PullRequestListOptions,
   ): Promise<Result<PullRequestList, ForgeOperationError>>;
 
-  /**
-   * Loads one pull request. GitHub issues a single `pr view` for the fields
-   * that command can return, and separate calls for paginated collections and
-   * the patch.
-   */
   loadPullRequest(
     number: number,
     options?: PullRequestResourceOptions,

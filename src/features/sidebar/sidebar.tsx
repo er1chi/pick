@@ -20,8 +20,6 @@ export function Sidebar(props: SidebarProps) {
       width={SIDEBAR_WIDTH}
       minWidth={SIDEBAR_WIDTH}
       maxWidth={SIDEBAR_WIDTH}
-      //flexGrow={0}
-      //flexShrink={0}
       height="100%"
       overflow="hidden"
       gap={0}

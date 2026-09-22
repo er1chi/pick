@@ -64,7 +64,6 @@ export interface ViewContextValue {
   ): void;
   selectCommit(sha: string): void;
   selectFile(path: string): void;
-  /** Drop commit and file selection and show the open pull request. */
   clearSelection(): void;
   /**
    * Close the open file diff, keeping a selected commit; with no diff

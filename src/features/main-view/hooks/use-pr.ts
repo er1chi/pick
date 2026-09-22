@@ -39,7 +39,6 @@ function isReusableCommitPatch(
   return section.status !== "failed";
 }
 
-/** Loads the open pull request and the selected commit patch. */
 export function usePr(): PullRequestContextValue {
   const forgeContext = useForgeContext();
   const viewContext = useViewContext();

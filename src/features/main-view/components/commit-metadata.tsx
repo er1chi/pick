@@ -1,8 +1,8 @@
 import { createMemo, For, Show, type Accessor, type JSX } from "solid-js";
 import { useViewContext } from "@/context/view-context";
 import {
+  MutedLine,
   oneLine,
-  renderMutedLine,
 } from "@/features/main-view/components/pr-view-chrome";
 import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
 import { commitMetaLine } from "@/features/main-view/utils/pr-view-display";
@@ -44,9 +44,12 @@ export function CommitMetadata(props: CommitMetadataProps): JSX.Element {
       flexShrink={0}
     >
       <Show when={props.commit}>
-        {(commit: Accessor<PullRequestCommit>) =>
-          renderMutedLine(commitMetaLine(commit(), counts()), props.maxWidth)
-        }
+        {(commit: Accessor<PullRequestCommit>) => (
+          <MutedLine
+            line={commitMetaLine(commit(), counts())}
+            maxWidth={props.maxWidth}
+          />
+        )}
       </Show>
       <Show when={props.commit === undefined}>
         {oneLine(
@@ -58,23 +61,31 @@ export function CommitMetadata(props: CommitMetadataProps): JSX.Element {
       <For each={commitMessageLines(props.commit)}>
         {(line) => <text fg={colors.foreground}>{line}</text>}
       </For>
-      {renderMutedLine(
-        author() === undefined ? undefined : `Author: ${author()}`,
-        props.maxWidth,
-      )}
-      {renderMutedLine(
-        committer() === undefined ? undefined : `Committer: ${committer()}`,
-        props.maxWidth,
-      )}
-      {renderMutedLine(
-        authoredAt() === undefined ? undefined : `Authored: ${authoredAt()}`,
-        props.maxWidth,
-      )}
-      {renderMutedLine(
-        committedAt() === undefined ? undefined : `Committed: ${committedAt()}`,
-        props.maxWidth,
-      )}
-      {renderMutedLine(url(), props.maxWidth)}
+      <MutedLine
+        line={author() === undefined ? undefined : `Author: ${author()}`}
+        maxWidth={props.maxWidth}
+      />
+      <MutedLine
+        line={
+          committer() === undefined ? undefined : `Committer: ${committer()}`
+        }
+        maxWidth={props.maxWidth}
+      />
+      <MutedLine
+        line={
+          authoredAt() === undefined ? undefined : `Authored: ${authoredAt()}`
+        }
+        maxWidth={props.maxWidth}
+      />
+      <MutedLine
+        line={
+          committedAt() === undefined
+            ? undefined
+            : `Committed: ${committedAt()}`
+        }
+        maxWidth={props.maxWidth}
+      />
+      <MutedLine line={url()} maxWidth={props.maxWidth} />
     </box>
   );
 }

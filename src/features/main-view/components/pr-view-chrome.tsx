@@ -24,19 +24,28 @@ export function oneLine(content: JSX.Element): JSX.Element {
   );
 }
 
-export function renderMutedLine(
-  line: string | undefined,
-  maxWidth?: number,
-): JSX.Element {
+export function MutedLine(props: {
+  readonly line: string | undefined;
+  readonly maxWidth?: number;
+}): JSX.Element {
   return (
-    <Show when={line}>
+    <Show when={props.line}>
       {(value: Accessor<string>) =>
         oneLine(
           <text fg={colors.muted} wrapMode="none" truncate>
-            {maxWidth === undefined ? value() : truncateEnd(value(), maxWidth)}
+            {props.maxWidth === undefined
+              ? value()
+              : truncateEnd(value(), props.maxWidth)}
           </text>,
         )
       }
     </Show>
   );
+}
+
+export function renderMutedLine(
+  line: string | undefined,
+  maxWidth?: number,
+): JSX.Element {
+  return <MutedLine line={line} maxWidth={maxWidth} />;
 }

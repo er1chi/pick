@@ -92,7 +92,7 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
               return (
                 <SelectableRow
                   id={`commit-${commit().sha}`}
-                  selected={highlighted() || active()}
+                  selected={(isFocused() && highlighted()) || active()}
                   label={commit().sha.slice(0, 7)}
                   detail={firstLine(commit().message)}
                   maxWidth={props.rowWidth - 1}

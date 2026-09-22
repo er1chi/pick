@@ -82,9 +82,8 @@ function pullRequestValue(
 
 const listedPullRequest = pullRequestValue(() => [COMMIT_A, COMMIT_B]);
 
-/** Mounts CommitsBox with the pane context pointed at "commits" so its
- * keymap layer receives `j` once the box is focused. */
-function CommitsBoxHarness(): JSX.Element {
+/** Mounts CommitsBox. Defaults the active pane to Commits so `j` is received. */
+function CommitsBoxHarness(props: { readonly pane?: Pane }): JSX.Element {
   const renderer = useRenderer();
   // Create the keymap once; it needs the renderer, not per-render setup.
   const keymap = createMemo(() => createAppKeymap(renderer));
@@ -93,7 +92,7 @@ function CommitsBoxHarness(): JSX.Element {
       <KeymapProvider keymap={keymap()}>
         <ViewContextProvider initialView={openPullRequest}>
           <PullRequestProvider value={listedPullRequest}>
-            <FocusCommitsPane />
+            <SetActivePane pane={props.pane ?? Pane.Commits} />
             <CommitsBox rowWidth={30} />
           </PullRequestProvider>
         </ViewContextProvider>
@@ -102,9 +101,9 @@ function CommitsBoxHarness(): JSX.Element {
   );
 }
 
-function FocusCommitsPane(): null {
+function SetActivePane(props: { readonly pane: Pane }): null {
   const [_pane, setPane] = PaneStore.use();
-  onMount(() => setPane({ active: Pane.Commits }));
+  onMount(() => setPane({ active: props.pane }));
   return null;
 }
 
@@ -191,6 +190,33 @@ describe("CommitsBox", () => {
       // The highlight moves: second row selected, first row cleared.
       expect(isSelected(setup, COMMIT_B.sha)).toBe(true);
       expect(isSelected(setup, COMMIT_A.sha)).toBe(false);
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("unfocused pane with no open commit selects no row", async () => {
+    const setup = await testRender(
+      () => <CommitsBoxHarness pane={Pane.PullRequests} />,
+      { width: 40, height: 12 },
+    );
+    try {
+      await setup.waitFor(() => {
+        const first = setup.renderer.root.findDescendantById(
+          `commit-${COMMIT_A.sha}`,
+        );
+        const second = setup.renderer.root.findDescendantById(
+          `commit-${COMMIT_B.sha}`,
+        );
+        return (
+          first !== undefined &&
+          second !== undefined &&
+          !isSelected(setup, COMMIT_A.sha) &&
+          !isSelected(setup, COMMIT_B.sha)
+        );
+      });
+      expect(isSelected(setup, COMMIT_A.sha)).toBe(false);
+      expect(isSelected(setup, COMMIT_B.sha)).toBe(false);
     } finally {
       setup.renderer.destroy();
     }

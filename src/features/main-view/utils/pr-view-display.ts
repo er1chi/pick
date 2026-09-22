@@ -137,11 +137,17 @@ export function reviewCommentMetaLine(
   );
 }
 
-export function commitMetaLine(commit: PullRequestCommit): string | undefined {
+export function commitMetaLine(
+  commit: PullRequestCommit,
+  counts?: { readonly additions: number; readonly deletions: number },
+): string | undefined {
   const sha = presentText(commit.sha);
   return joinPresent(
     [
       sha === undefined ? undefined : sha.slice(0, 12),
+      counts === undefined
+        ? undefined
+        : countsText(counts.additions, counts.deletions),
       presentText(commit.author?.login),
       formatPresentTimestamp(commit.committedAt),
     ],

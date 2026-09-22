@@ -1,8 +1,10 @@
-import { For, Show, type Accessor, type JSX } from "solid-js";
+import { createMemo, For, Show, type Accessor, type JSX } from "solid-js";
+import { useViewContext } from "@/context/view-context";
 import {
   oneLine,
   renderMutedLine,
 } from "@/features/main-view/components/pr-view-chrome";
+import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
 import { commitMetaLine } from "@/features/main-view/utils/pr-view-display";
 import { colors } from "@/theme";
 import { formatPresentTimestamp } from "@/utils/format-timestamp";
@@ -20,6 +22,13 @@ interface CommitMetadataProps {
 }
 
 export function CommitMetadata(props: CommitMetadataProps): JSX.Element {
+  const viewContext = useViewContext();
+  const counts = createMemo(() => {
+    const section = viewContext.cachedCommitPatch(props.sha);
+    return section?.status === "available"
+      ? patchFileIndex(section).counts
+      : undefined;
+  });
   const author = () => presentText(props.commit?.author?.login);
   const committer = () => presentText(props.commit?.committer?.login);
   const authoredAt = () => formatPresentTimestamp(props.commit?.authoredAt);
@@ -36,7 +45,7 @@ export function CommitMetadata(props: CommitMetadataProps): JSX.Element {
     >
       <Show when={props.commit}>
         {(commit: Accessor<PullRequestCommit>) =>
-          renderMutedLine(commitMetaLine(commit()), props.maxWidth)
+          renderMutedLine(commitMetaLine(commit(), counts()), props.maxWidth)
         }
       </Show>
       <Show when={props.commit === undefined}>

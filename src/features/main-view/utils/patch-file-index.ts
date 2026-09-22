@@ -8,12 +8,14 @@ export interface PatchFileIndex {
   readonly byPath: ReadonlyMap<string, FileDiffMetadata>;
   /** Cached so callers get a stable array identity while the patch is unchanged. */
   readonly names: readonly string[];
+  readonly counts: { readonly additions: number; readonly deletions: number };
 }
 
 const emptyIndex: PatchFileIndex = {
   files: [],
   byPath: new Map(),
   names: [],
+  counts: { additions: 0, deletions: 0 },
 };
 const indexCache = new WeakMap<object, PatchFileIndex>();
 
@@ -35,14 +37,20 @@ export function patchFileIndex(
   );
   const names = files.map((file) => file.name);
   const byPath = new Map<string, FileDiffMetadata>();
+  let additions = 0;
+  let deletions = 0;
   for (const file of files) {
     byPath.set(file.name, file);
     if (file.prevName !== undefined) {
       byPath.set(file.prevName, file);
     }
+    for (const hunk of file.hunks) {
+      additions += hunk.additionLines;
+      deletions += hunk.deletionLines;
+    }
   }
 
-  const index = { files, byPath, names };
+  const index = { files, byPath, names, counts: { additions, deletions } };
   indexCache.set(section, index);
   return index;
 }

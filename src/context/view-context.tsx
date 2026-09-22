@@ -126,6 +126,7 @@ export function ViewContextProvider(props: {
   function cachedCommitPatch(
     sha: string,
   ): ForgeSection<PullRequestPatch> | undefined {
+    commitPatchVersion();
     if (commitPatchOwner !== viewPullRequest(view())?.id) {
       return undefined;
     }

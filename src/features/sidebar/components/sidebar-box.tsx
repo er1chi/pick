@@ -5,13 +5,9 @@ import type { BoxProps, ScrollBoxProps } from "@opentui/solid";
 import type { JSX, Setter } from "solid-js";
 
 interface SidebarBoxProps extends BoxProps {
-  readonly title: string;
   readonly active: boolean;
   readonly boxRef: Setter<BoxRenderable | undefined>;
-  readonly grow?: number;
   readonly height?: number;
-  readonly flexShrink?: number;
-  readonly children: JSX.Element;
   readonly handleMouseFocus: () => void;
 }
 
@@ -23,20 +19,16 @@ export function SidebarBox(props: SidebarBoxProps): JSX.Element {
       focusable
       focused={props.active}
       flexDirection="column"
-      flexGrow={props.grow ?? 1}
-      flexShrink={props.flexShrink ?? 1}
-      minHeight={0}
-      height={props.height}
       width="100%"
       overflow="hidden"
       border
       borderColor={colors.border}
       focusedBorderColor={colors.blue}
-      title={props.title}
       onMouseDown={(e) => {
         e.stopPropagation();
         props.handleMouseFocus();
       }}
+      {...props}
     >
       {props.children}
     </box>
@@ -59,14 +51,7 @@ export function SidebarScrollBox(props: SidebarScrollBoxProps): JSX.Element {
   }
 
   return (
-    <scrollbox
-      ref={captureScrollBox}
-      width="100%"
-      flexGrow={1}
-      minHeight={0}
-      stickyScroll
-      stickyStart="top"
-    >
+    <scrollbox ref={captureScrollBox} width="100%" flexGrow={1} minHeight={0}>
       {props.children}
     </scrollbox>
   );

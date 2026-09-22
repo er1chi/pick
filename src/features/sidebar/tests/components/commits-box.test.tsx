@@ -7,23 +7,29 @@ import {
   createSignal,
   For,
   onMount,
+  type Accessor,
   type JSX,
   type Setter,
 } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
 import {
+  PullRequestProvider,
+  type PullRequestContextValue,
+} from "@/context/pull-request-context";
+import {
   pullRequestViewId,
   ViewContextProvider,
   type ActiveView,
 } from "@/context/view-context";
-import { idleLoadState } from "@/features/pr-view/load-state";
 import { createAppKeymap } from "@/shared/keymap";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
-import { CommitsBox } from "./commits-box";
+import { CommitsBox } from "../../components/commits-box";
 
-import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
-import type { PullRequestCommit } from "@/services/forge/types";
+import type {
+  PullRequestCommit,
+  PullRequestDocument,
+} from "@/services/forge/types";
 
 type TestSetup = Awaited<ReturnType<typeof testRender>>;
 
@@ -53,17 +59,28 @@ const openPullRequest: ActiveView = {
   number: 1,
 };
 
-const content: PrViewContent = {
-  overview: () => idleLoadState(),
-  details: () => idleLoadState(),
-  commits: () => [COMMIT_A, COMMIT_B],
-  commitsState: () => idleLoadState(),
-  reviews: () => idleLoadState(),
-  checks: () => idleLoadState(),
-  development: () => idleLoadState(),
-  currentPatch: () => idleLoadState(),
-  retry: () => {},
-};
+function pullRequestValue(
+  commits: Accessor<readonly PullRequestCommit[]>,
+): PullRequestContextValue {
+  return {
+    data: () => {
+      // SAFETY: CommitsBox only reads `commits` from the document.
+      const document = {
+        commits: {
+          status: "available" as const,
+          value: commits(),
+          truncated: false,
+        },
+      } as PullRequestDocument;
+      return document;
+    },
+    phase: () => "ready",
+    error: () => undefined,
+    refresh() {},
+  };
+}
+
+const listedPullRequest = pullRequestValue(() => [COMMIT_A, COMMIT_B]);
 
 /** Mounts CommitsBox with the pane context pointed at "commits" so its
  * keymap layer receives `j` once the box is focused. */
@@ -75,8 +92,10 @@ function CommitsBoxHarness(): JSX.Element {
     <PaneStore.Provider>
       <KeymapProvider keymap={keymap()}>
         <ViewContextProvider initialView={openPullRequest}>
-          <FocusCommitsPane />
-          <CommitsBox content={content} rowWidth={30} />
+          <PullRequestProvider value={listedPullRequest}>
+            <FocusCommitsPane />
+            <CommitsBox rowWidth={30} />
+          </PullRequestProvider>
         </ViewContextProvider>
       </KeymapProvider>
     </PaneStore.Provider>
@@ -101,7 +120,7 @@ function CommitsBoxLayoutHarness(props: {
   const keymap = createMemo(() => createAppKeymap(renderer));
   const [commits, setCommits] = createSignal<readonly PullRequestCommit[]>([]);
   const [fileRows, setFileRows] = createSignal(1);
-  const reactiveContent: PrViewContent = { ...content, commits };
+  const pullRequest = pullRequestValue(commits);
 
   onMount(() => props.ready({ setCommits, setFileRows }));
 
@@ -109,14 +128,16 @@ function CommitsBoxLayoutHarness(props: {
     <PaneStore.Provider>
       <KeymapProvider keymap={keymap()}>
         <ViewContextProvider initialView={openPullRequest}>
-          <box flexDirection="column" width={40} height={20}>
-            <box flexGrow={1} minHeight={0} overflow="hidden">
-              <For each={Array.from({ length: fileRows() })}>
-                {(_, index) => <text id={`file-row-${index()}`}>file</text>}
-              </For>
+          <PullRequestProvider value={pullRequest}>
+            <box flexDirection="column" width={40} height={20}>
+              <box flexGrow={1} minHeight={0} overflow="hidden">
+                <For each={Array.from({ length: fileRows() })}>
+                  {(_, index) => <text id={`file-row-${index()}`}>file</text>}
+                </For>
+              </box>
+              <CommitsBox rowWidth={30} />
             </box>
-            <CommitsBox content={reactiveContent} rowWidth={30} />
-          </box>
+          </PullRequestProvider>
         </ViewContextProvider>
       </KeymapProvider>
     </PaneStore.Provider>

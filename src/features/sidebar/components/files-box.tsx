@@ -1,10 +1,9 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { For, createEffect, createMemo, createSignal } from "solid-js";
+import { Index, createEffect, createMemo, createSignal } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
 import { useViewContext } from "@/context/view-context";
-import { visibleError, visibleValue } from "@/features/pr-view/load-state";
-import { patchFileIndex } from "@/features/pr-view/patch-file-index";
+import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
 import {
   areVisibleRowsEqual,
   fileTreeRowLabel,
@@ -23,8 +22,7 @@ import { SidebarBox, SidebarScrollBox } from "./sidebar-box";
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { FileTree as FileTreeModel } from "@pierre/trees";
 import type { JSX } from "solid-js";
-import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
-import type { ForgeSection } from "@/services/forge/types";
+import type { ForgeSection, PullRequestPatch } from "@/services/forge/types";
 import type { SidebarPaneProps } from "../types";
 
 type FilesView =
@@ -44,20 +42,11 @@ function sectionProblemMessage(section: SectionProblem, label: string): string {
   }
 }
 
-// The tree is rebuilt from whichever patch is current: the selected commit's
-// patch when a commit is active, otherwise the pull request diff patch.
-function changedFiles(content: PrViewContent): FilesView {
-  const state = content.currentPatch();
-  const error = visibleError(state);
-  if (error !== undefined) {
-    return {
-      kind: "message",
-      text: `Could not load changed files: ${error.message}`,
-    };
-  }
-  const section = visibleValue(state);
+function changedFiles(
+  section: ForgeSection<PullRequestPatch> | undefined,
+): FilesView {
   if (section === undefined) {
-    return { kind: "message", text: "Loading changed files…" };
+    return { kind: "message", text: "loading..." };
   }
   if (section.status === "available") {
     // The index caches the names array so repeated memo runs keep the same
@@ -92,12 +81,12 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
     if (!opened()) {
       return { kind: "list", paths: [] };
     }
-    return changedFiles(props.content);
+    return changedFiles(viewContext.currentPatch());
   });
   const paths = createMemo(() => {
     const view = filesView();
     return view.kind === "list" ? view.paths : [];
-  });
+  }, []);
   const emptyText = () => {
     const view = filesView();
     return view.kind === "message" ? view.text : "No changed files.";
@@ -111,6 +100,7 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
     initialExpansion: "closed",
     paths: paths(),
   });
+
   createEffect(() => model.resetPaths(paths()));
 
   const rows = useFileTreeSelector(
@@ -158,8 +148,6 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
     return focusedRow === undefined ? undefined : `file-${focusedRow.path}`;
   }, scrollBox);
 
-  //useFocusWhenActive(focused, () => pane.focusRequest, box);
-
   useBindings(() => ({
     target: box,
     bindings: [
@@ -178,6 +166,7 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
       title="[0] Files"
       active={isFocused()}
       boxRef={setBox}
+      flexGrow={1}
       handleMouseFocus={handleMouseFocus}
     >
       <EmptyGate
@@ -186,16 +175,16 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
         emptyText={emptyText()}
       >
         <SidebarScrollBox scrollRef={setScrollBox} hideScrollbar>
-          <For each={rows()}>
+          <Index each={rows()}>
             {(row) => (
               <SelectableRow
-                id={`file-${row.path}`}
-                selected={row.isFocused}
-                label={`${fileTreeRowPrefix(row)}${fileTreeRowLabel(row)}`}
+                id={`file-${row().path}`}
+                selected={row().isFocused}
+                label={`${fileTreeRowPrefix(row())}${fileTreeRowLabel(row())}`}
                 maxWidth={props.rowWidth}
               />
             )}
-          </For>
+          </Index>
         </SidebarScrollBox>
       </EmptyGate>
     </SidebarBox>

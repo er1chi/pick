@@ -1,11 +1,12 @@
 import { Result } from "better-result";
 import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 import { useForgeContext } from "@/context/forge-context";
+import { LoadStatus } from "../types";
 import {
   idleLoadState,
   isCancelled,
   type LoadState,
-} from "@/features/pr-view/load-state";
+} from "../utils/load-state";
 
 import type {
   PullRequestList,
@@ -49,7 +50,7 @@ export function usePrTitles(): PrTitles {
     const controller = new AbortController();
     listController = controller;
     setList({
-      status: "loading",
+      status: LoadStatus.Loading,
       previous:
         lastSuccessfulList !== undefined
           ? Result.ok(lastSuccessfulList)
@@ -72,7 +73,7 @@ export function usePrTitles(): PrTitles {
         if (result.isErr()) {
           if (!isCancelled(result.error)) {
             setList({
-              status: "settled",
+              status: LoadStatus.Settled,
               result,
               previous:
                 lastSuccessfulList === undefined
@@ -84,7 +85,7 @@ export function usePrTitles(): PrTitles {
         }
 
         lastSuccessfulList = result.value;
-        setList({ status: "settled", result, previous: undefined });
+        setList({ status: LoadStatus.Settled, result, previous: undefined });
       });
 
     onCleanup(() => {

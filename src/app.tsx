@@ -7,6 +7,7 @@ import {
   useForgeContext,
   type RepositoryForgeContextState,
 } from "@/context/forge-context";
+import { PullRequestProvider } from "@/context/pull-request-context";
 import {
   pullRequestViewId,
   useViewContext,
@@ -14,10 +15,10 @@ import {
 } from "@/context/view-context";
 import { Default } from "@/features/default/default";
 import { Footer, type FooterBinding } from "@/features/footer/footer";
+import { usePrTitles } from "@/features/main-view/hooks/use-pr-titles";
+import { PrView } from "@/features/main-view/main-view";
+import { LoadStatus } from "@/features/main-view/types";
 import { Menubar } from "@/features/menubar/menubar";
-import { PrView } from "@/features/pr-view/pr-view";
-import { usePrTitles } from "@/features/pr-view/use-pr-titles";
-import { usePrViewContent } from "@/features/pr-view/use-pr-view-content";
 import { Sidebar } from "@/features/sidebar/sidebar";
 import {
   ApplicationContext,
@@ -111,18 +112,18 @@ function RepositoryShell(props: {
   readonly state: RepositoryForgeContextState;
 }) {
   const [box, setBox] = createSignal<BoxRenderable>();
+  const [sidebarVisible, setSidebarVisible] = createSignal(true);
   const [pane, setPane] = PaneStore.use();
   const viewContext = useViewContext();
   const contextLabel = repositoryContextLabel(props.state.kind);
   const titles = usePrTitles();
-  const content = usePrViewContent();
 
   createEffect(() => {
     const opened = viewPullRequest(viewContext.view());
     const list = titles.list();
     if (
       opened === undefined ||
-      list.status !== "settled" ||
+      list.status !== LoadStatus.Settled ||
       list.result.isErr()
     ) {
       return;
@@ -155,22 +156,35 @@ function RepositoryShell(props: {
         name: "pane.main",
         run: () => setPane({ active: Pane.Main }),
       },
+      {
+        name: "toggle-sidebar",
+        run: () => {
+          setSidebarVisible((p) => !p);
+
+          if (!sidebarVisible() && pane.active !== Pane.Main) {
+            setPane({ active: Pane.Main });
+          }
+        },
+      },
     ],
     bindings: [
       { key: "0", cmd: "pane.files" },
       { key: "1", cmd: "pane.commits" },
       { key: "2", cmd: "pane.pull-requests" },
       { key: "3", cmd: "pane.main" },
+      { key: " e", cmd: "toggle-sidebar" },
     ],
   }));
 
   return (
     <box ref={setBox} flexDirection="column" width="100%" height="100%">
       <Menubar contextLabel={contextLabel} />
-      <box flexDirection="row" flexGrow={1} width="100%">
-        <Sidebar titles={titles} content={content} />
-        <PrView state={props.state} titles={titles} content={content} />
-      </box>
+      <PullRequestProvider>
+        <box flexDirection="row" flexGrow={1} width="100%">
+          <Sidebar visible={sidebarVisible()} titles={titles} />
+          <PrView state={props.state} titles={titles} />
+        </box>
+      </PullRequestProvider>
       <Footer
         bindings={repositoryFooterBindings(props.state.kind, pane.active)}
       />
@@ -198,9 +212,13 @@ function DefaultWelcome() {
   );
 }
 
-export function App() {
+export function App({ debug = false }: { debug?: boolean }) {
   const renderer = useRenderer();
   const forgeContext = useForgeContext();
+
+  if (debug) {
+    renderer.console.toggle();
+  }
 
   onMount(() => {
     renderer.setTerminalTitle("Pick");

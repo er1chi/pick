@@ -1,12 +1,12 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { For, createEffect, createMemo, createSignal } from "solid-js";
+import { Index, createEffect, createMemo, createSignal } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
+import { usePullRequest } from "@/context/pull-request-context";
 import { useViewContext, viewCommit } from "@/context/view-context";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
-import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { firstLine } from "@/utils/utils";
 import { EmptyGate } from "./empty-gate";
@@ -24,10 +24,15 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
   const isFocused = useFocusedPane(Pane.Commits);
   const navigation = useNavigateList({ target: box });
   const viewContext = useViewContext();
+  const pullRequest = usePullRequest();
   const opened = () => viewContext.view() !== undefined;
-  const commits = createMemo<readonly PullRequestCommit[]>(() =>
-    opened() ? props.content.commits() : [],
-  );
+  const commits = createMemo<readonly PullRequestCommit[]>(() => {
+    if (!opened()) {
+      return [];
+    }
+    const section = pullRequest.data()?.commits;
+    return section?.status === "available" ? section.value : [];
+  });
 
   createEffect(() => navigation.setCount(commits().length));
 
@@ -40,6 +45,7 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
     const sha = commits()[navigation.index()]?.sha;
     if (sha !== undefined) {
       viewContext.selectCommit(sha);
+      setPane({ active: Pane.Files });
     }
   }
 
@@ -48,14 +54,8 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
     bindings: [{ key: "return", cmd: activateHighlighted }],
   }));
 
-  // Content-sized like the Pull Requests box: a fixed height stops the box
-  // from claiming an equal flex share, while flexShrink lets a constrained
-  // terminal squeeze it and the scrollbox still has a definite height to
-  // scroll in. The constant two rows are the border; the empty, loading, and
-  // failed states all render a single row.
-  function bodyRowCount(): number {
-    const count = commits().length;
-    return count === 0 ? 1 : count;
+  function boxHeight(): number {
+    return Math.min(15, 2 + Math.max(1, commits().length));
   }
 
   function handleMouseFocus() {
@@ -68,8 +68,8 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
       title="[1] Commits"
       active={isFocused()}
       boxRef={setBox}
-      grow={0}
-      height={Math.min(15, 2 + bodyRowCount())}
+      height={boxHeight()}
+      flexGrow={0}
       flexShrink={0}
       handleMouseFocus={handleMouseFocus}
     >
@@ -78,47 +78,28 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
         hasItems={commits().length > 0}
         emptyText="No commits."
       >
-        <SidebarScrollBox scrollRef={setScrollBox}>
-          <For each={commits()}>
+        <SidebarScrollBox scrollRef={setScrollBox} hideScrollbar>
+          <Index each={commits()}>
             {(commit) => {
-              // Accessors, not const booleans: computing these eagerly inside
-              // the <For> callback would snapshot the signals once per item,
-              // so j/k highlight changes would never re-render the rows.
               const highlighted = () =>
-                commit.sha === commits()[navigation.index()]?.sha;
+                commit().sha === commits()[navigation.index()]?.sha;
               const active = () => {
                 const current = viewContext.view();
                 return (
-                  current !== undefined && commit.sha === viewCommit(current)
+                  current !== undefined && commit().sha === viewCommit(current)
                 );
               };
               return (
-                <box
-                  width="100%"
-                  flexDirection="row"
-                  flexShrink={0}
-                  backgroundColor={active() ? colors.selected : undefined}
-                >
-                  {/* A persistent accent marks the activated commit even once
-                      the keyboard highlight or pane focus moves elsewhere. */}
-                  <box
-                    width={1}
-                    flexShrink={0}
-                    backgroundColor={active() ? colors.blue : undefined}
-                  />
-                  <box flexGrow={1} flexShrink={1} minWidth={0}>
-                    <SelectableRow
-                      id={`commit-${commit.sha}`}
-                      selected={highlighted() || active()}
-                      label={commit.sha.slice(0, 7)}
-                      detail={firstLine(commit.message)}
-                      maxWidth={props.rowWidth - 1}
-                    />
-                  </box>
-                </box>
+                <SelectableRow
+                  id={`commit-${commit().sha}`}
+                  selected={highlighted() || active()}
+                  label={commit().sha.slice(0, 7)}
+                  detail={firstLine(commit().message)}
+                  maxWidth={props.rowWidth - 1}
+                />
               );
             }}
-          </For>
+          </Index>
         </SidebarScrollBox>
       </EmptyGate>
     </SidebarBox>

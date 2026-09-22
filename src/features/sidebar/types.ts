@@ -1,8 +1,6 @@
-import type { PrTitles } from "@/features/pr-view/use-pr-titles";
-import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
+import type { PrTitles } from "../main-view/hooks/use-pr-titles";
 
 export interface SidebarPaneProps {
-  readonly content: PrViewContent;
   readonly rowWidth: number;
 }
 

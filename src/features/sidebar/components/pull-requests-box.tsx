@@ -1,5 +1,6 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { toast } from "@tuiparts/toast";
+import { createEffect, createSignal, Index, Show } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
 import { useViewContext } from "@/context/view-context";
@@ -7,7 +8,7 @@ import {
   isPending,
   visibleError,
   visibleValue,
-} from "@/features/pr-view/load-state";
+} from "@/features/main-view/utils/load-state";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
@@ -18,7 +19,7 @@ import { SidebarBox, SidebarScrollBox } from "./sidebar-box";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "solid-js";
-import type { PrTitles } from "@/features/pr-view/use-pr-titles";
+import type { PrTitles } from "@/features/main-view/hooks/use-pr-titles";
 import type { PullRequestSummary } from "@/services/forge/types";
 import type { PullRequestPaneProps } from "../types";
 
@@ -50,6 +51,7 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
   const isFocused = useFocusedPane(Pane.PullRequests);
   const viewContext = useViewContext();
   const navigation = useNavigateList({ target: box });
+  const noError = listError(props.titles) === undefined;
 
   createEffect(() => navigation.setCount(listItems(props.titles).length));
 
@@ -113,7 +115,12 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
     return number === undefined ? undefined : `pull-request-${number}`;
   }, scrollBox);
 
-  //useFocusWhenActive(focused, () => pane.focusRequest, box);
+  createEffect(() => {
+    if (!noError) return;
+    const errorMsg = listError(props.titles);
+    if (!errorMsg) return;
+    toast(errorMsg);
+  });
 
   // The box is content-sized so it never claims an equal flex share. Rows are
   // counted here so the scrollbox still has a definite height to scroll in
@@ -142,7 +149,6 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
       title="[2] Pull Requests"
       active={isFocused()}
       boxRef={setBox}
-      grow={0}
       height={3 + bodyRowCount()}
       handleMouseFocus={handleMouseFocus}
     >
@@ -168,14 +174,11 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
         }
       >
         <Show
-          when={listError(props.titles) === undefined}
+          when={noError}
           fallback={
             <box flexDirection="column" paddingLeft={1} paddingRight={1}>
               <text fg={colors.yellow} wrapMode="none">
                 Could not load pull requests.
-              </text>
-              <text fg={colors.dim} wrapMode="none">
-                {listError(props.titles)}
               </text>
               <text fg={colors.muted} wrapMode="none">
                 Press R to retry.
@@ -192,20 +195,17 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
             }
           >
             <SidebarScrollBox scrollRef={setScrollBox}>
-              <For each={listItems(props.titles)}>
-                {(summary) => (
+              <Index each={listItems(props.titles)}>
+                {(summary, itemIndex) => (
                   <SelectableRow
-                    id={`pull-request-${summary.number}`}
-                    selected={
-                      summary.number ===
-                      listItems(props.titles)[navigation.index()]?.number
-                    }
-                    label={`#${summary.number}`}
-                    detail={firstLine(summary.title)}
+                    id={`pull-request-${summary().number}`}
+                    selected={itemIndex === navigation.index()}
+                    label={`#${summary().number}`}
+                    detail={firstLine(summary().title)}
                     maxWidth={props.rowWidth}
                   />
                 )}
-              </For>
+              </Index>
               <Show when={listIsTruncated(props.titles)}>
                 <text fg={colors.dim} wrapMode="none">
                   More pull requests are available.

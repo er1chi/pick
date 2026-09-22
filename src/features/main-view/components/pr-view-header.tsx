@@ -1,17 +1,13 @@
 import { For, Show, type Accessor, type JSX } from "solid-js";
+import { usePullRequest } from "@/context/pull-request-context";
 import { viewCommit, type ActiveView } from "@/context/view-context";
-import {
-  visibleError,
-  visibleValue,
-  type LoadState,
-} from "@/features/pr-view/load-state";
 import {
   CLOSE_AFFORDANCE_GAP,
   CLOSE_DIFF_LABEL,
   CLOSE_PR_LABEL,
   oneLine,
-} from "@/features/pr-view/pr-view-chrome";
-import { persistentMetadataLines } from "@/features/pr-view/pr-view-display";
+} from "@/features/main-view/components/pr-view-chrome";
+import { persistentMetadataLines } from "@/features/main-view/utils/pr-view-display";
 import {
   ApplicationContext,
   type ForgeInitializationError,
@@ -93,7 +89,6 @@ function contextBanner(view: ActiveView): string {
 
 interface PrViewHeaderProps {
   readonly view: ActiveView;
-  readonly detailsState: LoadState<PullRequestDetails>;
   readonly repositoryName: string;
   readonly titleLine: string | undefined;
   readonly headerKey: string;
@@ -101,6 +96,7 @@ interface PrViewHeaderProps {
 }
 
 export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
+  const pullRequest = usePullRequest();
   const diffContextSelected = () => props.view.kind !== "pr";
   const closeAffordancesWidth = () =>
     CLOSE_PR_LABEL.length +
@@ -109,9 +105,17 @@ export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
       : 0);
   const contextTextWidth = () =>
     Math.max(8, props.maxWidth - closeAffordancesWidth() - 1);
-  const details = () => visibleValue(props.detailsState);
-  const detailsLoading = () => props.detailsState.status === "loading";
-  const detailsError = () => visibleError(props.detailsState)?.message;
+  const detailsResult = () => pullRequest.data()?.details;
+  const details = () => {
+    const result = detailsResult();
+    return result !== undefined && result.isOk() ? result.value : undefined;
+  };
+  const detailsError = () => {
+    const result = detailsResult();
+    return result !== undefined && result.isErr()
+      ? result.error.message
+      : undefined;
+  };
 
   return (
     <box
@@ -165,13 +169,6 @@ export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
             details={props.view.kind === "diff" ? undefined : details()}
             maxWidth={props.maxWidth}
           />
-        )}
-      </Show>
-      <Show when={detailsLoading() && details() === undefined}>
-        {oneLine(
-          <text fg={colors.muted} wrapMode="none" truncate>
-            Loading details…
-          </text>,
         )}
       </Show>
       <Show when={detailsError()}>

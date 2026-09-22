@@ -1,24 +1,21 @@
-import {
-  ForgeCancelledError,
-  type ForgeOperationError,
-} from "@/services/forge/types";
+import { ForgeCancelledError } from "@/services/forge/types";
+import { LoadStatus } from "../types";
 
 import type { Result as ResultType } from "better-result";
+import type { ForgeOperationError } from "@/services/forge/types";
 
 export interface IdleLoadState {
-  readonly status: "idle";
+  readonly status: LoadStatus.Idle;
 }
 
 interface LoadingLoadState<T> {
-  readonly status: "loading";
-  /** Last successful result, retained for display while a fresh load runs. */
+  readonly status: LoadStatus.Loading;
   readonly previous: ResultType<T, ForgeOperationError> | undefined;
 }
 
 interface SettledLoadState<T> {
-  readonly status: "settled";
+  readonly status: LoadStatus.Settled;
   readonly result: ResultType<T, ForgeOperationError>;
-  /** Last successful result, retained when the latest load failed. */
   readonly previous: ResultType<T, ForgeOperationError> | undefined;
 }
 
@@ -33,7 +30,7 @@ export type LoadState<T> =
   | SettledLoadState<T>;
 
 export function idleLoadState(): IdleLoadState {
-  return { status: "idle" };
+  return { status: LoadStatus.Idle };
 }
 
 /** The result a view should render: the settled result when it succeeded,

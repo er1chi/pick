@@ -2,7 +2,11 @@ import { createContext, createSignal, useContext } from "solid-js";
 
 import type { JSX } from "@opentui/solid";
 import type { Accessor } from "solid-js";
-import type { ForgeRepository } from "@/services/forge/types";
+import type {
+  ForgeRepository,
+  ForgeSection,
+  PullRequestPatch,
+} from "@/services/forge/types";
 
 export function pullRequestViewId(
   repository: Pick<ForgeRepository, "owner" | "name">,
@@ -49,6 +53,11 @@ export function viewPullRequest(
 
 export interface ViewContextValue {
   readonly view: Accessor<ActiveView | undefined>;
+  /**
+   * The patch the files pane and the main diff both read. A selected commit
+   * uses that commit's patch; otherwise this is the pull request diff.
+   */
+  readonly currentPatch: Accessor<ForgeSection<PullRequestPatch> | undefined>;
   openPullRequest(
     repository: Pick<ForgeRepository, "owner" | "name">,
     number: number,
@@ -58,6 +67,8 @@ export interface ViewContextValue {
   /** Drop commit and file selection and show the open pull request. */
   clearSelection(): void;
   close(): void;
+  setPullRequestPatch(patch: ForgeSection<PullRequestPatch> | undefined): void;
+  setCommitPatch(patch: ForgeSection<PullRequestPatch> | undefined): void;
 }
 
 const ViewContext = createContext<ViewContextValue>();
@@ -69,11 +80,27 @@ export function ViewContextProvider(props: {
   const [view, setView] = createSignal<ActiveView | undefined>(
     props.initialView,
   );
+  const [pullRequestPatch, setPullRequestPatch] = createSignal<
+    ForgeSection<PullRequestPatch> | undefined
+  >();
+  const [commitPatch, setCommitPatch] = createSignal<
+    ForgeSection<PullRequestPatch> | undefined
+  >();
+
+  function currentPatch(): ForgeSection<PullRequestPatch> | undefined {
+    const current = view();
+    if (current !== undefined && viewCommit(current) !== undefined) {
+      return commitPatch();
+    }
+    return pullRequestPatch();
+  }
 
   function openPullRequest(
     repository: Pick<ForgeRepository, "owner" | "name">,
     number: number,
   ): void {
+    setPullRequestPatch(undefined);
+    setCommitPatch(undefined);
     setView({
       kind: "pr",
       id: pullRequestViewId(repository, number),
@@ -86,6 +113,7 @@ export function ViewContextProvider(props: {
     if (current === undefined) {
       return;
     }
+    setCommitPatch(undefined);
     setView({ kind: "commit", id: current.id, number: current.number, sha });
   }
 
@@ -122,16 +150,21 @@ export function ViewContextProvider(props: {
   }
 
   function close(): void {
+    setPullRequestPatch(undefined);
+    setCommitPatch(undefined);
     setView(undefined);
   }
 
   const context: ViewContextValue = {
     view,
+    currentPatch,
     openPullRequest,
     selectCommit,
     selectFile,
     clearSelection,
     close,
+    setPullRequestPatch,
+    setCommitPatch,
   };
 
   return (

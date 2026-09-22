@@ -1,10 +1,6 @@
 import { For, Show, type Accessor, type JSX } from "solid-js";
-import {
-  visibleError,
-  visibleValue,
-  type LoadState,
-} from "@/features/pr-view/load-state";
-import { renderMutedLine } from "@/features/pr-view/pr-view-chrome";
+import { usePullRequest } from "@/context/pull-request-context";
+import { renderMutedLine } from "@/features/main-view/components/pr-view-chrome";
 import {
   checkLine,
   collectionAvailability,
@@ -21,14 +17,16 @@ import {
   reviewMetaLine,
   reviewerAvailability,
   reviewerNames,
-} from "@/features/pr-view/pr-view-display";
+} from "@/features/main-view/utils/pr-view-display";
 import { colors } from "@/theme";
 
-import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
+import type { Result } from "better-result";
 import type {
+  ForgeOperationError,
   ForgeSection,
   PullRequestCheck,
   PullRequestComment,
+  PullRequestDocument,
   PullRequestLinkedIssue,
   PullRequestOverview,
   PullRequestProject,
@@ -168,81 +166,53 @@ function renderDevelopment(
   );
 }
 
-interface ResourceSectionProps<T> {
-  readonly label: string;
-  readonly state: LoadState<T>;
-  readonly render: (value: T) => JSX.Element;
+function renderLoadedOverview(
+  overview: Result<PullRequestOverview, ForgeOperationError>,
+  summary: PullRequestSummary | undefined,
+): JSX.Element | null {
+  if (overview.isErr()) {
+    return <text fg={colors.yellow}>{overview.error.message}</text>;
+  }
+  if (summary === undefined) {
+    return null;
+  }
+  return renderOverview(summary, overview.value);
 }
 
-/**
- * Renders one independent PR section. Loading and query-level errors are shown
- * here; per-collection failure/unsupported states are handled by the section
- * renderers through their ForgeSection values.
- */
-function ResourceSection<T>(props: ResourceSectionProps<T>): JSX.Element {
-  const error = (): string | undefined => visibleError(props.state)?.message;
-
+function OverviewBody(props: {
+  readonly document: PullRequestDocument;
+  readonly summary: PullRequestSummary | undefined;
+}): JSX.Element {
+  const reviews = props.document.reviews;
   return (
-    <box flexDirection="column" gap={0}>
-      <Show when={props.state.status === "loading"}>
-        <text fg={colors.muted}>Loading {props.label}…</text>
-      </Show>
-      <Show when={error()}>
-        {(text: Accessor<string>) => (
-          <box flexDirection="column">
-            <text fg={colors.yellow}>Could not load {props.label}.</text>
-            <text fg={colors.dim}>{text()}</text>
-            <text fg={colors.muted}>Press r to retry.</text>
-          </box>
-        )}
-      </Show>
-      <Show keyed when={visibleValue(props.state)}>
-        {(value: T) => props.render(value)}
-      </Show>
+    <box flexDirection="column" gap={1} width="100%">
+      {renderLoadedOverview(props.document.overview, props.summary)}
+      {renderReviews(
+        reviews.reviews,
+        reviews.reviewComments,
+        reviews.requestedReviewers,
+      )}
+      {renderChecks(props.document.checks)}
+      {renderDevelopment(
+        props.document.development.projects,
+        props.document.development.linkedIssues,
+      )}
     </box>
   );
 }
 
 interface OverviewScreenProps {
-  readonly content: PrViewContent;
   readonly summary: Accessor<PullRequestSummary | undefined>;
 }
 
 export function OverviewScreen(props: OverviewScreenProps): JSX.Element {
+  const pullRequest = usePullRequest();
+
   return (
-    <box flexDirection="column" gap={1} width="100%">
-      <ResourceSection
-        label="pull request overview"
-        state={props.content.overview()}
-        render={(overview) => (
-          <Show keyed when={props.summary()}>
-            {(item: PullRequestSummary) => renderOverview(item, overview)}
-          </Show>
-        )}
-      />
-      <ResourceSection
-        label="reviews"
-        state={props.content.reviews()}
-        render={(resource) =>
-          renderReviews(
-            resource.reviews,
-            resource.reviewComments,
-            resource.requestedReviewers,
-          )
-        }
-      />
-      <ResourceSection
-        label="checks"
-        state={props.content.checks()}
-        render={(section) => renderChecks(section)}
-      />
-      <ResourceSection
-        label="development"
-        state={props.content.development()}
-        render={(development) =>
-          renderDevelopment(development.projects, development.linkedIssues)
-        }
-      />
-    </box>
+    <Show when={pullRequest.data()}>
+      {(document: Accessor<PullRequestDocument>) => (
+        <OverviewBody document={document()} summary={props.summary()} />
+      )}
+    </Show>
   );
 }

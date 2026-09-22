@@ -1,34 +1,25 @@
 import { For, Show, type Accessor, type JSX } from "solid-js";
-import { oneLine, renderMutedLine } from "@/features/pr-view/pr-view-chrome";
 import {
-  commitMessage,
-  commitMetaLine,
-} from "@/features/pr-view/pr-view-display";
+  oneLine,
+  renderMutedLine,
+} from "@/features/main-view/components/pr-view-chrome";
+import { commitMetaLine } from "@/features/main-view/utils/pr-view-display";
 import { colors } from "@/theme";
 import { formatPresentTimestamp } from "@/utils/format-timestamp";
 import { presentText } from "@/utils/present-text";
 import { truncateEnd } from "@/utils/truncate";
+import { commitMessageLines } from "../utils/utils";
 
 import type { PullRequestCommit } from "@/services/forge/types";
 
-function commitMessageLines(
-  commit: PullRequestCommit | undefined,
-): readonly string[] {
-  const message = commit === undefined ? undefined : commitMessage(commit);
-  if (message === undefined) {
-    return [];
-  }
-  return message.split(/\r?\n/);
-}
-
-interface CommitContextProps {
+interface CommitMetadataProps {
   readonly sha: string;
   readonly commit: PullRequestCommit | undefined;
   readonly hasFile: boolean;
   readonly maxWidth: number;
 }
 
-export function CommitContext(props: CommitContextProps): JSX.Element {
+export function CommitMetadata(props: CommitMetadataProps): JSX.Element {
   const author = () => presentText(props.commit?.author?.login);
   const committer = () => presentText(props.commit?.committer?.login);
   const authoredAt = () => formatPresentTimestamp(props.commit?.authoredAt);
@@ -40,14 +31,9 @@ export function CommitContext(props: CommitContextProps): JSX.Element {
       flexDirection="column"
       width="100%"
       gap={0}
-      flexGrow={0}
+      flexGrow={1}
       flexShrink={0}
     >
-      {oneLine(
-        <text fg={colors.foreground} wrapMode="none" truncate>
-          <strong>{truncateEnd(`Commit ${props.sha}`, props.maxWidth)}</strong>
-        </text>,
-      )}
       <Show when={props.commit}>
         {(commit: Accessor<PullRequestCommit>) =>
           renderMutedLine(commitMetaLine(commit()), props.maxWidth)
@@ -80,13 +66,6 @@ export function CommitContext(props: CommitContextProps): JSX.Element {
         props.maxWidth,
       )}
       {renderMutedLine(url(), props.maxWidth)}
-      <Show when={props.hasFile}>
-        {oneLine(
-          <text fg={colors.dim} wrapMode="none" truncate>
-            {truncateEnd("The diff below is from this commit.", props.maxWidth)}
-          </text>,
-        )}
-      </Show>
     </box>
   );
 }

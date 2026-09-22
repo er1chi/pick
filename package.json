@@ -27,6 +27,7 @@
     "@tuiparts/toast": "./vendor/tuiparts-toast",
     "arktype": "^2.2.3",
     "better-result": "^3.0.1",
+    "cli-spinners": "^3.4.0",
     "solid-js": "1.9.12"
   },
   "devDependencies": {

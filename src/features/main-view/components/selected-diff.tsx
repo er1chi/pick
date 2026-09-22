@@ -1,18 +1,16 @@
 import { For, Show, createMemo, type Accessor, type JSX } from "solid-js";
-import { CommitContext } from "@/features/pr-view/commit-context";
-import { visibleError, visibleValue } from "@/features/pr-view/load-state";
-import { patchFileIndex } from "@/features/pr-view/patch-file-index";
-import { oneLine } from "@/features/pr-view/pr-view-chrome";
+import { useViewContext, type ActiveView } from "@/context/view-context";
+import { oneLine } from "@/features/main-view/components/pr-view-chrome";
 import {
   SplitFileDiff,
   type SplitFileDiffScrollTarget,
 } from "@/packages/pierre/solid/diffs";
 import { colors } from "@/theme";
 import { truncateEnd } from "@/utils/truncate";
+import { patchFileIndex } from "../utils/patch-file-index";
+import { CommitMetadata } from "./commit-metadata";
 
 import type { FileDiffMetadata } from "@pierre/diffs";
-import type { ActiveView } from "@/context/view-context";
-import type { PrViewContent } from "@/features/pr-view/use-pr-view-content";
 import type {
   ForgeSection,
   PullRequestCommit,
@@ -73,7 +71,6 @@ const lockedNotice =
   "Lock file contents are hidden by default. Press e to show them.";
 
 interface SelectedDiffProps {
-  readonly content: PrViewContent;
   readonly view: Extract<ActiveView, { kind: "diff" }>;
   readonly commit: PullRequestCommit | undefined;
   readonly revealLocked: boolean;
@@ -84,27 +81,16 @@ interface SelectedDiffProps {
 }
 
 export function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
+  const viewContext = useViewContext();
   const fromCommit = () => props.view.commit !== undefined;
   const fileDiffs = createMemo(() =>
-    fileDiffsForPatch(
-      visibleValue(props.content.currentPatch()),
-      props.view.path,
-    ),
+    fileDiffsForPatch(viewContext.currentPatch(), props.view.path),
   );
 
   const notice = (): string | undefined => {
-    const state = props.content.currentPatch();
-    const error = visibleError(state);
-    if (error !== undefined) {
-      return `Could not load ${
-        fromCommit() ? "commit" : "pull request"
-      } diff: ${error.message}`;
-    }
-    const section = visibleValue(state);
+    const section = viewContext.currentPatch();
     if (section === undefined) {
-      return fromCommit()
-        ? "Loading commit diff…"
-        : "Loading pull request diff…";
+      return undefined;
     }
     const sectionNotice = patchSectionNotice(section);
     if (sectionNotice !== undefined) {
@@ -128,13 +114,13 @@ export function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
       <Show when={props.view.commit} keyed>
         {(sha: string) => (
           <scrollbox
-            flexGrow={1}
+            flexGrow={0}
             flexBasis={0}
             flexShrink={1}
-            minHeight={3}
+            minHeight={10}
             width="100%"
           >
-            <CommitContext
+            <CommitMetadata
               sha={sha}
               commit={props.commit}
               hasFile
@@ -146,7 +132,7 @@ export function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
       <box
         flexDirection="column"
         width="100%"
-        flexGrow={2}
+        flexGrow={1}
         flexBasis={0}
         flexShrink={1}
         minHeight={fromCommit() ? 9 : 0}

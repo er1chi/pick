@@ -10,24 +10,24 @@ import {
   type Accessor,
 } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
+import { usePullRequest } from "@/context/pull-request-context";
 import {
   useViewContext,
   viewCommit,
   viewPullRequest,
   type ActiveView,
 } from "@/context/view-context";
-import { CommitContext } from "@/features/pr-view/commit-context";
-import { visibleValue } from "@/features/pr-view/load-state";
-import { OverviewScreen } from "@/features/pr-view/overview-screen";
-import { patchFileIndex } from "@/features/pr-view/patch-file-index";
-import { MAIN_PANE_CHROME } from "@/features/pr-view/pr-view-chrome";
+import { MAIN_PANE_CHROME } from "@/features/main-view/components/pr-view-chrome";
+import {
+  NoPullRequest,
+  PrViewHeader,
+} from "@/features/main-view/components/pr-view-header";
+import { SelectedDiffBody } from "@/features/main-view/components/selected-diff";
+import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
 import {
   presentRepositoryName,
   pullRequestTitleLine,
-} from "@/features/pr-view/pr-view-display";
-import { NoPullRequest, PrViewHeader } from "@/features/pr-view/pr-view-header";
-import { SelectedDiffBody } from "@/features/pr-view/selected-diff";
-import { type PrViewContent } from "@/features/pr-view/use-pr-view-content";
+} from "@/features/main-view/utils/pr-view-display";
 import {
   prewarmSplitHighlights,
   type SplitFileDiffScrollTarget,
@@ -36,16 +36,19 @@ import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { truncateEnd } from "@/utils/truncate";
+import { CommitMetadata } from "./components/commit-metadata";
+import { OverviewScreen } from "./components/overview-screen";
+import { PullRequestStatusLine } from "./components/pull-request-status";
+import { visibleValue } from "./utils/load-state";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import type { RepositoryForgeContextState } from "@/context/forge-context";
-import type { PrTitles } from "@/features/pr-view/use-pr-titles";
+import type { PrTitles } from "./hooks/use-pr-titles";
 
 export interface PrViewProps {
   readonly state: RepositoryForgeContextState;
   readonly titles: PrTitles;
-  readonly content: PrViewContent;
 }
 
 export function PrView(props: PrViewProps) {
@@ -55,6 +58,7 @@ export function PrView(props: PrViewProps) {
   const contentWidth = () =>
     Math.max(16, dimensions().width - MAIN_PANE_CHROME);
   const viewContext = useViewContext();
+  const pullRequest = usePullRequest();
   const view = () => viewContext.view();
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
   const [overviewScroll, setOverviewScroll] = createSignal<
@@ -78,14 +82,19 @@ export function PrView(props: PrViewProps) {
       (item) => item.number === number,
     );
   };
-  const currentDetails = () => visibleValue(props.content.details());
+  const currentDetails = () => {
+    const details = pullRequest.data()?.details;
+    return details !== undefined && details.isOk() ? details.value : undefined;
+  };
   const selectedCommitValue = createMemo(() => {
     const current = view();
     const sha = current === undefined ? undefined : viewCommit(current);
     if (sha === undefined) {
       return undefined;
     }
-    return props.content.commits().find((commit) => commit.sha === sha);
+    const section = pullRequest.data()?.commits;
+    const commits = section?.status === "available" ? section.value : [];
+    return commits.find((commit) => commit.sha === sha);
   });
   const headerRepositoryName = () =>
     presentRepositoryName(
@@ -145,7 +154,7 @@ export function PrView(props: PrViewProps) {
       },
       {
         name: "pr-view.retry",
-        run: () => props.content.retry(),
+        run: () => pullRequest.refresh(),
       },
       {
         name: "pr-view.toggle-locked-files",
@@ -186,9 +195,7 @@ export function PrView(props: PrViewProps) {
   });
 
   createEffect(() => {
-    prewarmSplitHighlights(
-      patchFileIndex(visibleValue(props.content.currentPatch())).files,
-    );
+    prewarmSplitHighlights(patchFileIndex(viewContext.currentPatch()).files);
   });
 
   createEffect(
@@ -221,7 +228,7 @@ export function PrView(props: PrViewProps) {
             stickyScroll
             stickyStart="top"
           >
-            <OverviewScreen content={props.content} summary={summary} />
+            <OverviewScreen summary={summary} />
           </scrollbox>
         );
       case "commit":
@@ -234,7 +241,7 @@ export function PrView(props: PrViewProps) {
             width="100%"
           >
             <box flexDirection="column" width="100%" gap={1}>
-              <CommitContext
+              <CommitMetadata
                 sha={current.sha}
                 commit={selectedCommitValue()}
                 hasFile={false}
@@ -249,7 +256,6 @@ export function PrView(props: PrViewProps) {
       case "diff":
         return (
           <SelectedDiffBody
-            content={props.content}
             view={current}
             commit={selectedCommitValue()}
             revealLocked={revealLocked()}
@@ -287,9 +293,9 @@ export function PrView(props: PrViewProps) {
       <Show when={view()} fallback={<NoPullRequest state={currentState()} />}>
         {(current: Accessor<ActiveView>) => (
           <>
+            <PullRequestStatusLine />
             <PrViewHeader
               view={current()}
-              detailsState={props.content.details()}
               repositoryName={headerRepositoryName()}
               titleLine={titleLine()}
               headerKey={headerKey()}

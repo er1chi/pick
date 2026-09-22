@@ -5,10 +5,7 @@ import type { JSX } from "@opentui/solid";
 import type { Accessor } from "solid-js";
 import type { PullRequestContextValue } from "@/features/main-view/hooks/use-pr";
 
-export type {
-  PullRequestContextValue,
-  PullRequestPhase,
-} from "@/features/main-view/hooks/use-pr";
+export type { PullRequestContextValue } from "@/features/main-view/hooks/use-pr";
 
 const PullRequestContext = createContext<PullRequestContextValue>();
 

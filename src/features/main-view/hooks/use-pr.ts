@@ -17,12 +17,7 @@ import type {
   PullRequestPatch,
 } from "@/services/forge/types";
 
-export type PullRequestPhase =
-  | "idle"
-  | "loading"
-  | "refreshing"
-  | "ready"
-  | "error";
+type PullRequestPhase = "idle" | "loading" | "refreshing" | "ready" | "error";
 
 export interface PullRequestContextValue {
   readonly data: Accessor<PullRequestDocument | undefined>;

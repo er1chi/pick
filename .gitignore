@@ -39,7 +39,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /features.md
 /QUALITY-PLAN.md
-
-
 /FLOW.md
-/src/features/main-view
+/TEST_AGENTS.md
+/TMP_AGENTS.md
+/docs/

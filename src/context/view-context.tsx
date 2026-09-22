@@ -68,8 +68,15 @@ export interface ViewContextValue {
   clearSelection(): void;
   close(): void;
   setPullRequestPatch(patch: ForgeSection<PullRequestPatch> | undefined): void;
-  /** Store one commit's patch so a later selection can read it without a fetch. */
-  setCommitPatch(sha: string, patch: ForgeSection<PullRequestPatch>): void;
+  /**
+   * Store one commit's patch for the open pull request. A result for any other
+   * pull request is ignored, so the cache never holds more than one.
+   */
+  setCommitPatch(
+    pullRequestId: string,
+    sha: string,
+    patch: ForgeSection<PullRequestPatch>,
+  ): void;
   cachedCommitPatch(sha: string): ForgeSection<PullRequestPatch> | undefined;
   clearCommitPatches(): void;
 }
@@ -87,6 +94,7 @@ export function ViewContextProvider(props: {
     ForgeSection<PullRequestPatch> | undefined
   >();
   const commitPatches = new Map<string, ForgeSection<PullRequestPatch>>();
+  let commitPatchOwner: string | undefined;
   const [commitPatchVersion, setCommitPatchVersion] = createSignal(0);
 
   function currentPatch(): ForgeSection<PullRequestPatch> | undefined {
@@ -100,9 +108,17 @@ export function ViewContextProvider(props: {
   }
 
   function setCommitPatch(
+    pullRequestId: string,
     sha: string,
     patch: ForgeSection<PullRequestPatch>,
   ): void {
+    if (viewPullRequest(view())?.id !== pullRequestId) {
+      return;
+    }
+    if (commitPatchOwner !== pullRequestId) {
+      commitPatches.clear();
+      commitPatchOwner = pullRequestId;
+    }
     commitPatches.set(sha, patch);
     setCommitPatchVersion((version) => version + 1);
   }
@@ -110,10 +126,14 @@ export function ViewContextProvider(props: {
   function cachedCommitPatch(
     sha: string,
   ): ForgeSection<PullRequestPatch> | undefined {
+    if (commitPatchOwner !== viewPullRequest(view())?.id) {
+      return undefined;
+    }
     return commitPatches.get(sha);
   }
 
   function clearCommitPatches(): void {
+    commitPatchOwner = undefined;
     if (commitPatches.size === 0) {
       return;
     }

@@ -113,6 +113,10 @@ function useLivePullRequest(): PullRequestContextValue {
       if (sha === undefined || currentForge === undefined) {
         return;
       }
+      const pullRequestId = viewPullRequest(viewContext.view())?.id;
+      if (pullRequestId === undefined) {
+        return;
+      }
       const cached = viewContext.cachedCommitPatch(sha);
       if (cached !== undefined && isReusableCommitPatch(cached)) {
         return;
@@ -125,10 +129,14 @@ function useLivePullRequest(): PullRequestContextValue {
             return;
           }
           if (result.isErr()) {
-            viewContext.setCommitPatch(sha, failed(result.error));
+            viewContext.setCommitPatch(
+              pullRequestId,
+              sha,
+              failed(result.error),
+            );
             return;
           }
-          viewContext.setCommitPatch(sha, result.value);
+          viewContext.setCommitPatch(pullRequestId, sha, result.value);
         });
       onCleanup(() => abort.abort());
     }),

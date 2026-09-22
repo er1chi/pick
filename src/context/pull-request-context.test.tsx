@@ -82,10 +82,14 @@ function Probe(props: { readonly ready: (harness: Harness) => void }): null {
 }
 
 function mount(requests: Requests) {
+  return mountState(forgeState(requests));
+}
+
+function mountState(state: ForgeContextState) {
   let harness: Harness | undefined;
   const dispose = createRoot((done) => {
     const tree: JSX.Element = (
-      <ForgeContextProvider value={forgeState(requests)}>
+      <ForgeContextProvider value={state}>
         <ViewContextProvider>
           <PullRequestProvider>
             <Probe ready={(value) => (harness = value)} />
@@ -163,6 +167,78 @@ describe("pull request loading", () => {
       expect(requests.commitPatches).toEqual([commitA, commitB]);
       expect(harness.view.currentPatch()).toBe(commitDiffA);
       expect(harness.view.view()?.id).toBe(pullRequestViewId(repository, 7));
+    } finally {
+      dispose();
+    }
+  });
+
+  test("loading a pull request drops the previous pull request cache", async () => {
+    const requests: Requests = { pullRequests: [], commitPatches: [] };
+    const pending: Array<(patch: typeof commitDiffA) => void> = [];
+    const firstDiff = patch("first-pr");
+    const secondDiff = patch("second-pr");
+    const firstCommit = patch("first-commit");
+    const secondCommit = patch("second-commit");
+    // SAFETY: The loader only reads `diff` off the settled document.
+    const firstDocument = { diff: firstDiff } as PullRequestDocument;
+    // SAFETY: The loader only reads `diff` off the settled document.
+    const secondDocument = { diff: secondDiff } as PullRequestDocument;
+    // SAFETY: The loader only calls loadPullRequest and getCommitPatch.
+    const forge = {
+      async loadPullRequest(number: number) {
+        requests.pullRequests.push(number);
+        return Result.ok(number === 7 ? firstDocument : secondDocument);
+      },
+      getCommitPatch(sha: string) {
+        requests.commitPatches.push(sha);
+        return new Promise((resolve) => {
+          pending.push((commitPatch) => {
+            resolve(Result.ok(commitPatch));
+          });
+        });
+      },
+    } as ForgeService;
+    const { harness, dispose } = mountState({
+      cwd: "/repo",
+      kind: ApplicationContext.GitHub,
+      forge,
+      forgeError: undefined,
+    });
+
+    try {
+      harness.view.openPullRequest(repository, 7);
+      await settle();
+      harness.view.selectCommit(commitA);
+      await settle();
+      const resolveFirst = pending[0];
+      if (resolveFirst === undefined) {
+        throw new Error("missing commit patch request");
+      }
+
+      harness.view.openPullRequest(repository, 8);
+      await settle();
+      resolveFirst(firstCommit);
+      await settle();
+
+      expect(harness.pullRequest.data()?.diff).toBe(secondDiff);
+      expect(harness.view.currentPatch()).toBe(secondDiff);
+      expect(requests.pullRequests).toEqual([7, 8]);
+
+      harness.view.selectCommit(commitA);
+      await settle();
+      expect(requests.commitPatches).toEqual([commitA, commitA]);
+      expect(harness.view.currentPatch()).toBeUndefined();
+
+      const resolveSecond = pending[1];
+      if (resolveSecond === undefined) {
+        throw new Error(
+          "missing commit patch request for the open pull request",
+        );
+      }
+      resolveSecond(secondCommit);
+      await settle();
+      expect(harness.view.currentPatch()).toBe(secondCommit);
+      expect(requests.pullRequests).toEqual([7, 8]);
     } finally {
       dispose();
     }

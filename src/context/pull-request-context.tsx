@@ -18,6 +18,7 @@ import { failed } from "@/services/forge/normalization";
 
 import type { JSX } from "@opentui/solid";
 import type { Accessor } from "solid-js";
+import type { ForgeService } from "@/services/forge/forge-service";
 import type {
   ForgeOperationError,
   ForgeSection,
@@ -74,21 +75,46 @@ function useLivePullRequest(): PullRequestContextValue {
     setPhase(nextPhase);
     const abort = new AbortController();
     controller = abort;
-    void forge
-      .loadPullRequest(opened.number, { signal: abort.signal })
-      .then((result) => {
-        if (id !== requestId || abort.signal.aborted) {
-          return;
-        }
-        if (result.isErr()) {
-          setPhase("error");
-          setError(result.error);
-          return;
-        }
-        setData(result.value);
-        setPhase("ready");
-        viewContext.setPullRequestPatch(result.value.diff);
-      });
+    void applyPullRequest(id, abort, forge, opened.number);
+  }
+
+  async function applyPullRequest(
+    id: number,
+    abort: AbortController,
+    forge: ForgeService,
+    number: number,
+  ): Promise<void> {
+    const result = await forge.loadPullRequest(number, {
+      signal: abort.signal,
+    });
+    if (id !== requestId || abort.signal.aborted) {
+      return;
+    }
+    if (result.isErr()) {
+      setPhase("error");
+      setError(result.error);
+      return;
+    }
+    setData(result.value);
+    setPhase("ready");
+    viewContext.setPullRequestPatch(result.value.diff);
+  }
+
+  async function applyCommitPatch(
+    pullRequestId: string,
+    sha: string,
+    abort: AbortController,
+    forge: ForgeService,
+  ): Promise<void> {
+    const result = await forge.getCommitPatch(sha, { signal: abort.signal });
+    if (abort.signal.aborted) {
+      return;
+    }
+    if (result.isErr()) {
+      viewContext.setCommitPatch(pullRequestId, sha, failed(result.error));
+      return;
+    }
+    viewContext.setCommitPatch(pullRequestId, sha, result.value);
   }
 
   // Memos compare with ===, so a new view object with the same pull request
@@ -122,22 +148,7 @@ function useLivePullRequest(): PullRequestContextValue {
         return;
       }
       const abort = new AbortController();
-      void currentForge
-        .getCommitPatch(sha, { signal: abort.signal })
-        .then((result) => {
-          if (abort.signal.aborted) {
-            return;
-          }
-          if (result.isErr()) {
-            viewContext.setCommitPatch(
-              pullRequestId,
-              sha,
-              failed(result.error),
-            );
-            return;
-          }
-          viewContext.setCommitPatch(pullRequestId, sha, result.value);
-        });
+      void applyCommitPatch(pullRequestId, sha, abort, currentForge);
       onCleanup(() => abort.abort());
     }),
   );

@@ -210,7 +210,7 @@ export class ForgejoService implements ForgeAdapter {
     );
   }
 
-  public loadPullRequest(
+  public async loadPullRequest(
     number: number,
     options: PullRequestResourceOptions = {},
   ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
@@ -221,7 +221,7 @@ export class ForgejoService implements ForgeAdapter {
     );
   }
 
-  public getPullRequestOverview(
+  public async getPullRequestOverview(
     number: number,
     options: PullRequestOverviewOptions = {},
   ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
@@ -254,68 +254,60 @@ export class ForgejoService implements ForgeAdapter {
     );
   }
 
-  public getCommitPatch(
+  public async getCommitPatch(
     _sha: string,
     _options: PullRequestResourceOptions = {},
   ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
-    return Promise.resolve(
-      Result.ok(
-        unsupported<PullRequestPatch>(
-          ForgeUnsupportedReasonCode.CliDoesNotProvideJson,
-          "The Forgejo CLI does not expose a diff for an individual commit",
-        ),
+    return Result.ok(
+      unsupported<PullRequestPatch>(
+        ForgeUnsupportedReasonCode.CliDoesNotProvideJson,
+        "The Forgejo CLI does not expose a diff for an individual commit",
       ),
     );
   }
 
-  public getPullRequestCommits(
+  public async getPullRequestCommits(
     _number: number,
     _options: PullRequestResourceOptions = {},
   ): Promise<
     ResultType<ForgeSection<readonly PullRequestCommit[]>, ForgeOperationError>
   > {
-    return Promise.resolve(
-      Result.ok(
-        unsupported<readonly PullRequestCommit[]>(
-          ForgeUnsupportedReasonCode.CliDoesNotProvideJson,
-          "The Forgejo CLI does not provide structured pull request commits",
-        ),
+    return Result.ok(
+      unsupported<readonly PullRequestCommit[]>(
+        ForgeUnsupportedReasonCode.CliDoesNotProvideJson,
+        "The Forgejo CLI does not provide structured pull request commits",
       ),
     );
   }
 
-  public getPullRequestChecks(
+  public async getPullRequestChecks(
     _number: number,
     _options: PullRequestResourceOptions = {},
   ): Promise<
     ResultType<ForgeSection<readonly PullRequestCheck[]>, ForgeOperationError>
   > {
-    return Promise.resolve(
-      Result.ok(
-        unsupported<readonly PullRequestCheck[]>(
-          ForgeUnsupportedReasonCode.CliDoesNotProvideJson,
-          "The Forgejo CLI exposes pull request status only as human-readable output",
-        ),
+    return Result.ok(
+      unsupported<readonly PullRequestCheck[]>(
+        ForgeUnsupportedReasonCode.CliDoesNotProvideJson,
+        "The Forgejo CLI exposes pull request status only as human-readable output",
       ),
     );
   }
 
-  public getPullRequestDevelopment(
+  public async getPullRequestDevelopment(
     _number: number,
     _options: PullRequestResourceOptions = {},
   ): Promise<ResultType<PullRequestDevelopment, ForgeOperationError>> {
-    return Promise.resolve(
-      Result.ok({
-        projects: unsupported<readonly PullRequestProject[]>(
-          ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
-          "Forgejo pull request projects are not exposed by the current CLI",
-        ),
-        linkedIssues: unsupported<readonly PullRequestLinkedIssue[]>(
-          ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
-          "Forgejo linked issue data is not exposed by the current CLI",
-        ),
-      }),
-    );
+    return Result.ok({
+      projects: unsupported<readonly PullRequestProject[]>(
+        ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
+        "Forgejo pull request projects are not exposed by the current CLI",
+      ),
+      linkedIssues: unsupported<readonly PullRequestLinkedIssue[]>(
+        ForgeUnsupportedReasonCode.ProviderDoesNotExpose,
+        "Forgejo linked issue data is not exposed by the current CLI",
+      ),
+    });
   }
 
   public async getPullRequestReviews(
@@ -336,7 +328,7 @@ export class ForgejoService implements ForgeAdapter {
     );
   }
 
-  private readForgejoView(
+  private async readForgejoView(
     number: number,
     signal: AbortSignal | undefined,
   ): Promise<
@@ -419,13 +411,13 @@ export class ForgejoService implements ForgeAdapter {
     });
   }
 
-  private getView(
+  private async getView(
     number: number,
     repository: string,
     signal: AbortSignal | undefined,
   ): Promise<ResultType<ForgejoViewPayload, ForgeOperationError>> {
     if (signal?.aborted === true) {
-      return Promise.resolve(cancelledView());
+      return cancelledView();
     }
 
     const key = `${repository}#${number}`;
@@ -449,24 +441,30 @@ export class ForgejoService implements ForgeAdapter {
     repository: string,
   ): ForgejoViewFlight {
     const controller = new AbortController();
-    const promise = adapterHelpers
-      .executeForgeJson(
-        kind,
-        executableName,
-        this.cwd,
-        ["--json", "pr", "view", String(number), "--repo", repository],
-        normalizeViewPayload,
-        controller.signal,
-      )
-      .then((result) => {
-        // The flight only exists while it is in flight: dropping it on settle
-        // keeps retry() honest and stops aborted calls from poisoning it.
-        if (this.viewFlights.get(key)?.controller === controller) {
-          this.viewFlights.delete(key);
-        }
-        return result;
-      });
+    const promise = this.runViewFlight(key, controller, number, repository);
     return { key, controller, promise, waiters: 0 };
+  }
+
+  private async runViewFlight(
+    key: string,
+    controller: AbortController,
+    number: number,
+    repository: string,
+  ): Promise<ResultType<ForgejoViewPayload, ForgeOperationError>> {
+    const result = await adapterHelpers.executeForgeJson(
+      kind,
+      executableName,
+      this.cwd,
+      ["--json", "pr", "view", String(number), "--repo", repository],
+      normalizeViewPayload,
+      controller.signal,
+    );
+    // The flight only exists while it is in flight: dropping it on settle
+    // keeps retry() honest and stops aborted calls from poisoning it.
+    if (this.viewFlights.get(key)?.controller === controller) {
+      this.viewFlights.delete(key);
+    }
+    return result;
   }
 
   private finishViewFlight(flight: ForgejoViewFlight): void {
@@ -505,7 +503,7 @@ export class ForgejoService implements ForgeAdapter {
     return adapterHelpers.sectionFromResult(result);
   }
 
-  private readPatch(
+  private async readPatch(
     number: number,
     repository: string,
     signal: AbortSignal | undefined,

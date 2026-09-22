@@ -44,7 +44,7 @@ function requestedListState(
   return value ?? defaultListState;
 }
 
-export function executeForgeJson<T>(
+export async function executeForgeJson<T>(
   kind: ForgeKind,
   executable: string,
   cwd: string,
@@ -52,10 +52,11 @@ export function executeForgeJson<T>(
   decoder: (cause: unknown) => ResultType<T, ForgeOperationError>,
   signal: AbortSignal | undefined,
 ): Promise<ResultType<T, ForgeOperationError>> {
-  return executeCli(kind, executable, args, cwd, {
+  const execution = await executeCli(kind, executable, args, cwd, {
     signal,
     timeoutMs: cliTimeoutMs,
-  }).then((execution) => execution.andThen(decodeJson(kind, decoder)));
+  });
+  return execution.andThen(decodeJson(kind, decoder));
 }
 
 export function parseForgeSchema<T>(
@@ -159,7 +160,7 @@ export async function loadForgePullRequestList(
   );
 }
 
-function executeForgeList(
+async function executeForgeList(
   kind: ForgeKind,
   executable: string,
   cwd: string,
@@ -171,14 +172,19 @@ function executeForgeList(
   ) => ResultType<readonly PullRequestSummary[], ForgeOperationError>,
   signal: AbortSignal | undefined,
 ): Promise<ResultType<PullRequestList, ForgeOperationError>> {
-  return executeForgeJson(kind, executable, cwd, args, decoder, signal).then(
-    (result) =>
-      result.map((items) => ({
-        repository,
-        items: items.slice(0, limit),
-        truncated: items.length > limit,
-      })),
+  const result = await executeForgeJson(
+    kind,
+    executable,
+    cwd,
+    args,
+    decoder,
+    signal,
   );
+  return result.map((items) => ({
+    repository,
+    items: items.slice(0, limit),
+    truncated: items.length > limit,
+  }));
 }
 
 export interface SharedCliFlight<T> {
@@ -193,14 +199,14 @@ export interface SharedCliFlight<T> {
  * independently. The shared call is cancelled only once the last waiter has
  * gone away.
  */
-export function joinSharedCliFlight<T>(
+export async function joinSharedCliFlight<T>(
   flight: SharedCliFlight<T>,
   signal: AbortSignal | undefined,
   onAllAborted: () => void,
   cancelled: () => ResultType<T, ForgeOperationError>,
 ): Promise<ResultType<T, ForgeOperationError>> {
   if (signal?.aborted === true) {
-    return Promise.resolve(cancelled());
+    return cancelled();
   }
 
   flight.waiters += 1;
@@ -220,14 +226,13 @@ export function joinSharedCliFlight<T>(
   };
   signal?.addEventListener("abort", onAbort, { once: true });
 
-  return flight.promise.then((result) => {
-    signal?.removeEventListener("abort", onAbort);
-    if (!waiting) {
-      return cancelled();
-    }
-    release(false);
-    return result;
-  });
+  const result = await flight.promise;
+  signal?.removeEventListener("abort", onAbort);
+  if (!waiting) {
+    return cancelled();
+  }
+  release(false);
+  return result;
 }
 
 export function sectionFromResult<T>(

@@ -8,6 +8,7 @@ import {
   type LoadState,
 } from "../utils/load-state";
 
+import type { ForgeService } from "@/services/forge/forge-service";
 import type {
   PullRequestList,
   PullRequestListState,
@@ -57,36 +58,7 @@ export function usePrTitles(): PrTitles {
           : undefined,
     });
 
-    void forge
-      .getPullRequests({
-        signal: controller.signal,
-        state: selectedFilter,
-      })
-      .then((result) => {
-        if (
-          generation !== requestGeneration ||
-          filter() !== selectedFilter ||
-          controller.signal.aborted
-        ) {
-          return;
-        }
-        if (result.isErr()) {
-          if (!isCancelled(result.error)) {
-            setList({
-              status: LoadStatus.Settled,
-              result,
-              previous:
-                lastSuccessfulList === undefined
-                  ? undefined
-                  : Result.ok(lastSuccessfulList),
-            });
-          }
-          return;
-        }
-
-        lastSuccessfulList = result.value;
-        setList({ status: LoadStatus.Settled, result, previous: undefined });
-      });
+    void applyPullRequestList(generation, controller, forge, selectedFilter);
 
     onCleanup(() => {
       controller.abort();
@@ -100,6 +72,41 @@ export function usePrTitles(): PrTitles {
     listController?.abort();
     listController = undefined;
   });
+
+  async function applyPullRequestList(
+    generation: number,
+    controller: AbortController,
+    forge: ForgeService,
+    selectedFilter: PullRequestListState,
+  ): Promise<void> {
+    const result = await forge.getPullRequests({
+      signal: controller.signal,
+      state: selectedFilter,
+    });
+    if (
+      generation !== requestGeneration ||
+      filter() !== selectedFilter ||
+      controller.signal.aborted
+    ) {
+      return;
+    }
+    if (result.isErr()) {
+      if (!isCancelled(result.error)) {
+        setList({
+          status: LoadStatus.Settled,
+          result,
+          previous:
+            lastSuccessfulList === undefined
+              ? undefined
+              : Result.ok(lastSuccessfulList),
+        });
+      }
+      return;
+    }
+
+    lastSuccessfulList = result.value;
+    setList({ status: LoadStatus.Settled, result, previous: undefined });
+  }
 
   function setFilter(nextFilter: PullRequestListState): void {
     if (nextFilter === filter()) {

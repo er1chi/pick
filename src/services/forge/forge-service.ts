@@ -58,7 +58,7 @@ export class ForgeService {
 
   /** Validates the pull request number and runs one adapter operation inside
    * the never-rejecting service guard. */
-  private fetchResource<T>(
+  private async fetchResource<T>(
     number: number,
     _options: PullRequestResourceOptions | undefined,
     fetch: (value: number) => Promise<ResultType<T, ForgeOperationError>>,
@@ -85,7 +85,7 @@ export class ForgeService {
     return Result.ok(new ForgeService(initialized.value));
   }
 
-  public getPullRequests(
+  public async getPullRequests(
     options?: PullRequestListOptions,
   ): Promise<Result<PullRequestList, ForgeOperationError>> {
     const { kind, adapter } = this;
@@ -118,7 +118,7 @@ export class ForgeService {
     );
   }
 
-  public loadPullRequest(
+  public async loadPullRequest(
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestDocument, ForgeOperationError>> {
@@ -127,7 +127,7 @@ export class ForgeService {
     );
   }
 
-  public getPullRequestOverview(
+  public async getPullRequestOverview(
     number: number,
     options?: PullRequestOverviewOptions,
   ): Promise<Result<PullRequestOverview, ForgeOperationError>> {
@@ -136,7 +136,7 @@ export class ForgeService {
     );
   }
 
-  public getPullRequestDetails(
+  public async getPullRequestDetails(
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestDetails, ForgeOperationError>> {
@@ -145,7 +145,7 @@ export class ForgeService {
     );
   }
 
-  public getPullRequestDiff(
+  public async getPullRequestDiff(
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<Result<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
@@ -154,7 +154,7 @@ export class ForgeService {
     );
   }
 
-  public getPullRequestCommits(
+  public async getPullRequestCommits(
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<
@@ -165,7 +165,7 @@ export class ForgeService {
     );
   }
 
-  public getPullRequestReviews(
+  public async getPullRequestReviews(
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestReviewsResource, ForgeOperationError>> {
@@ -174,7 +174,7 @@ export class ForgeService {
     );
   }
 
-  public getPullRequestChecks(
+  public async getPullRequestChecks(
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<
@@ -185,7 +185,7 @@ export class ForgeService {
     );
   }
 
-  public getPullRequestDevelopment(
+  public async getPullRequestDevelopment(
     number: number,
     options?: PullRequestResourceOptions,
   ): Promise<Result<PullRequestDevelopment, ForgeOperationError>> {
@@ -194,7 +194,7 @@ export class ForgeService {
     );
   }
 
-  public getCommitPatch(
+  public async getCommitPatch(
     sha: string,
     options?: PullRequestResourceOptions,
   ): Promise<Result<ForgeSection<PullRequestPatch>, ForgeOperationError>> {

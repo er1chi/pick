@@ -93,13 +93,10 @@ export function Default() {
 
     // `selectRepository` never rejects: every failure mode is a tagged error
     // carried in the `Result`.
-    void forgeContext
-      .selectRepository(selectedRepository.path)
-      .then((result) => {
-        if (result.isErr()) {
-          notifyRepositorySelectionError(result.error, selectedRepository.name);
-        }
-      });
+    const result = await forgeContext.selectRepository(selectedRepository.path);
+    if (result.isErr()) {
+      notifyRepositorySelectionError(result.error, selectedRepository.name);
+    }
   }
 
   useBindings(() => ({
@@ -128,23 +125,26 @@ export function Default() {
   }));
 
   onMount(() => {
-    void discoverRecentRepositories()
-      .then((result) => {
-        result.match({
-          ok: (discoveredRepositories) => {
-            setRepositories(discoveredRepositories);
-            setDiscoveryError(undefined);
-          },
-          err: (error) => {
-            setRepositories([]);
-            setDiscoveryError(error);
-          },
-        });
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    void loadRecentRepositories();
   });
+
+  async function loadRecentRepositories(): Promise<void> {
+    try {
+      const result = await discoverRecentRepositories();
+      result.match({
+        ok: (discoveredRepositories) => {
+          setRepositories(discoveredRepositories);
+          setDiscoveryError(undefined);
+        },
+        err: (error) => {
+          setRepositories([]);
+          setDiscoveryError(error);
+        },
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   return (
     <box

@@ -111,7 +111,7 @@ export class GithubService implements ForgeAdapter {
     );
   }
 
-  public loadPullRequest(
+  public async loadPullRequest(
     number: number,
     options: PullRequestResourceOptions = {},
   ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
@@ -123,7 +123,7 @@ export class GithubService implements ForgeAdapter {
     );
   }
 
-  public getPullRequestOverview(
+  public async getPullRequestOverview(
     number: number,
     options: PullRequestOverviewOptions = {},
   ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
@@ -134,7 +134,7 @@ export class GithubService implements ForgeAdapter {
     );
   }
 
-  public getCommitPatch(
+  public async getCommitPatch(
     sha: string,
     options: PullRequestResourceOptions = {},
   ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
@@ -166,7 +166,7 @@ export class GithubService implements ForgeAdapter {
     );
   }
 
-  public getPullRequestDiff(
+  public async getPullRequestDiff(
     number: number,
     options: PullRequestResourceOptions = {},
   ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
@@ -303,33 +303,32 @@ export class GithubService implements ForgeAdapter {
     });
   }
 
-  private readOverview(
+  private async readOverview(
     number: number,
     repository: ForgeRepository,
     signal: AbortSignal | undefined,
   ): Promise<ResultType<PullRequestOverview, ForgeOperationError>> {
-    return Promise.all([
+    const [view, conversationComments] = await Promise.all([
       this.getView(number, repository.fullName, signal),
       this.readConversationComments(repository, number, signal),
-    ]).then(([view, conversationComments]) => {
-      if (view.isErr()) {
-        return view;
-      }
-      const fields = normalizeOverview(view.value, number);
-      if (fields.isErr()) {
-        return fields;
-      }
-      return Result.ok(
-        assemblePullRequestOverview(
-          repository,
-          fields.value,
-          conversationComments,
-        ),
-      );
-    });
+    ]);
+    if (view.isErr()) {
+      return view;
+    }
+    const fields = normalizeOverview(view.value, number);
+    if (fields.isErr()) {
+      return fields;
+    }
+    return Result.ok(
+      assemblePullRequestOverview(
+        repository,
+        fields.value,
+        conversationComments,
+      ),
+    );
   }
 
-  private readConversationComments(
+  private async readConversationComments(
     repository: ForgeRepository,
     number: number,
     signal: AbortSignal | undefined,
@@ -348,7 +347,7 @@ export class GithubService implements ForgeAdapter {
     );
   }
 
-  private readCommits(
+  private async readCommits(
     repository: ForgeRepository,
     number: number,
     signal: AbortSignal | undefined,
@@ -415,7 +414,7 @@ export class GithubService implements ForgeAdapter {
     return { reviews, reviewComments, requestedReviewers };
   }
 
-  private readPullRequestDiff(
+  private async readPullRequestDiff(
     repository: ForgeRepository,
     number: number,
     signal: AbortSignal | undefined,
@@ -437,13 +436,13 @@ export class GithubService implements ForgeAdapter {
     );
   }
 
-  private getView(
+  private async getView(
     number: number,
     repository: string,
     signal: AbortSignal | undefined,
   ): Promise<ResultType<GithubPullRequestView, ForgeOperationError>> {
     if (signal?.aborted === true) {
-      return Promise.resolve(cancelledView());
+      return cancelledView();
     }
 
     const key = `${repository}#${number}`;
@@ -467,30 +466,36 @@ export class GithubService implements ForgeAdapter {
     repository: string,
   ): SharedCliFlight<GithubPullRequestView> {
     const controller = new AbortController();
-    const promise = adapterHelpers
-      .executeForgeJson(
-        kind,
-        executableName,
-        this.cwd,
-        [
-          "pr",
-          "view",
-          String(number),
-          "--repo",
-          repository,
-          "--json",
-          pullRequestViewFields,
-        ],
-        decodePullRequestView,
-        controller.signal,
-      )
-      .then((result) => {
-        if (this.viewFlights.get(key)?.controller === controller) {
-          this.viewFlights.delete(key);
-        }
-        return result;
-      });
+    const promise = this.runViewFlight(key, controller, number, repository);
     return { key, controller, promise, waiters: 0 };
+  }
+
+  private async runViewFlight(
+    key: string,
+    controller: AbortController,
+    number: number,
+    repository: string,
+  ): Promise<ResultType<GithubPullRequestView, ForgeOperationError>> {
+    const result = await adapterHelpers.executeForgeJson(
+      kind,
+      executableName,
+      this.cwd,
+      [
+        "pr",
+        "view",
+        String(number),
+        "--repo",
+        repository,
+        "--json",
+        pullRequestViewFields,
+      ],
+      decodePullRequestView,
+      controller.signal,
+    );
+    if (this.viewFlights.get(key)?.controller === controller) {
+      this.viewFlights.delete(key);
+    }
+    return result;
   }
 
   private finishViewFlight(
@@ -612,7 +617,7 @@ export class GithubService implements ForgeAdapter {
    * media type. Shared by the commit patch and the pull request diff, which
    * differ only in the CLI arguments they pass.
    */
-  private readPatchSection(
+  private async readPatchSection(
     signal: AbortSignal | undefined,
     patchArgs: (repository: ForgeRepository) => readonly string[],
   ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {

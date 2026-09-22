@@ -159,8 +159,6 @@ type ForgejoComment = typeof commentSchema.infer;
 type ForgejoBranch = typeof branchSchema.infer;
 type ForgejoDetailsFields = PullRequestDetails;
 
-type ForgejoViewFlight = adapterHelpers.SharedCliFlight<ForgejoViewPayload>;
-
 function cancelledView(): ResultType<ForgejoViewPayload, ForgeOperationError> {
   return Result.err(
     new ForgeCancelledError({
@@ -177,7 +175,8 @@ export class ForgejoService implements ForgeAdapter {
     signal: AbortSignal | undefined,
   ) => Promise<ResultType<ForgeRepository, ForgeOperationError>>;
 
-  private readonly viewFlights = new Map<string, ForgejoViewFlight>();
+  /** Successful `fj pr view` payloads. A later read of the same pull request reuses one instead of starting another command. */
+  private readonly pullRequestViews = new Map<string, ForgejoViewPayload>();
 
   public static initialize(cwd: string) {
     return adapterHelpers.initializeForgeAdapter(
@@ -368,7 +367,11 @@ export class ForgejoService implements ForgeAdapter {
   ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
     const signal = options.signal;
     const diffTask = this.readPatch(number, repository.fullName, signal);
-    const viewTask = this.getView(number, repository.fullName, signal);
+    const viewTask = this.readPullRequestView(
+      number,
+      repository.fullName,
+      signal,
+    );
     const commentsTask = this.readComments(number, repository.fullName, signal);
     const [commits, checks, development] = await Promise.all([
       this.getPullRequestCommits(number, { signal }),
@@ -419,60 +422,33 @@ export class ForgejoService implements ForgeAdapter {
     if (signal?.aborted === true) {
       return cancelledView();
     }
-
-    const key = `${repository}#${number}`;
-    let flight = this.viewFlights.get(key);
-    if (flight === undefined) {
-      flight = this.startViewFlight(key, number, repository);
-      this.viewFlights.set(key, flight);
+    const cached = this.pullRequestViews.get(`${repository}#${number}`);
+    if (cached !== undefined) {
+      return Result.ok(cached);
     }
-    const current = flight;
-    return adapterHelpers.joinSharedCliFlight(
-      current,
-      signal,
-      () => this.finishViewFlight(current),
-      cancelledView,
-    );
+    return this.readPullRequestView(number, repository, signal);
   }
 
-  private startViewFlight(
-    key: string,
+  private async readPullRequestView(
     number: number,
     repository: string,
-  ): ForgejoViewFlight {
-    const controller = new AbortController();
-    const promise = this.runViewFlight(key, controller, number, repository);
-    return { key, controller, promise, waiters: 0 };
-  }
-
-  private async runViewFlight(
-    key: string,
-    controller: AbortController,
-    number: number,
-    repository: string,
+    signal: AbortSignal | undefined,
   ): Promise<ResultType<ForgejoViewPayload, ForgeOperationError>> {
+    if (signal?.aborted === true) {
+      return cancelledView();
+    }
     const result = await adapterHelpers.executeForgeJson(
       kind,
       executableName,
       this.cwd,
       ["--json", "pr", "view", String(number), "--repo", repository],
       normalizeViewPayload,
-      controller.signal,
+      signal,
     );
-    // The flight only exists while it is in flight: dropping it on settle
-    // keeps retry() honest and stops aborted calls from poisoning it.
-    if (this.viewFlights.get(key)?.controller === controller) {
-      this.viewFlights.delete(key);
+    if (result.isOk()) {
+      this.pullRequestViews.set(`${repository}#${number}`, result.value);
     }
     return result;
-  }
-
-  private finishViewFlight(flight: ForgejoViewFlight): void {
-    if (this.viewFlights.get(flight.key) !== flight) {
-      return;
-    }
-    this.viewFlights.delete(flight.key);
-    flight.controller.abort();
   }
 
   private getRepository(signal: AbortSignal | undefined) {

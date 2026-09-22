@@ -25,7 +25,6 @@ import {
 import { ApplicationContext, ForgeCancelledError } from "./types";
 
 import type { Result as ResultType } from "better-result";
-import type { SharedCliFlight } from "./adapter-helpers";
 import type { GithubPullRequestView } from "./github-schemas";
 import type {
   ForgeAdapter,
@@ -62,10 +61,8 @@ export class GithubService implements ForgeAdapter {
     signal: AbortSignal | undefined,
   ) => Promise<ResultType<ForgeRepository, ForgeOperationError>>;
 
-  private readonly viewFlights = new Map<
-    string,
-    SharedCliFlight<GithubPullRequestView>
-  >();
+  /** Successful `gh pr view` payloads. A later read of the same pull request reuses one instead of starting another command. */
+  private readonly pullRequestViews = new Map<string, GithubPullRequestView>();
 
   private constructor(private readonly cwd: string) {
     this.repositoryReader = adapterHelpers.createCachedForgeRepositoryReader(
@@ -271,7 +268,11 @@ export class GithubService implements ForgeAdapter {
       number,
       signal,
     );
-    const view = await this.getView(number, repository.fullName, signal);
+    const view = await this.readPullRequestView(
+      number,
+      repository.fullName,
+      signal,
+    );
     const projected = view.isOk()
       ? this.projectView(view.value, repository, number)
       : failedView(view.error);
@@ -444,38 +445,21 @@ export class GithubService implements ForgeAdapter {
     if (signal?.aborted === true) {
       return cancelledView();
     }
-
-    const key = `${repository}#${number}`;
-    let flight = this.viewFlights.get(key);
-    if (flight === undefined) {
-      flight = this.startViewFlight(key, number, repository);
-      this.viewFlights.set(key, flight);
+    const cached = this.pullRequestViews.get(`${repository}#${number}`);
+    if (cached !== undefined) {
+      return Result.ok(cached);
     }
-    const current = flight;
-    return adapterHelpers.joinSharedCliFlight(
-      current,
-      signal,
-      () => this.finishViewFlight(current),
-      cancelledView,
-    );
+    return this.readPullRequestView(number, repository, signal);
   }
 
-  private startViewFlight(
-    key: string,
+  private async readPullRequestView(
     number: number,
     repository: string,
-  ): SharedCliFlight<GithubPullRequestView> {
-    const controller = new AbortController();
-    const promise = this.runViewFlight(key, controller, number, repository);
-    return { key, controller, promise, waiters: 0 };
-  }
-
-  private async runViewFlight(
-    key: string,
-    controller: AbortController,
-    number: number,
-    repository: string,
+    signal: AbortSignal | undefined,
   ): Promise<ResultType<GithubPullRequestView, ForgeOperationError>> {
+    if (signal?.aborted === true) {
+      return cancelledView();
+    }
     const result = await adapterHelpers.executeForgeJson(
       kind,
       executableName,
@@ -490,22 +474,12 @@ export class GithubService implements ForgeAdapter {
         pullRequestViewFields,
       ],
       decodePullRequestView,
-      controller.signal,
+      signal,
     );
-    if (this.viewFlights.get(key)?.controller === controller) {
-      this.viewFlights.delete(key);
+    if (result.isOk()) {
+      this.pullRequestViews.set(`${repository}#${number}`, result.value);
     }
     return result;
-  }
-
-  private finishViewFlight(
-    flight: SharedCliFlight<GithubPullRequestView>,
-  ): void {
-    if (this.viewFlights.get(flight.key) !== flight) {
-      return;
-    }
-    this.viewFlights.delete(flight.key);
-    flight.controller.abort();
   }
 
   private projectView(

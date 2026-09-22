@@ -2,10 +2,7 @@ import { useBindings } from "@opentui/keymap/solid";
 import { toast } from "@tuiparts/toast/solid";
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
-import {
-  useForgeContext,
-  type RepositorySelectionError,
-} from "@/context/forge-context";
+import { useForgeContext } from "@/context/forge-context";
 import {
   discoverRecentRepositories,
   type RecentRepository,
@@ -69,18 +66,6 @@ export function Default() {
     recentRepositoriesScrollBox()?.scrollChildIntoView(nextRepository.path);
   }
 
-  function notifyRepositorySelectionError(
-    error: RepositorySelectionError,
-    repositoryName: string,
-  ): void {
-    error.match({
-      RepositoryDirectoryChangeFailedError: () =>
-        toast.error(`Could not open ${repositoryName}.`),
-      RepositoryContextInitializationFailedError: () =>
-        toast.error(`Could not initialize ${repositoryName}.`),
-    });
-  }
-
   async function activateSelectedRepository(): Promise<void> {
     const currentRepositories = repositories();
     const currentSelectedPath = selectedPath();
@@ -95,7 +80,7 @@ export function Default() {
     // carried in the `Result`.
     const result = await forgeContext.selectRepository(selectedRepository.path);
     if (result.isErr()) {
-      notifyRepositorySelectionError(result.error, selectedRepository.name);
+      toast.error(`Could not initialize ${selectedRepository.name}.`);
     }
   }
 

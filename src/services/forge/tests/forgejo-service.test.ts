@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { ForgejoService } from "../forgejo-service";
-import { ApplicationContext, PullRequestState } from "../types";
+import { ForgeKind, PullRequestState } from "../types";
 import { createFakeCli, exact, stdout } from "./fake-cli-runner";
 
 import type { Result as ResultType } from "better-result";
 import type { CannedCommand, FakeCli } from "./fake-cli-runner";
 
-const kind = ApplicationContext.Forgejo;
+const kind = ForgeKind.Forgejo;
 const cwd = "/repo";
 const repositoryUrl = "https://forge.example/o/r";
 const diffText = "diff --git a/file b/file\n+hello\n";
@@ -112,13 +112,16 @@ describe("ForgejoService.loadPullRequest", () => {
         exact("--json pr view 9 --repo o/r comments"),
         stdout(JSON.stringify(comments)),
       ],
-      [exact("--json pr view 9 --repo o/r diff"), stdout(diffText)],
+      [exact("pr view 9 --repo o/r diff"), stdout(diffText)],
     ]);
     const service = await forgejoService(cli);
 
     const document = unwrap(await service.loadPullRequest(9));
 
-    expect(unwrap(document.details).number).toBe(9);
+    expect(document.details.status).toBe("available");
+    if (document.details.status === "available") {
+      expect(document.details.value.number).toBe(9);
+    }
     expect(document.commits.status).toBe("unsupported");
 
     const requestedReviewers = document.reviews.requestedReviewers;
@@ -132,11 +135,10 @@ describe("ForgejoService.loadPullRequest", () => {
       ]);
     }
 
-    const overview = unwrap(document.overview);
-    expect(overview.conversationComments.status).toBe("available");
-    if (overview.conversationComments.status === "available") {
-      expect(overview.conversationComments.value).toHaveLength(1);
-      expect(overview.conversationComments.truncated).toBe(true);
+    expect(document.comments.status).toBe("available");
+    if (document.comments.status === "available") {
+      expect(document.comments.value).toHaveLength(1);
+      expect(document.comments.truncated).toBe(true);
     }
 
     expect(document.diff.status).toBe("available");

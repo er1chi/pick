@@ -1,25 +1,32 @@
 import { Result, TaggedError } from "better-result";
 import { resolve } from "node:path";
 import { createContext, createSignal, useContext } from "solid-js";
-import { ForgeService } from "@/services/forge/forge-service";
-import {
-  ApplicationContext,
-  type ForgeInitializationError,
-  type ForgeKind,
-} from "@/services/forge/types";
+import { forgeKindForRemotes, initializeForge } from "@/services/forge/forge";
 import { readGitRemoteOutput } from "@/services/local/local";
 
 import type { JSX } from "@opentui/solid";
 import type { Result as ResultType } from "better-result";
 import type { Accessor } from "solid-js";
+import type {
+  Forge,
+  ForgeInitializationError,
+  ForgeKind,
+} from "@/services/forge/types";
 
-interface ForgeContextBase<T extends ApplicationContext> {
+/** The contexts without a forge: outside any repository, and a repository
+ * with no remotes. A repository with a forge is identified by its `ForgeKind`. */
+export enum ApplicationContext {
+  Default = "application",
+  Local = "local",
+}
+
+interface ForgeContextBase<T extends ApplicationContext | ForgeKind> {
   readonly cwd: string;
   readonly kind: T;
 }
 
 interface ExistingForgeState {
-  readonly forge: ForgeService;
+  readonly forge: Forge;
   readonly forgeError: undefined;
 }
 
@@ -49,13 +56,6 @@ export type RepositoryForgeContextState = Exclude<
   ForgeContextBase<ApplicationContext.Default> & NoForge
 >;
 
-class RepositoryDirectoryChangeFailedError extends TaggedError(
-  "RepositoryDirectoryChangeFailedError",
-)<{
-  readonly path: string;
-  readonly message: string;
-}> {}
-
 class RepositoryContextInitializationFailedError extends TaggedError(
   "RepositoryContextInitializationFailedError",
 )<{
@@ -64,34 +64,10 @@ class RepositoryContextInitializationFailedError extends TaggedError(
   readonly message: string;
 }> {}
 
-export type RepositorySelectionError =
-  | RepositoryDirectoryChangeFailedError
-  | RepositoryContextInitializationFailedError;
-
-type RepositorySelectionResult = ResultType<void, RepositorySelectionError>;
-
-const remoteEntryPattern = /^\S+\s+(\S+)\s+\((?:fetch|push)\)$/;
-const githubScpRemotePattern = /^[^@/\s]+@([^:/\s]+):\S+$/;
-
-function parseRemoteUrls(output: string): string[] {
-  return output.split(/\r?\n/).flatMap((line) => {
-    const match = remoteEntryPattern.exec(line.trim());
-    const url = match?.[1];
-
-    return url ? [url] : [];
-  });
-}
-
-function isGithubRemoteUrl(url: string): boolean {
-  const scpMatch = githubScpRemotePattern.exec(url);
-  if (scpMatch?.[1]?.toLowerCase() === "github.com") {
-    return true;
-  }
-
-  return Result.try(() => new URL(url))
-    .map(({ hostname }) => hostname.toLowerCase() === "github.com")
-    .unwrapOr(false);
-}
+type RepositorySelectionResult = ResultType<
+  void,
+  RepositoryContextInitializationFailedError
+>;
 
 export async function initializeForgeContext(
   cwd = process.cwd(),
@@ -106,8 +82,8 @@ export async function initializeForgeContext(
     };
   }
 
-  const remoteUrls = parseRemoteUrls(remoteOutput.value);
-  if (remoteUrls.length === 0) {
+  const kind = forgeKindForRemotes(remoteOutput.value);
+  if (kind === undefined) {
     return {
       cwd: activeCwd,
       kind: ApplicationContext.Local,
@@ -115,11 +91,7 @@ export async function initializeForgeContext(
     };
   }
 
-  const kind = remoteUrls.some(isGithubRemoteUrl)
-    ? ApplicationContext.GitHub
-    : ApplicationContext.Forgejo;
-  const initialization = await ForgeService.initialize(kind, activeCwd);
-
+  const initialization = await initializeForge(kind, activeCwd);
   if (initialization.isErr()) {
     return {
       cwd: activeCwd,
@@ -155,10 +127,12 @@ export function ForgeContextProvider(
   props: ForgeContextProviderProps,
 ): JSX.Element {
   const [state, setState] = createSignal(props.value);
+  let latestSelection = 0;
 
   const selectRepository = async (
     repositoryPath: string,
   ): Promise<RepositorySelectionResult> => {
+    const selection = ++latestSelection;
     const path = resolve(repositoryPath);
     const initialization = await Result.tryPromise({
       try: () => initializeForgeContext(path),
@@ -170,26 +144,14 @@ export function ForgeContextProvider(
         }),
     });
 
+    if (selection !== latestSelection) {
+      return Result.ok();
+    }
     if (initialization.isErr()) {
       return initialization;
     }
 
-    const changeDirectory = Result.try({
-      try: () => {
-        process.chdir(path);
-      },
-      catch: () =>
-        new RepositoryDirectoryChangeFailedError({
-          path,
-          message: `Could not change directory to ${path}`,
-        }),
-    });
-
-    if (changeDirectory.isErr()) {
-      return changeDirectory;
-    }
-
-    setState({ ...initialization.value, cwd: process.cwd() });
+    setState(initialization.value);
     return Result.ok();
   };
 

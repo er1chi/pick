@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { ForgeCli } from "../forge-cli";
 import { GithubService } from "../github-service";
 import {
-  ApplicationContext,
+  ForgeKind,
   ForgeCommandFailedError,
   ForgeCommandSpawnFailedError,
   ForgeExecutableUnavailableError,
@@ -14,7 +14,7 @@ import { createFakeCli, exact, fails, prefix, stdout } from "./fake-cli-runner";
 import type { Result as ResultType } from "better-result";
 import type { CannedCommand, FakeCli } from "./fake-cli-runner";
 
-const kind = ApplicationContext.GitHub;
+const kind = ForgeKind.GitHub;
 const cwd = "/repo";
 const repository = { fullName: "o/r", owner: "o", name: "r" };
 const repositoryUrl = "https://github.com/o/r";
@@ -180,8 +180,10 @@ describe("GithubService.loadPullRequest", () => {
 
     const document = unwrap(await service.loadPullRequest(7));
 
-    expect(document.overview.isOk()).toBe(true);
-    expect(unwrap(document.details).number).toBe(7);
+    expect(document.details.status).toBe("available");
+    if (document.details.status === "available") {
+      expect(document.details.value.number).toBe(7);
+    }
     expect(document.checks).toEqual({
       status: "available",
       value: [],
@@ -196,9 +198,6 @@ describe("GithubService.loadPullRequest", () => {
     expect(document.diff.status).toBe("available");
     if (document.diff.status === "available") {
       expect(document.diff.value.text).toBe(diffText);
-      expect(document.diff.value.byteLength).toBe(
-        new TextEncoder().encode(diffText).byteLength,
-      );
     }
     expectInvokedAsGh(cli);
   });
@@ -223,8 +222,7 @@ describe("GithubService.loadPullRequest", () => {
 
     const document = unwrap(await service.loadPullRequest(7));
 
-    expect(document.overview.isErr()).toBe(true);
-    expect(document.details.isErr()).toBe(true);
+    expect(document.details.status).toBe("failed");
     expect(document.checks.status).toBe("failed");
     expect(document.development.projects.status).toBe("failed");
     expect(document.diff.status).toBe("available");

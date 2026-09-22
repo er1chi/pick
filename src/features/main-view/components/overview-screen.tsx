@@ -20,15 +20,13 @@ import {
 } from "@/features/main-view/utils/pr-view-display";
 import { colors } from "@/theme";
 
-import type { Result } from "better-result";
 import type {
-  ForgeOperationError,
   ForgeSection,
   PullRequestCheck,
   PullRequestComment,
+  PullRequestDetails,
   PullRequestDocument,
   PullRequestLinkedIssue,
-  PullRequestOverview,
   PullRequestProject,
   PullRequestReview,
   PullRequestReviewComment,
@@ -91,12 +89,13 @@ function renderComments(
 
 function renderOverview(
   summary: PullRequestSummary,
-  overview: PullRequestOverview,
+  details: PullRequestDetails | undefined,
+  comments: ForgeSection<readonly PullRequestComment[]>,
 ): JSX.Element {
   return (
     <box flexDirection="column" gap={0}>
       {renderMutedLine(overviewMetaLine(summary))}
-      <Show when={presentText(overview.body)}>
+      <Show when={presentText(details?.body)}>
         {(body: Accessor<string>) => (
           <box flexDirection="column" gap={1}>
             <text fg={colors.foreground}>
@@ -106,7 +105,7 @@ function renderOverview(
           </box>
         )}
       </Show>
-      {renderComments(overview.conversationComments)}
+      {renderComments(comments)}
     </box>
   );
 }
@@ -167,16 +166,21 @@ function renderDevelopment(
 }
 
 function renderLoadedOverview(
-  overview: Result<PullRequestOverview, ForgeOperationError>,
+  document: PullRequestDocument,
   summary: PullRequestSummary | undefined,
 ): JSX.Element | null {
-  if (overview.isErr()) {
-    return <text fg={colors.yellow}>{overview.error.message}</text>;
+  const details = document.details;
+  if (details.status === "failed") {
+    return <text fg={colors.yellow}>{details.error.message}</text>;
   }
   if (summary === undefined) {
     return null;
   }
-  return renderOverview(summary, overview.value);
+  return renderOverview(
+    summary,
+    details.status === "available" ? details.value : undefined,
+    document.comments,
+  );
 }
 
 function OverviewBody(props: {
@@ -186,7 +190,7 @@ function OverviewBody(props: {
   const reviews = props.document.reviews;
   return (
     <box flexDirection="column" gap={1} width="100%">
-      {renderLoadedOverview(props.document.overview, props.summary)}
+      {renderLoadedOverview(props.document, props.summary)}
       {renderReviews(
         reviews.reviews,
         reviews.reviewComments,

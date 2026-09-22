@@ -1,30 +1,36 @@
-import { type } from "arktype";
 import { Result } from "better-result";
-import { ForgeAdapterBase, ForgeCli } from "./forge-cli";
+import { ForgeCli } from "./forge-cli";
 import {
   normalizeChecks,
   normalizeCommits,
   normalizeConversationComments,
   normalizeDetails,
   normalizeLinkedIssues,
-  normalizeListPayload,
   normalizeProjects,
   normalizeRepositoryPayload,
   normalizeRequestedReviewers,
   normalizeReviewComments,
   normalizeReviews,
-  type GithubOverviewFields,
+  normalizeSummary,
 } from "./github-normalize";
 import * as githubSchemas from "./github-schemas";
-import { normalizeOverviewFields } from "./normalization";
+import { matchPullRequestNumber } from "./normalization";
+import {
+  requestPullRequest,
+  requestPullRequestList,
+  validateCommitSha,
+  withRepository,
+} from "./requests";
 import { available, failed, sectionFromResult } from "./section";
-import { ApplicationContext } from "./types";
+import { ForgeKind } from "./types";
 
+import type { type } from "arktype";
 import type { Result as ResultType } from "better-result";
 import type { CliRunner } from "./forge-cli";
 import type { GithubPullRequestView } from "./github-schemas";
+import type { RepositoryLookup } from "./requests";
 import type {
-  ForgeAdapter,
+  Forge,
   ForgeOperationError,
   ForgeRepository,
   ForgeSection,
@@ -32,31 +38,33 @@ import type {
   PullRequestDetails,
   PullRequestDevelopment,
   PullRequestDocument,
-  PullRequestLinkedIssue,
   PullRequestList,
   PullRequestListOptions,
   PullRequestPatch,
-  PullRequestProject,
   PullRequestResourceOptions,
   PullRequestReviewsResource,
-  PullRequestSummary,
 } from "./types";
 
 const executable = "gh";
-const kind = ApplicationContext.GitHub;
+const kind = ForgeKind.GitHub;
 const optionalSectionDiagnostic =
   "GitHub optional PR response did not match the schema";
-const pullRequestViewFields =
-  "number,body,createdAt,updatedAt,closedAt,mergedAt,mergedBy,baseRefName,baseRefOid,headRefName,headRefOid,headRepository,additions,deletions,changedFiles,labels,assignees,milestone,maintainerCanModify,mergeable,mergeStateStatus,reviewDecision,mergeCommit,statusCheckRollup,projectItems,projectCards,closingIssuesReferences";
 
-export class GithubService extends ForgeAdapterBase implements ForgeAdapter {
-  constructor(cli: ForgeCli) {
-    super(
-      cli,
-      cli.cachedJson(
-        ["repo", "view", "--json", "nameWithOwner,url"],
-        decodeGithubRepository(cli),
-      ),
+export class GithubService implements Forge {
+  public readonly kind = kind;
+  private readonly repository: RepositoryLookup;
+
+  constructor(private readonly cli: ForgeCli) {
+    this.repository = cli.cachedJson(
+      ["repo", "view", "--json", "nameWithOwner,url"],
+      (cause) =>
+        cli
+          .parse(
+            githubSchemas.repositorySchema,
+            cause,
+            "GitHub repository response did not match the schema",
+          )
+          .andThen(normalizeRepositoryPayload),
     );
   }
 
@@ -68,22 +76,34 @@ export class GithubService extends ForgeAdapterBase implements ForgeAdapter {
   public async getPullRequests(
     options: PullRequestListOptions = {},
   ): Promise<ResultType<PullRequestList, ForgeOperationError>> {
-    return this.cli.pullRequestList(
+    return requestPullRequestList(
+      kind,
       this.repository,
-      (repository, limit, state) => [
-        "pr",
-        "list",
-        "--repo",
-        repository.fullName,
-        "--state",
-        state,
-        "--limit",
-        String(limit + 1),
-        "--json",
-        "number,title,state,isDraft,author,url,updatedAt",
-      ],
-      decodeGithubList(this.cli),
       options,
+      (repository, { limit, state }) =>
+        this.cli.json(
+          [
+            "pr",
+            "list",
+            "--repo",
+            repository.fullName,
+            "--state",
+            state,
+            "--limit",
+            String(limit + 1),
+            "--json",
+            "number,title,state,isDraft,author",
+          ],
+          (cause) =>
+            this.cli
+              .parse(
+                githubSchemas.listItemSchema.array(),
+                cause,
+                "GitHub pull request list did not match the schema",
+              )
+              .map((payload) => payload.map(normalizeSummary)),
+          options.signal,
+        ),
     );
   }
 
@@ -91,8 +111,8 @@ export class GithubService extends ForgeAdapterBase implements ForgeAdapter {
     number: number,
     options: PullRequestResourceOptions = {},
   ): Promise<ResultType<PullRequestDocument, ForgeOperationError>> {
-    return this.withRepository(options.signal, (repository) =>
-      this.loadRepositoryPullRequest(number, repository, options),
+    return requestPullRequest(kind, this.repository, number, (repository) =>
+      this.loadDocument(number, repository, options.signal),
     );
   }
 
@@ -100,78 +120,87 @@ export class GithubService extends ForgeAdapterBase implements ForgeAdapter {
     sha: string,
     options: PullRequestResourceOptions = {},
   ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
-    return this.withRepository(options.signal, (repository) =>
-      this.cli.patch(
-        [
-          "api",
-          pathForApi(repository, ["commits", sha]),
-          "-H",
-          "Accept: application/vnd.github.diff",
-        ],
-        options.signal,
+    const valid = validateCommitSha(kind, sha);
+    if (valid.isErr()) {
+      return valid;
+    }
+    return withRepository(kind, this.repository, async (repository) =>
+      Result.ok(
+        await this.cli.patch(
+          [
+            "api",
+            pathForApi(repository, ["commits", sha]),
+            "-H",
+            "Accept: application/vnd.github.diff",
+          ],
+          options.signal,
+        ),
       ),
     );
   }
 
-  private async loadRepositoryPullRequest(
+  private async loadDocument(
     number: number,
     repository: ForgeRepository,
-    options: PullRequestResourceOptions,
+    signal: AbortSignal | undefined,
   ): Promise<PullRequestDocument> {
-    const signal = options.signal;
-    const commitsTask = this.paginated(
-      repository,
-      ["pulls", String(number), "commits"],
-      githubSchemas.commitPagesSchema,
-      normalizeCommits,
-      signal,
-    );
-    const reviewsTask = this.readReviews(repository, number, signal);
-    const diffTask = this.cli.patch(
-      [
-        "pr",
-        "diff",
-        String(number),
-        "--repo",
-        repository.fullName,
-        "--color",
-        "never",
-      ],
-      signal,
-    );
-    const commentsTask = this.paginated(
-      repository,
-      ["issues", String(number), "comments"],
-      githubSchemas.commentPagesSchema,
-      normalizeConversationComments,
-      signal,
-    );
-    const view = await this.readPullRequestView(
-      number,
-      repository.fullName,
-      signal,
-    );
-    const projected = view.isOk()
-      ? this.projectView(view.value, repository, number)
-      : failedView(view.error);
-
-    const comments = await commentsTask;
-    const overview = projected.overview.isErr()
-      ? projected.overview
-      : Result.ok({
-          repository,
-          ...projected.overview.value,
-          conversationComments: comments,
-        });
-
-    const [commits, reviews, diff] = await Promise.all([
-      commitsTask,
-      reviewsTask,
-      diffTask,
+    const [view, comments, commits, reviews, diff] = await Promise.all([
+      this.cli.json(
+        [
+          "pr",
+          "view",
+          String(number),
+          "--repo",
+          repository.fullName,
+          "--json",
+          githubSchemas.pullRequestViewFields,
+        ],
+        (cause) =>
+          this.cli
+            .parse(
+              githubSchemas.pullRequestViewSchema,
+              cause,
+              "GitHub pull request view response did not match the schema",
+            )
+            .andThen((payload) =>
+              matchPullRequestNumber(kind, payload, number),
+            ),
+        signal,
+      ),
+      this.paginated(
+        repository,
+        ["issues", String(number), "comments"],
+        githubSchemas.commentPagesSchema,
+        normalizeConversationComments,
+        signal,
+      ),
+      this.paginated(
+        repository,
+        ["pulls", String(number), "commits"],
+        githubSchemas.commitPagesSchema,
+        normalizeCommits,
+        signal,
+      ),
+      this.readReviews(repository, number, signal),
+      this.cli.patch(
+        [
+          "pr",
+          "diff",
+          String(number),
+          "--repo",
+          repository.fullName,
+          "--color",
+          "never",
+        ],
+        signal,
+      ),
     ]);
+    const projected = view.isOk()
+      ? this.projectView(view.value, repository)
+      : failedView(view.error);
     return {
-      overview,
       details: projected.details,
+      comments,
       diff,
       commits,
       reviews,
@@ -184,7 +213,7 @@ export class GithubService extends ForgeAdapterBase implements ForgeAdapter {
     repository: ForgeRepository,
     path: readonly string[],
     schema: (cause: unknown) => Raw | type.errors,
-    normalize: (payload: Raw) => ResultType<T, ForgeOperationError>,
+    normalize: (payload: Raw) => T,
     signal: AbortSignal | undefined,
   ): Promise<ForgeSection<T>> {
     return this.cli.section(
@@ -227,173 +256,68 @@ export class GithubService extends ForgeAdapterBase implements ForgeAdapter {
         ],
         githubSchemas.requestedReviewersSchema,
         normalizeRequestedReviewers,
-        "GitHub response did not match the schema",
+        "GitHub requested reviewers response did not match the schema",
         signal,
       ),
     ]);
     return { reviews, reviewComments, requestedReviewers };
   }
 
-  private readPullRequestView(
-    number: number,
-    repository: string,
-    signal: AbortSignal | undefined,
-  ): Promise<ResultType<GithubPullRequestView, ForgeOperationError>> {
-    return this.cli.json(
-      [
-        "pr",
-        "view",
-        String(number),
-        "--repo",
-        repository,
-        "--json",
-        pullRequestViewFields,
-      ],
-      decodePullRequestView(this.cli),
-      signal,
-    );
-  }
-
   private projectView(
     payload: GithubPullRequestView,
     repository: ForgeRepository,
-    number: number,
   ): ViewProjection {
     return {
-      overview: normalizeOverviewFields(kind, payload, number),
-      details: normalizeDetails(payload, repository, number),
-      checks: this.checksSection(payload),
-      development: this.developmentSection(payload, repository),
-    };
-  }
-
-  private checksSection(
-    payload: GithubPullRequestView,
-  ): ForgeSection<readonly PullRequestCheck[]> {
-    const statusCheckRollup = payload.statusCheckRollup;
-    if (statusCheckRollup === undefined || statusCheckRollup === null) {
-      return available([]);
-    }
-    return sectionFromResult(
-      this.cli
-        .parse(
-          githubSchemas.checkSchema.array(),
-          statusCheckRollup,
-          optionalSectionDiagnostic,
-        )
-        .andThen(normalizeChecks),
-    );
-  }
-
-  private developmentSection(
-    payload: GithubPullRequestView,
-    repository: ForgeRepository,
-  ): PullRequestDevelopment {
-    return {
-      projects: this.projectsSection(payload),
-      linkedIssues: this.linkedIssuesSection(payload, repository),
-    };
-  }
-
-  private projectsSection(
-    payload: GithubPullRequestView,
-  ): ForgeSection<readonly PullRequestProject[]> {
-    return sectionFromResult(
-      this.cli
-        .parse(
+      details: available(normalizeDetails(payload, repository)),
+      checks: this.optionalSection(
+        payload.statusCheckRollup,
+        githubSchemas.checkSchema.array(),
+        normalizeChecks,
+      ),
+      development: {
+        projects: this.optionalSection(
+          payload.projectItems,
           githubSchemas.projectItemSchema.array(),
-          payload.projectItems ?? [],
-          optionalSectionDiagnostic,
-        )
-        .andThen((projectItems) =>
-          this.cli
-            .parse(
-              githubSchemas.projectCardSchema.array(),
-              payload.projectCards ?? [],
-              optionalSectionDiagnostic,
-            )
-            .andThen((projectCards) =>
-              normalizeProjects(projectItems, projectCards),
-            ),
+          normalizeProjects,
         ),
-    );
+        linkedIssues: this.optionalSection(
+          payload.closingIssuesReferences,
+          githubSchemas.linkedIssueSchema.array(),
+          normalizeLinkedIssues,
+        ),
+      },
+    };
   }
 
-  private linkedIssuesSection(
-    payload: GithubPullRequestView,
-    repository: ForgeRepository,
-  ): ForgeSection<readonly PullRequestLinkedIssue[]> {
-    const closingIssuesReferences = payload.closingIssuesReferences;
-    if (
-      closingIssuesReferences === undefined ||
-      closingIssuesReferences === null
-    ) {
-      return available([]);
-    }
+  /** A list field of the view that `gh` reports as `null` when empty. */
+  private optionalSection<Raw, T>(
+    cause: unknown,
+    schema: (cause: unknown) => readonly Raw[] | type.errors,
+    normalize: (payload: readonly Raw[]) => readonly T[],
+  ): ForgeSection<readonly T[]> {
     return sectionFromResult(
       this.cli
-        .parse(
-          githubSchemas.linkedIssueSchema.array(),
-          closingIssuesReferences,
-          optionalSectionDiagnostic,
-        )
-        .andThen((issues) => normalizeLinkedIssues(issues, repository)),
+        .parse(schema, cause ?? [], optionalSectionDiagnostic)
+        .map(normalize),
     );
   }
-}
-
-function decodeGithubRepository(cli: ForgeCli) {
-  return (cause: unknown): ResultType<ForgeRepository, ForgeOperationError> =>
-    cli
-      .parse(
-        githubSchemas.repositorySchema,
-        cause,
-        "GitHub repository response did not match the schema",
-      )
-      .andThen(normalizeRepositoryPayload);
-}
-
-function decodeGithubList(cli: ForgeCli) {
-  return (
-    cause: unknown,
-  ): ResultType<readonly PullRequestSummary[], ForgeOperationError> =>
-    cli
-      .parse(
-        githubSchemas.listItemSchema.array(),
-        cause,
-        "GitHub pull request list did not match the schema",
-      )
-      .andThen(normalizeListPayload);
 }
 
 interface ViewProjection {
-  readonly overview: ResultType<GithubOverviewFields, ForgeOperationError>;
-  readonly details: ResultType<PullRequestDetails, ForgeOperationError>;
+  readonly details: ForgeSection<PullRequestDetails>;
   readonly checks: ForgeSection<readonly PullRequestCheck[]>;
   readonly development: PullRequestDevelopment;
 }
 
 function failedView(error: ForgeOperationError): ViewProjection {
   return {
-    overview: Result.err(error),
-    details: Result.err(error),
+    details: failed(error),
     checks: failed(error),
     development: {
       projects: failed(error),
       linkedIssues: failed(error),
     },
   };
-}
-
-function decodePullRequestView(cli: ForgeCli) {
-  return (
-    cause: unknown,
-  ): ResultType<GithubPullRequestView, ForgeOperationError> =>
-    cli.parse(
-      githubSchemas.pullRequestViewSchema,
-      cause,
-      "GitHub pull request view response did not match the schema",
-    );
 }
 
 function pathForApi(

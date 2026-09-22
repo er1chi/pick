@@ -8,8 +8,8 @@ import {
   type LoadState,
 } from "../utils/load-state";
 
-import type { ForgeService } from "@/services/forge/forge-service";
 import type {
+  Forge,
   PullRequestList,
   PullRequestListState,
 } from "@/services/forge/types";
@@ -76,7 +76,7 @@ export function usePrTitles(): PrTitles {
   async function applyPullRequestList(
     generation: number,
     controller: AbortController,
-    forge: ForgeService,
+    forge: Forge,
     selectedFilter: PullRequestListState,
   ): Promise<void> {
     const result = await forge.getPullRequests({

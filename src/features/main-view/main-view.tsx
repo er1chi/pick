@@ -84,7 +84,7 @@ export function PrView(props: PrViewProps) {
   };
   const currentDetails = () => {
     const details = pullRequest.data()?.details;
-    return details !== undefined && details.isOk() ? details.value : undefined;
+    return details?.status === "available" ? details.value : undefined;
   };
   const selectedCommitValue = createMemo(() => {
     const current = view();

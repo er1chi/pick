@@ -5,8 +5,8 @@ export function available<T>(value: T, truncated = false): ForgeSection<T> {
   return { status: "available", value, truncated };
 }
 
-export function unsupported<T>(diagnostic: string): ForgeSection<T> {
-  return { status: "unsupported", reason: { diagnostic } };
+export function unsupported<T>(reason: string): ForgeSection<T> {
+  return { status: "unsupported", reason };
 }
 
 export function failed<T>(error: ForgeOperationError): ForgeSection<T> {

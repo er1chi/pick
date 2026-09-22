@@ -83,11 +83,7 @@ describe("CommitMetadata", () => {
       view.setCommitPatch(
         pullRequestId,
         SHA,
-        available<PullRequestPatch>({
-          format: "git-patch",
-          text: patchText,
-          byteLength: patchText.length,
-        }),
+        available<PullRequestPatch>({ text: patchText }),
       );
 
       await setup.waitForFrame((frame) => frame.includes("+2 -1"));

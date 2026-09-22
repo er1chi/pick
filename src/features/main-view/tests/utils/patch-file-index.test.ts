@@ -28,22 +28,13 @@ index 0000000..3333333
 `;
 
 function availablePatch(text: string) {
-  return available<PullRequestPatch>({
-    format: "git-patch",
-    text,
-    byteLength: text.length,
-  });
+  return available<PullRequestPatch>({ text });
 }
 
 const commit: PullRequestCommit = {
   sha: "abcdef1234567890abcdef1234567890abcdef12",
   message: "adjust files",
-  author: {
-    id: null,
-    login: "alice",
-    displayName: null,
-    url: null,
-  },
+  author: { login: "alice" },
   committer: null,
   authoredAt: null,
   committedAt: "2026-01-15T12:00:00.000Z",

@@ -34,7 +34,7 @@ type SectionProblem = Exclude<ForgeSection<unknown>, { status: "available" }>;
 function sectionProblemMessage(section: SectionProblem, label: string): string {
   switch (section.status) {
     case "unsupported":
-      return section.reason.diagnostic;
+      return section.reason;
     case "failed":
       return `Could not load ${label}: ${section.error.message}`;
   }

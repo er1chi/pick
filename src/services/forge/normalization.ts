@@ -1,6 +1,7 @@
 import { Result } from "better-result";
 import { ForgeIncompatibleResponseError, PullRequestState } from "./types";
 
+import type { TeamPayload, UserPayload } from "./schema-primitives";
 import type {
   ForgeKind,
   ForgeOperationError,
@@ -9,57 +10,20 @@ import type {
   ForgeTeam,
   ForgeUser,
   PullRequestComment,
-  PullRequestLabel,
-  PullRequestMilestone,
-  PullRequestOverview,
 } from "./types";
-
-export interface ForgeUserPayload {
-  readonly id?: number | string | null;
-  readonly login: string;
-  readonly name?: string | null;
-  readonly full_name?: string | null;
-  readonly html_url?: string | null;
-  readonly url?: string | null;
-}
-
-export interface ForgeTeamPayload {
-  readonly id?: number | string | null;
-  readonly name: string;
-  readonly slug?: string | null;
-  readonly html_url?: string | null;
-  readonly url?: string | null;
-}
-
-export interface ForgeLabelPayload {
-  readonly id?: number | string | null;
-  readonly name: string;
-  readonly color?: string | null;
-  readonly description?: string | null;
-  readonly url?: string | null;
-}
-
-export interface ForgeMilestonePayload {
-  readonly id?: number | string | null;
-  readonly title: string;
-  readonly description?: string | null;
-  readonly state?: string | null;
-  readonly dueAt?: string | null;
-  readonly url?: string | null;
-}
 
 export function normalizeRepository(
   kind: ForgeKind,
   fullName: string,
   url: string | null | undefined,
 ): Result<ForgeRepository, ForgeOperationError> {
-  const parts = fullName.trim().split("/");
+  const [owner, name, ...rest] = fullName.split("/");
   if (
-    parts.length !== 2 ||
-    parts[0] === undefined ||
-    parts[1] === undefined ||
-    parts[0].length === 0 ||
-    parts[1].length === 0 ||
+    owner === undefined ||
+    name === undefined ||
+    rest.length > 0 ||
+    owner.length === 0 ||
+    name.length === 0 ||
     /\s/u.test(fullName)
   ) {
     return incompatible(
@@ -68,67 +32,31 @@ export function normalizeRepository(
     );
   }
 
-  return Result.ok({
-    fullName: `${parts[0]}/${parts[1]}`,
-    owner: parts[0],
-    name: parts[1],
-    url: url ?? null,
-  });
-}
-
-export function normalizeIdentifier(
-  value: number | string | null | undefined,
-): string | null {
-  return value === null || value === undefined ? null : String(value);
+  return Result.ok({ fullName, owner, name, url: url ?? null });
 }
 
 export function normalizeUser(
-  payload: ForgeUserPayload | null | undefined,
+  payload: UserPayload | null | undefined,
 ): ForgeUser | null {
-  if (payload === null || payload === undefined) {
-    return null;
-  }
-
-  return {
-    id: normalizeIdentifier(payload.id),
-    login: payload.login,
-    displayName: payload.name ?? payload.full_name ?? null,
-    url: payload.html_url ?? payload.url ?? null,
-  };
+  return payload === null || payload === undefined
+    ? null
+    : { login: payload.login };
 }
 
 export function normalizeUsers(
-  payloads: readonly ForgeUserPayload[] | null | undefined,
+  payloads: readonly UserPayload[] | null | undefined,
 ): readonly ForgeUser[] {
-  return (payloads ?? [])
-    .map(normalizeUser)
-    .filter((user): user is ForgeUser => user !== null);
-}
-
-function normalizeTeam(
-  payload: ForgeTeamPayload | null | undefined,
-): ForgeTeam | null {
-  if (payload === null || payload === undefined) {
-    return null;
-  }
-
-  return {
-    id: normalizeIdentifier(payload.id),
-    name: payload.name,
-    slug: payload.slug ?? null,
-    url: payload.html_url ?? payload.url ?? null,
-  };
+  return (payloads ?? []).map((payload) => ({ login: payload.login }));
 }
 
 export function normalizeTeams(
-  payloads: readonly ForgeTeamPayload[] | null | undefined,
+  payloads: readonly TeamPayload[] | null | undefined,
 ): readonly ForgeTeam[] {
-  return (payloads ?? [])
-    .map(normalizeTeam)
-    .filter((team): team is ForgeTeam => team !== null);
+  return (payloads ?? []).map((payload) => ({ name: payload.name }));
 }
 
-export function addCommentTruncation(
+/** Marks comments as truncated when the forge reports more than it returned. */
+export function withExpectedCommentCount(
   section: ForgeSection<readonly PullRequestComment[]>,
   expectedCount: number | null,
 ): ForgeSection<readonly PullRequestComment[]> {
@@ -141,45 +69,18 @@ export function addCommentTruncation(
   };
 }
 
-export function normalizeOverviewFields(
+export function matchPullRequestNumber<T extends { readonly number: number }>(
   kind: ForgeKind,
-  payload: { readonly number: number; readonly body?: string | null },
+  payload: T,
   expectedNumber: number,
-): Result<Pick<PullRequestOverview, "number" | "body">, ForgeOperationError> {
+): Result<T, ForgeOperationError> {
   if (payload.number !== expectedNumber) {
     return incompatible(
       kind,
       `${kind} pull request number did not match ${expectedNumber}`,
     );
   }
-
-  return Result.ok({ number: payload.number, body: payload.body ?? null });
-}
-
-export function normalizeLabel(payload: ForgeLabelPayload): PullRequestLabel {
-  return {
-    id: normalizeIdentifier(payload.id),
-    name: payload.name,
-    color: payload.color ?? null,
-    description: payload.description ?? null,
-    url: payload.url ?? null,
-  };
-}
-
-export function normalizeMilestone(
-  payload: ForgeMilestonePayload | null | undefined,
-): PullRequestMilestone | null {
-  if (payload === null || payload === undefined) {
-    return null;
-  }
-  return {
-    id: normalizeIdentifier(payload.id),
-    title: payload.title,
-    description: payload.description ?? null,
-    state: payload.state ?? null,
-    dueAt: payload.dueAt ?? null,
-    url: payload.url ?? null,
-  };
+  return Result.ok(payload);
 }
 
 export function normalizeState(
@@ -198,33 +99,11 @@ export function normalizeState(
   return PullRequestState.Unknown;
 }
 
-export function normalizeGithubState(
-  state: string,
-  mergedAt?: string | Date | null,
-): PullRequestState {
-  if (
-    (mergedAt !== null && mergedAt !== undefined) ||
-    state.toLowerCase() === "merged"
-  ) {
-    return PullRequestState.Merged;
-  }
-  return normalizeState(state, false);
+export function normalizeGithubState(state: string): PullRequestState {
+  return normalizeState(state, state.toLowerCase() === "merged");
 }
 
-export function normalizeDate(
-  value: Date | string | null | undefined,
-): string | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  return value instanceof Date ? value.toISOString() : value;
-}
-
-export function byteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
-}
-
-export function incompatible<T>(
+function incompatible<T>(
   kind: ForgeKind,
   message: string,
 ): Result<T, ForgeOperationError> {

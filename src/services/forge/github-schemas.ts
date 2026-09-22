@@ -1,178 +1,127 @@
 import { type } from "arktype";
-import * as schemaPrimitives from "./schema-primitives";
+import {
+  optionalNullableString,
+  optionalNumber,
+  optionalUser,
+  safeIntegerSchema,
+  teamSchema,
+  userSchema,
+} from "./schema-primitives";
 
-const userSchema = type({
-  login: "string",
-  id: schemaPrimitives.optionalIdentifier,
-  name: schemaPrimitives.optionalNullableString,
-  html_url: schemaPrimitives.optionalNullableString,
-  url: schemaPrimitives.optionalNullableString,
-});
-const teamSchema = type({
-  name: "string",
-  id: schemaPrimitives.optionalIdentifier,
-  slug: schemaPrimitives.optionalNullableString,
-  html_url: schemaPrimitives.optionalNullableString,
-  url: schemaPrimitives.optionalNullableString,
-});
 export const repositorySchema = type({
   nameWithOwner: "string",
-  url: schemaPrimitives.optionalNullableString,
+  url: optionalNullableString,
 });
-const labelSchema = type({
-  name: "string",
-  id: schemaPrimitives.optionalIdentifier,
-  color: schemaPrimitives.optionalNullableString,
-  description: schemaPrimitives.optionalNullableString,
-  url: schemaPrimitives.optionalNullableString,
-});
-const milestoneSchema = type({
-  title: "string",
-  id: schemaPrimitives.optionalIdentifier,
-  description: schemaPrimitives.optionalNullableString,
-  state: schemaPrimitives.optionalNullableString,
-  dueOn: schemaPrimitives.optionalNullableString,
-  url: schemaPrimitives.optionalNullableString,
-});
-const mergeCommitSchema = type({ oid: "string" });
 
-const overviewSchema = type({
-  number: schemaPrimitives.safeIntegerSchema,
-  body: schemaPrimitives.optionalNullableString,
-});
 const optionalUnknown = type("unknown").optional();
 
-const detailsSchema = type({
-  number: schemaPrimitives.safeIntegerSchema,
-  createdAt: schemaPrimitives.optionalDate,
-  updatedAt: schemaPrimitives.optionalDate,
-  closedAt: schemaPrimitives.optionalDate,
-  mergedAt: schemaPrimitives.optionalDate,
-  mergedBy: userSchema.or("null").optional(),
-  baseRefName: schemaPrimitives.optionalNullableString,
-  baseRefOid: schemaPrimitives.optionalNullableString,
-  headRefName: schemaPrimitives.optionalNullableString,
-  headRefOid: schemaPrimitives.optionalNullableString,
-  headRepository: repositorySchema.or("null").optional(),
-  additions: schemaPrimitives.optionalNumber,
-  deletions: schemaPrimitives.optionalNumber,
-  changedFiles: schemaPrimitives.optionalNumber,
-  labels: labelSchema.array(),
-  assignees: userSchema.array(),
-  milestone: milestoneSchema.or("null"),
-  maintainerCanModify: type("boolean | null").optional(),
-  mergeable: schemaPrimitives.optionalNullableString,
-  mergeStateStatus: schemaPrimitives.optionalNullableString,
-  reviewDecision: schemaPrimitives.optionalNullableString,
-  mergeCommit: mergeCommitSchema.or("null").optional(),
+/** The `gh pr view --json` fields read from the payload. */
+export const pullRequestViewFields = [
+  "number",
+  "body",
+  "createdAt",
+  "updatedAt",
+  "mergedAt",
+  "baseRefName",
+  "baseRefOid",
+  "headRefName",
+  "headRefOid",
+  "additions",
+  "deletions",
+  "mergeable",
+  "mergeStateStatus",
+  "reviewDecision",
+  "statusCheckRollup",
+  "projectItems",
+  "closingIssuesReferences",
+].join(",");
+
+/** Optional sections stay `unknown` here and are parsed separately, so a
+ * checks or projects mismatch cannot fail details. */
+export const pullRequestViewSchema = type({
+  number: safeIntegerSchema,
+  body: optionalNullableString,
+  createdAt: optionalNullableString,
+  updatedAt: optionalNullableString,
+  mergedAt: optionalNullableString,
+  baseRefName: optionalNullableString,
+  baseRefOid: optionalNullableString,
+  headRefName: optionalNullableString,
+  headRefOid: optionalNullableString,
+  additions: optionalNumber,
+  deletions: optionalNumber,
+  mergeable: optionalNullableString,
+  mergeStateStatus: optionalNullableString,
+  reviewDecision: optionalNullableString,
+  statusCheckRollup: optionalUnknown,
+  projectItems: optionalUnknown,
+  closingIssuesReferences: optionalUnknown,
 });
 
-/** One `gh pr view --json` payload. Optional sections stay `unknown` so a
- * checks or projects mismatch cannot fail details. */
-export const pullRequestViewSchema = type.and(
-  detailsSchema,
-  overviewSchema,
-  type({
-    statusCheckRollup: optionalUnknown,
-    projectItems: optionalUnknown,
-    projectCards: optionalUnknown,
-    closingIssuesReferences: optionalUnknown,
-  }),
-);
-
 export const listItemSchema = type({
-  number: schemaPrimitives.safeIntegerSchema,
+  number: safeIntegerSchema,
   title: "string",
   state: "string",
   isDraft: type("boolean | null").optional(),
-  author: userSchema.or("null").optional(),
-  url: schemaPrimitives.optionalNullableString,
-  updatedAt: schemaPrimitives.optionalDate,
+  author: optionalUser,
 });
 
-const gitIdentitySchema = type({
-  name: schemaPrimitives.optionalNullableString,
-  email: schemaPrimitives.optionalNullableString,
-  date: schemaPrimitives.optionalDate,
-});
+const gitIdentitySchema = type({ date: optionalNullableString })
+  .or("null")
+  .optional();
 const commitSchema = type({
   sha: "string",
   commit: type({
     message: "string",
-    author: gitIdentitySchema.or("null").optional(),
-    committer: gitIdentitySchema.or("null").optional(),
+    author: gitIdentitySchema,
+    committer: gitIdentitySchema,
   }),
-  author: userSchema.or("null").optional(),
-  committer: userSchema.or("null").optional(),
-  html_url: schemaPrimitives.optionalNullableString,
-  url: schemaPrimitives.optionalNullableString,
+  author: optionalUser,
+  committer: optionalUser,
+  html_url: optionalNullableString,
 });
 const commentSchema = type({
-  id: type("number | string"),
-  user: userSchema.or("null").optional(),
-  body: schemaPrimitives.optionalNullableString,
-  created_at: schemaPrimitives.optionalDate,
-  updated_at: schemaPrimitives.optionalDate,
-  html_url: schemaPrimitives.optionalNullableString,
-  path: schemaPrimitives.optionalNullableString,
-  line: schemaPrimitives.optionalNumber,
-  start_line: schemaPrimitives.optionalNumber,
-  side: schemaPrimitives.optionalNullableString,
-  commit_id: schemaPrimitives.optionalNullableString,
-  in_reply_to_id: schemaPrimitives.optionalIdentifier,
-  pull_request_review_id: schemaPrimitives.optionalIdentifier,
+  user: optionalUser,
+  body: optionalNullableString,
+  created_at: optionalNullableString,
+  path: optionalNullableString,
 });
 const reviewSchema = type({
-  id: type("number | string"),
-  user: userSchema.or("null").optional(),
-  body: schemaPrimitives.optionalNullableString,
+  user: optionalUser,
+  body: optionalNullableString,
   state: "string",
-  submitted_at: schemaPrimitives.optionalDate,
-  commit_id: schemaPrimitives.optionalNullableString,
-  html_url: schemaPrimitives.optionalNullableString,
+  submitted_at: optionalNullableString,
 });
 export const requestedReviewersSchema = type({
   users: userSchema.array(),
   teams: teamSchema.array(),
 });
+
+/** A `statusCheckRollup` entry: a CheckRun (`name`, `status`, `detailsUrl`)
+ * or a StatusContext (`context`, `state`, `targetUrl`). */
 export const checkSchema = type({
-  name: schemaPrimitives.optionalNullableString,
-  context: schemaPrimitives.optionalNullableString,
-  status: schemaPrimitives.optionalNullableString,
-  state: schemaPrimitives.optionalNullableString,
-  conclusion: schemaPrimitives.optionalNullableString,
-  description: schemaPrimitives.optionalNullableString,
-  detailsUrl: schemaPrimitives.optionalNullableString,
-  targetUrl: schemaPrimitives.optionalNullableString,
-  link: schemaPrimitives.optionalNullableString,
-  startedAt: schemaPrimitives.optionalDate,
-  completedAt: schemaPrimitives.optionalDate,
-  workflowName: schemaPrimitives.optionalNullableString,
-  workflow: schemaPrimitives.optionalNullableString,
+  name: optionalNullableString,
+  context: optionalNullableString,
+  status: optionalNullableString,
+  state: optionalNullableString,
+  conclusion: optionalNullableString,
+  detailsUrl: optionalNullableString,
+  targetUrl: optionalNullableString,
 });
+
+/** `gh` exports a project item as only its project title and Status field. */
 export const projectItemSchema = type({
-  id: "string",
   title: "string",
-  number: schemaPrimitives.optionalNumber,
-  url: schemaPrimitives.optionalNullableString,
-  state: schemaPrimitives.optionalNullableString,
+  status: type({ name: optionalNullableString }).or("null").optional(),
 });
-export const projectCardSchema = type({
-  id: type("number | string"),
-  project: type({
-    id: type("number | string"),
-    name: "string",
-    number: schemaPrimitives.optionalNumber,
-    html_url: schemaPrimitives.optionalNullableString,
-    state: schemaPrimitives.optionalNullableString,
-  }),
-});
+
+/** `gh` exports a closing issue reference without its title or state. */
 export const linkedIssueSchema = type({
-  number: schemaPrimitives.safeIntegerSchema,
-  title: schemaPrimitives.optionalNullableString,
-  state: "string",
-  url: schemaPrimitives.optionalNullableString,
-  repository: repositorySchema.or("null").optional(),
+  number: safeIntegerSchema,
+  repository: type({
+    name: "string",
+    owner: type({ login: "string" }),
+  }),
 });
 
 export const commitPagesSchema = commitSchema.array().array();
@@ -180,7 +129,6 @@ export const commentPagesSchema = commentSchema.array().array();
 export const reviewPagesSchema = reviewSchema.array().array();
 
 export type GithubRepositoryPayload = typeof repositorySchema.infer;
-export type GithubDetailsPayload = typeof detailsSchema.infer;
 export type GithubPullRequestView = typeof pullRequestViewSchema.infer;
 export type GithubListItem = typeof listItemSchema.infer;
 export type GithubCommitPages = typeof commitPagesSchema.infer;
@@ -189,5 +137,4 @@ export type GithubReviewPages = typeof reviewPagesSchema.infer;
 export type GithubRequestedReviewers = typeof requestedReviewersSchema.infer;
 export type GithubCheck = typeof checkSchema.infer;
 export type GithubProjectItem = typeof projectItemSchema.infer;
-export type GithubProjectCard = typeof projectCardSchema.infer;
 export type GithubLinkedIssue = typeof linkedIssueSchema.infer;

@@ -16,9 +16,10 @@ import type {
 } from "./types";
 
 const diagnosticOutputLimit = 1024 * 1024;
+const defaultMaxOutputBytes = 32 * 1024 * 1024;
 const defaultTimeoutMs = 30_000;
 
-export interface CliExecutionOptions {
+interface CliExecutionOptions {
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
@@ -73,7 +74,11 @@ export async function executeCli(
 
       try {
         const [stdout, stderr, exitCode] = await Promise.all([
-          readStream(subprocess.stdout, kind, options.maxOutputBytes),
+          readStream(
+            subprocess.stdout,
+            kind,
+            options.maxOutputBytes ?? defaultMaxOutputBytes,
+          ),
           readStream(subprocess.stderr, kind, diagnosticOutputLimit),
           subprocess.exited,
         ]);
@@ -157,7 +162,7 @@ export function decodeJson<T>(
 async function readStream(
   stream: ReadableStream<Uint8Array>,
   kind: ForgeKind,
-  maxBytes: number | undefined,
+  maxBytes: number,
 ): Promise<string> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
@@ -171,7 +176,7 @@ async function readStream(
       }
 
       byteLength += chunk.value.byteLength;
-      if (maxBytes !== undefined && byteLength > maxBytes) {
+      if (byteLength > maxBytes) {
         throw new CliOutputFailure({
           failure: new ForgeOutputLimitExceededError({
             kind,

@@ -59,7 +59,7 @@ function patchSectionNotice(
 ): string | undefined {
   switch (section.status) {
     case "unsupported":
-      return section.reason.diagnostic;
+      return section.reason;
     case "failed":
       return `Could not load patch: ${section.error.message}`;
     default:

@@ -132,7 +132,7 @@ export function reviewCommentMetaLine(
   comment: PullRequestReviewComment,
 ): string | undefined {
   return joinPresent(
-    [presentText(comment.author?.login), presentText(comment.location?.path)],
+    [presentText(comment.author?.login), presentText(comment.path)],
     " · ",
   );
 }
@@ -179,28 +179,14 @@ export function checkLine(check: PullRequestCheck): string | undefined {
 }
 
 export function projectLine(project: PullRequestProject): string | undefined {
-  const number =
-    project.number === null || project.number === undefined
-      ? undefined
-      : `#${project.number}`;
   return joinPresent(
-    [presentText(project.title), number, presentText(project.state)],
-    " ",
+    [presentText(project.title), presentText(project.status)],
+    " · ",
   );
 }
 
-export function linkedIssueLine(
-  issue: PullRequestLinkedIssue,
-): string | undefined {
-  const repository = presentText(issue.repository?.fullName);
-  const reference =
-    repository === undefined
-      ? `#${issue.number}`
-      : `${repository}#${issue.number}`;
-  return joinPresent(
-    [reference, presentText(issue.title), stateLabel(issue.state)],
-    " ",
-  );
+export function linkedIssueLine(issue: PullRequestLinkedIssue): string {
+  return `${issue.repository}#${issue.number}`;
 }
 
 function stateLabel(state: PullRequestState): string {
@@ -289,7 +275,7 @@ function branchLine(details: PullRequestDetails): string | undefined {
 }
 
 function countsLine(details: PullRequestDetails): string | undefined {
-  return countsText(details.counts.additions, details.counts.deletions);
+  return countsText(details.additions, details.deletions);
 }
 
 function dateSegment(
@@ -332,28 +318,9 @@ function mergeStateSegment(value: string | null): string | undefined {
   return `state ${state}`;
 }
 
-function decisionSegment(
-  section: ForgeSection<string | null>,
-): string | undefined {
-  switch (section.status) {
-    case "available": {
-      const value = presentText(section.value);
-      if (value === undefined) {
-        if (section.truncated) {
-          return "decision (partial)";
-        }
-        return undefined;
-      }
-      if (section.truncated) {
-        return `decision ${value} (partial)`;
-      }
-      return `decision ${value}`;
-    }
-    case "unsupported":
-      return `decision unsupported — ${section.reason.diagnostic}`;
-    case "failed":
-      return `decision failed — ${section.error.message}`;
-  }
+function decisionSegment(value: string | null): string | undefined {
+  const decision = presentText(value);
+  return decision === undefined ? undefined : `decision ${decision}`;
 }
 
 function mergeabilityLine(details: PullRequestDetails): string | undefined {
@@ -408,7 +375,7 @@ function sectionAvailability<T>(
       }
       return describeAvailable(section.value);
     case "unsupported":
-      return `unsupported — ${section.reason.diagnostic}`;
+      return `unsupported — ${section.reason}`;
     case "failed":
       return `failed — ${section.error.message}`;
   }

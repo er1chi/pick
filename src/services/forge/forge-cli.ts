@@ -1,7 +1,6 @@
 import { type } from "arktype";
 import { Result } from "better-result";
 import { decodeJson, executeCli } from "./cli-execution";
-import { byteLength } from "./normalization";
 import { available, failed, sectionFromResult } from "./section";
 import {
   ForgeCommandSpawnFailedError,
@@ -11,34 +10,23 @@ import {
 } from "./types";
 
 import type { Result as ResultType } from "better-result";
-import type { CliExecutionOptions } from "./cli-execution";
 import type {
   CliExecutionError,
   ForgeInitializationError,
   ForgeKind,
   ForgeOperationError,
-  ForgeRepository,
   ForgeSection,
-  PullRequestList,
-  PullRequestListOptions,
-  PullRequestListState,
   PullRequestPatch,
-  PullRequestSummary,
 } from "./types";
 
-const defaultListLimit = 100;
-const defaultListState: PullRequestListState = "open";
-const maxListLimit = 1000;
-const maxDiffBytes = 16 * 1024 * 1024;
-const cliTimeoutMs = 30_000;
-
 export type CliRunner = typeof executeCli;
-export type Decoder<T> = (cause: unknown) => ResultType<T, ForgeOperationError>;
+type Decoder<T> = (cause: unknown) => ResultType<T, ForgeOperationError>;
+type Schema<T> = (cause: unknown) => T | type.errors;
 
 export class ForgeCli {
   private readonly execute: (
     args: readonly string[],
-    options: CliExecutionOptions,
+    signal: AbortSignal | undefined,
   ) => Promise<Result<string, CliExecutionError>>;
 
   constructor(
@@ -47,7 +35,8 @@ export class ForgeCli {
     cwd: string,
     run: CliRunner = executeCli,
   ) {
-    this.execute = (args, options) => run(kind, executable, args, cwd, options);
+    this.execute = (args, signal) =>
+      run(kind, executable, args, cwd, { signal });
   }
 
   static async initialize(
@@ -79,23 +68,20 @@ export class ForgeCli {
     decode: Decoder<T>,
     signal?: AbortSignal,
   ): Promise<Result<T, ForgeOperationError>> {
-    const execution = await this.execute(args, {
-      signal,
-      timeoutMs: cliTimeoutMs,
-    });
+    const execution = await this.execute(args, signal);
     return execution.andThen(decodeJson(this.kind, decode));
   }
 
   async section<Raw, T>(
     args: readonly string[],
-    schema: (cause: unknown) => Raw | type.errors,
-    normalize: (raw: Raw) => ResultType<T, ForgeOperationError>,
+    schema: Schema<Raw>,
+    normalize: (raw: Raw) => T,
     diagnostic: string,
     signal?: AbortSignal,
   ): Promise<ForgeSection<T>> {
     const result = await this.json(
       args,
-      (cause) => this.parse(schema, cause, diagnostic).andThen(normalize),
+      (cause) => this.parse(schema, cause, diagnostic).map(normalize),
       signal,
     );
     return sectionFromResult(result);
@@ -105,42 +91,37 @@ export class ForgeCli {
     args: readonly string[],
     signal?: AbortSignal,
   ): Promise<ForgeSection<PullRequestPatch>> {
-    const execution = await this.execute(args, {
-      signal,
-      timeoutMs: cliTimeoutMs,
-      maxOutputBytes: maxDiffBytes,
-    });
-    if (execution.isErr()) {
-      return failed(execution.error);
-    }
-
-    return available({
-      format: "git-patch",
-      text: execution.value,
-      byteLength: byteLength(execution.value),
-    });
+    const execution = await this.execute(args, signal);
+    return execution.isOk()
+      ? available({ text: execution.value })
+      : failed(execution.error);
   }
 
+  /** Runs the command once and shares the result. Concurrent callers share
+   * the in-flight run, and a failure is not cached so the next call retries.
+   * The shared run takes no caller's signal, so one caller cancelling cannot
+   * fail the others. */
   cachedJson<T>(
     args: readonly string[],
     decode: Decoder<T>,
-  ): (signal?: AbortSignal) => Promise<Result<T, ForgeOperationError>> {
-    let cached: T | undefined;
-    return async (signal) => {
-      if (cached !== undefined) {
-        return Result.ok(cached);
+  ): () => Promise<Result<T, ForgeOperationError>> {
+    let pending: Promise<Result<T, ForgeOperationError>> | undefined;
+    return () => {
+      if (pending === undefined) {
+        const request = this.json(args, decode);
+        pending = request;
+        void request.then((result) => {
+          if (result.isErr() && pending === request) {
+            pending = undefined;
+          }
+        });
       }
-
-      const result = await this.json(args, decode, signal);
-      if (result.isOk()) {
-        cached = result.value;
-      }
-      return result;
+      return pending;
     };
   }
 
   parse<T>(
-    schema: (cause: unknown) => T | type.errors,
+    schema: Schema<T>,
     cause: unknown,
     diagnostic: string,
   ): Result<T, ForgeOperationError> {
@@ -155,69 +136,4 @@ export class ForgeCli {
     }
     return Result.ok(payload);
   }
-
-  async pullRequestList(
-    getRepository: (
-      signal?: AbortSignal,
-    ) => Promise<ResultType<ForgeRepository, ForgeOperationError>>,
-    command: (
-      repository: ForgeRepository,
-      limit: number,
-      state: PullRequestListState,
-    ) => readonly string[],
-    decode: Decoder<readonly PullRequestSummary[]>,
-    options: PullRequestListOptions,
-  ): Promise<Result<PullRequestList, ForgeOperationError>> {
-    const limit = requestedListLimit(options.limit);
-    const state = requestedListState(options.state);
-    const repository = await getRepository(options.signal);
-    if (repository.isErr()) {
-      return repository;
-    }
-
-    const items = await this.json(
-      command(repository.value, limit, state),
-      decode,
-      options.signal,
-    );
-    return items.map((list) => ({
-      repository: repository.value,
-      items: list.slice(0, limit),
-      truncated: list.length > limit,
-    }));
-  }
-}
-
-export abstract class ForgeAdapterBase {
-  public readonly kind: ForgeKind;
-
-  protected constructor(
-    protected readonly cli: ForgeCli,
-    protected readonly repository: (
-      signal?: AbortSignal,
-    ) => Promise<ResultType<ForgeRepository, ForgeOperationError>>,
-  ) {
-    this.kind = cli.kind;
-  }
-
-  protected async withRepository<T>(
-    signal: AbortSignal | undefined,
-    operation: (repository: ForgeRepository) => Promise<T>,
-  ): Promise<Result<T, ForgeOperationError>> {
-    const result = await this.repository(signal);
-    if (result.isErr()) {
-      return result;
-    }
-    return Result.ok(await operation(result.value));
-  }
-}
-
-function requestedListLimit(value: number | undefined): number {
-  return Math.min(value ?? defaultListLimit, maxListLimit);
-}
-
-function requestedListState(
-  value: PullRequestListState | undefined,
-): PullRequestListState {
-  return value ?? defaultListState;
 }

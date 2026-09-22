@@ -1,4 +1,8 @@
 import { For, Show, type Accessor, type JSX } from "solid-js";
+import {
+  ApplicationContext,
+  type RepositoryForgeContextState,
+} from "@/context/forge-context";
 import { usePullRequest } from "@/context/pull-request-context";
 import { viewCommit, type ActiveView } from "@/context/view-context";
 import {
@@ -9,14 +13,12 @@ import {
 } from "@/features/main-view/components/pr-view-chrome";
 import { persistentMetadataLines } from "@/features/main-view/utils/pr-view-display";
 import {
-  ApplicationContext,
   type ForgeInitializationError,
+  ForgeKind,
   type PullRequestDetails,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { truncateEnd } from "@/utils/truncate";
-
-import type { RepositoryForgeContextState } from "@/context/forge-context";
 
 interface PersistentHeaderProps {
   readonly repositoryName: string;
@@ -105,16 +107,14 @@ export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
       : 0);
   const contextTextWidth = () =>
     Math.max(8, props.maxWidth - closeAffordancesWidth() - 1);
-  const detailsResult = () => pullRequest.data()?.details;
+  const detailsSection = () => pullRequest.data()?.details;
   const details = () => {
-    const result = detailsResult();
-    return result !== undefined && result.isOk() ? result.value : undefined;
+    const section = detailsSection();
+    return section?.status === "available" ? section.value : undefined;
   };
   const detailsError = () => {
-    const result = detailsResult();
-    return result !== undefined && result.isErr()
-      ? result.error.message
-      : undefined;
+    const section = detailsSection();
+    return section?.status === "failed" ? section.error.message : undefined;
   };
 
   return (
@@ -191,10 +191,8 @@ export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
   );
 }
 
-function serviceName(
-  kind: ApplicationContext.GitHub | ApplicationContext.Forgejo,
-): string {
-  return kind === ApplicationContext.GitHub ? "GitHub" : "Forgejo";
+function serviceName(kind: ForgeKind): string {
+  return kind === ForgeKind.GitHub ? "GitHub" : "Forgejo";
 }
 
 function initializationErrorDescription(

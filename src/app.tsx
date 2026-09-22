@@ -3,6 +3,7 @@ import { useRenderer } from "@opentui/solid";
 import { Toaster, toast } from "@tuiparts/toast/solid";
 import { createEffect, createSignal, onMount, Show } from "solid-js";
 import {
+  ApplicationContext,
   type ForgeContextState,
   useForgeContext,
   type RepositoryForgeContextState,
@@ -21,9 +22,9 @@ import { LoadStatus } from "@/features/main-view/types";
 import { Menubar } from "@/features/menubar/menubar";
 import { Sidebar } from "@/features/sidebar/sidebar";
 import {
-  ApplicationContext,
   ForgeExecutableUnavailableError,
   type ForgeInitializationError,
+  ForgeKind,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { PaneStore } from "./context/active-pane-context";
@@ -44,7 +45,7 @@ function repositoryContextLabel(
   if (kind === ApplicationContext.Local) {
     return "Local Git";
   }
-  if (kind === ApplicationContext.GitHub) {
+  if (kind === ForgeKind.GitHub) {
     return "GitHub";
   }
   return "Forgejo";
@@ -99,9 +100,8 @@ function repositoryFooterBindings(
 }
 
 function notifyCliInitializationError(error: ForgeInitializationError) {
-  const service =
-    error.kind === ApplicationContext.GitHub ? "GitHub" : "Forgejo";
-  const executable = error.kind === ApplicationContext.GitHub ? "gh" : "fj";
+  const service = error.kind === ForgeKind.GitHub ? "GitHub" : "Forgejo";
+  const executable = error.kind === ForgeKind.GitHub ? "gh" : "fj";
   const reason = ForgeExecutableUnavailableError.is(error)
     ? "is unavailable"
     : "version check failed";

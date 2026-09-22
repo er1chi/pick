@@ -9,8 +9,8 @@ import {
 import { failed } from "@/services/forge/section";
 
 import type { Accessor } from "solid-js";
-import type { ForgeService } from "@/services/forge/forge-service";
 import type {
+  Forge,
   ForgeOperationError,
   ForgeSection,
   PullRequestDocument,
@@ -74,7 +74,7 @@ export function usePr(): PullRequestContextValue {
   async function applyPullRequest(
     id: number,
     abort: AbortController,
-    forge: ForgeService,
+    forge: Forge,
     number: number,
   ): Promise<void> {
     const result = await forge.loadPullRequest(number, {
@@ -95,7 +95,7 @@ export function usePr(): PullRequestContextValue {
     pullRequestId: string,
     sha: string,
     abort: AbortController,
-    forge: ForgeService,
+    forge: Forge,
   ): Promise<void> {
     const result = await forge.getCommitPatch(sha, { signal: abort.signal });
     if (abort.signal.aborted) {

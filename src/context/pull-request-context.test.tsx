@@ -13,13 +13,13 @@ import {
   type ViewContextValue,
 } from "@/context/view-context";
 import { available } from "@/services/forge/section";
-import { ApplicationContext } from "@/services/forge/types";
+import { ForgeKind } from "@/services/forge/types";
 
 import type { JSX } from "solid-js";
 import type { ForgeContextState } from "@/context/forge-context";
 import type { PullRequestContextValue } from "@/context/pull-request-context";
-import type { ForgeService } from "@/services/forge/forge-service";
 import type {
+  Forge,
   PullRequestDocument,
   PullRequestPatch,
 } from "@/services/forge/types";
@@ -29,11 +29,7 @@ const commitA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const commitB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 function patch(text: string): ReturnType<typeof available<PullRequestPatch>> {
-  return available({
-    format: "git-patch",
-    text,
-    byteLength: text.length,
-  });
+  return available({ text });
 }
 
 const pullRequestDiff = patch("pull-request");
@@ -58,11 +54,11 @@ function forgeState(requests: Requests): ForgeContextState {
       requests.commitPatches.push(sha);
       return Result.ok(sha === commitA ? commitDiffA : commitDiffB);
     },
-  } as ForgeService;
+  } as Forge;
 
   return {
     cwd: "/repo",
-    kind: ApplicationContext.GitHub,
+    kind: ForgeKind.GitHub,
     forge,
     forgeError: undefined,
   };
@@ -197,10 +193,10 @@ describe("pull request loading", () => {
           });
         });
       },
-    } as ForgeService;
+    } as Forge;
     const { harness, dispose } = mountState({
       cwd: "/repo",
-      kind: ApplicationContext.GitHub,
+      kind: ForgeKind.GitHub,
       forge,
       forgeError: undefined,
     });

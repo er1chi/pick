@@ -66,6 +66,11 @@ export interface ViewContextValue {
   selectFile(path: string): void;
   /** Drop commit and file selection and show the open pull request. */
   clearSelection(): void;
+  /**
+   * Close the open file diff, keeping a selected commit; with no diff
+   * open, behaves like clearSelection.
+   */
+  closeFile(): void;
   close(): void;
   setPullRequestPatch(patch: ForgeSection<PullRequestPatch> | undefined): void;
   /**
@@ -195,6 +200,23 @@ export function ViewContextProvider(props: {
     setView({ kind: "pr", id: current.id, number: current.number });
   }
 
+  function closeFile(): void {
+    const current = view();
+    if (current === undefined) {
+      return;
+    }
+    if (current.kind === "diff" && current.commit !== undefined) {
+      setView({
+        kind: "commit",
+        id: current.id,
+        number: current.number,
+        sha: current.commit,
+      });
+      return;
+    }
+    clearSelection();
+  }
+
   function close(): void {
     setPullRequestPatch(undefined);
     clearCommitPatches();
@@ -208,6 +230,7 @@ export function ViewContextProvider(props: {
     selectCommit,
     selectFile,
     clearSelection,
+    closeFile,
     close,
     setPullRequestPatch,
     setCommitPatch,

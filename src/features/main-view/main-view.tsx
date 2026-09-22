@@ -133,7 +133,7 @@ export function PrView(props: PrViewProps) {
   };
 
   const closeDiff = (): void => {
-    viewContext.clearSelection();
+    viewContext.closeFile();
     const overview = overviewScroll();
     if (overview !== undefined) {
       overview.scrollTop = 0;

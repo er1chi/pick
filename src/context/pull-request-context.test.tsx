@@ -244,3 +244,35 @@ describe("pull request loading", () => {
     }
   });
 });
+
+describe("view context", () => {
+  test("closeFile keeps a selected commit and otherwise returns to the pull request", () => {
+    const { harness, dispose } = mount({
+      pullRequests: [],
+      commitPatches: [],
+    });
+    try {
+      harness.view.openPullRequest(repository, 7);
+      harness.view.selectCommit("abc");
+      harness.view.selectFile("a.ts");
+      harness.view.closeFile();
+      expect(harness.view.view()).toEqual({
+        kind: "commit",
+        id: pullRequestViewId(repository, 7),
+        number: 7,
+        sha: "abc",
+      });
+
+      harness.view.clearSelection();
+      harness.view.selectFile("a.ts");
+      harness.view.closeFile();
+      expect(harness.view.view()).toEqual({
+        kind: "pr",
+        id: pullRequestViewId(repository, 7),
+        number: 7,
+      });
+    } finally {
+      dispose();
+    }
+  });
+});

@@ -1,6 +1,7 @@
 import {
   createContext,
   createEffect,
+  createMemo,
   createSignal,
   on,
   onCleanup,
@@ -19,7 +20,9 @@ import type { JSX } from "@opentui/solid";
 import type { Accessor } from "solid-js";
 import type {
   ForgeOperationError,
+  ForgeSection,
   PullRequestDocument,
+  PullRequestPatch,
 } from "@/services/forge/types";
 
 export type PullRequestPhase =
@@ -37,6 +40,12 @@ export interface PullRequestContextValue {
 }
 
 const PullRequestContext = createContext<PullRequestContextValue>();
+
+function isReusableCommitPatch(
+  section: ForgeSection<PullRequestPatch>,
+): boolean {
+  return section.status !== "failed";
+}
 
 function useLivePullRequest(): PullRequestContextValue {
   const forgeContext = useForgeContext();
@@ -57,6 +66,7 @@ function useLivePullRequest(): PullRequestContextValue {
     setData(undefined);
     setError(undefined);
     viewContext.setPullRequestPatch(undefined);
+    viewContext.clearCommitPatches();
     if (opened === undefined || forge === undefined) {
       setPhase("idle");
       return;
@@ -81,57 +91,52 @@ function useLivePullRequest(): PullRequestContextValue {
       });
   }
 
+  // Memos compare with ===, so a new view object with the same pull request
+  // id or commit sha does not rerun the load. Selecting a file, or opening a
+  // commit whose patch is already stored, reads that stored patch.
+  const openedId = createMemo(() => viewPullRequest(viewContext.view())?.id);
+  const forge = createMemo(() => forgeContext.state().forge);
+  const commitSha = createMemo(() => {
+    const opened = viewContext.view();
+    return opened === undefined ? undefined : viewCommit(opened);
+  });
+
   createEffect(
-    on(
-      [
-        () => viewPullRequest(viewContext.view())?.id,
-        () => forgeContext.state().forge,
-      ],
-      () => {
-        load("loading");
-        onCleanup(() => controller?.abort());
-      },
-    ),
+    on([openedId, forge], () => {
+      load("loading");
+      onCleanup(() => controller?.abort());
+    }),
   );
 
   createEffect(
-    on(
-      [
-        () => {
-          const opened = viewContext.view();
-          return opened === undefined ? undefined : viewCommit(opened);
-        },
-        () => forgeContext.state().forge,
-        patchReload,
-      ],
-      ([sha, forge]) => {
-        if (sha === undefined || forge === undefined) {
-          viewContext.setCommitPatch(undefined);
-          return;
-        }
-        const abort = new AbortController();
-        viewContext.setCommitPatch(undefined);
-        void forge
-          .getCommitPatch(sha, { signal: abort.signal })
-          .then((result) => {
-            if (abort.signal.aborted) {
-              return;
-            }
-            if (result.isErr()) {
-              viewContext.setCommitPatch(failed(result.error));
-              return;
-            }
-            viewContext.setCommitPatch(result.value);
-          });
-        onCleanup(() => abort.abort());
-      },
-    ),
+    on([commitSha, forge, patchReload], ([sha, currentForge]) => {
+      if (sha === undefined || currentForge === undefined) {
+        return;
+      }
+      const cached = viewContext.cachedCommitPatch(sha);
+      if (cached !== undefined && isReusableCommitPatch(cached)) {
+        return;
+      }
+      const abort = new AbortController();
+      void currentForge
+        .getCommitPatch(sha, { signal: abort.signal })
+        .then((result) => {
+          if (abort.signal.aborted) {
+            return;
+          }
+          if (result.isErr()) {
+            viewContext.setCommitPatch(sha, failed(result.error));
+            return;
+          }
+          viewContext.setCommitPatch(sha, result.value);
+        });
+      onCleanup(() => abort.abort());
+    }),
   );
 
   function refresh(): void {
-    viewContext.setCommitPatch(undefined);
-    setPatchReload((value) => value + 1);
     load("refreshing");
+    setPatchReload((value) => value + 1);
   }
 
   return { data, phase, error, refresh };

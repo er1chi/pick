@@ -68,7 +68,10 @@ export interface ViewContextValue {
   clearSelection(): void;
   close(): void;
   setPullRequestPatch(patch: ForgeSection<PullRequestPatch> | undefined): void;
-  setCommitPatch(patch: ForgeSection<PullRequestPatch> | undefined): void;
+  /** Store one commit's patch so a later selection can read it without a fetch. */
+  setCommitPatch(sha: string, patch: ForgeSection<PullRequestPatch>): void;
+  cachedCommitPatch(sha: string): ForgeSection<PullRequestPatch> | undefined;
+  clearCommitPatches(): void;
 }
 
 const ViewContext = createContext<ViewContextValue>();
@@ -83,16 +86,39 @@ export function ViewContextProvider(props: {
   const [pullRequestPatch, setPullRequestPatch] = createSignal<
     ForgeSection<PullRequestPatch> | undefined
   >();
-  const [commitPatch, setCommitPatch] = createSignal<
-    ForgeSection<PullRequestPatch> | undefined
-  >();
+  const commitPatches = new Map<string, ForgeSection<PullRequestPatch>>();
+  const [commitPatchVersion, setCommitPatchVersion] = createSignal(0);
 
   function currentPatch(): ForgeSection<PullRequestPatch> | undefined {
     const current = view();
-    if (current !== undefined && viewCommit(current) !== undefined) {
-      return commitPatch();
+    const sha = current === undefined ? undefined : viewCommit(current);
+    if (sha !== undefined) {
+      commitPatchVersion();
+      return commitPatches.get(sha);
     }
     return pullRequestPatch();
+  }
+
+  function setCommitPatch(
+    sha: string,
+    patch: ForgeSection<PullRequestPatch>,
+  ): void {
+    commitPatches.set(sha, patch);
+    setCommitPatchVersion((version) => version + 1);
+  }
+
+  function cachedCommitPatch(
+    sha: string,
+  ): ForgeSection<PullRequestPatch> | undefined {
+    return commitPatches.get(sha);
+  }
+
+  function clearCommitPatches(): void {
+    if (commitPatches.size === 0) {
+      return;
+    }
+    commitPatches.clear();
+    setCommitPatchVersion((version) => version + 1);
   }
 
   function openPullRequest(
@@ -100,7 +126,7 @@ export function ViewContextProvider(props: {
     number: number,
   ): void {
     setPullRequestPatch(undefined);
-    setCommitPatch(undefined);
+    clearCommitPatches();
     setView({
       kind: "pr",
       id: pullRequestViewId(repository, number),
@@ -113,7 +139,6 @@ export function ViewContextProvider(props: {
     if (current === undefined) {
       return;
     }
-    setCommitPatch(undefined);
     setView({ kind: "commit", id: current.id, number: current.number, sha });
   }
 
@@ -151,7 +176,7 @@ export function ViewContextProvider(props: {
 
   function close(): void {
     setPullRequestPatch(undefined);
-    setCommitPatch(undefined);
+    clearCommitPatches();
     setView(undefined);
   }
 
@@ -165,6 +190,8 @@ export function ViewContextProvider(props: {
     close,
     setPullRequestPatch,
     setCommitPatch,
+    cachedCommitPatch,
+    clearCommitPatches,
   };
 
   return (

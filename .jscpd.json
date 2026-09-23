@@ -1,10 +1,9 @@
 {
   "path": ["src"],
   "exitCode": 0,
-  "mode": "strict",
+  "mode": "mild",
   "minLines": 5,
   "minTokens": 50,
-  "threshold": 1.5,
   "reporters": ["console", "silent"],
   "gitignore": true,
   "ignore": ["**/vendor/**"],

@@ -1,0 +1,10 @@
+minimumReleaseAgeExclude:
+  - jscpd-darwin-arm64@5.3.2
+  - jscpd-darwin-x64@5.3.2
+  - jscpd-linux-arm64-gnu@5.3.2
+  - jscpd-linux-arm64-musl@5.3.2
+  - jscpd-linux-x64-gnu@5.3.2
+  - jscpd-linux-x64-musl@5.3.2
+  - jscpd-windows-arm64-msvc@5.3.2
+  - jscpd-windows-x64-msvc@5.3.2
+  - jscpd@5.3.2

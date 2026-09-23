@@ -8,8 +8,9 @@ import {
   type RecentRepository,
   type RepositoryDiscoveryError,
 } from "@/services/repo-discovery";
+import { useNavigateList } from "@/shared/hooks/use-navigate-list";
+import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { colors } from "@/theme";
-import { moveInList } from "@/utils/navigation";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 
@@ -24,54 +25,23 @@ export function Default() {
     RepositoryDiscoveryError | undefined
   >();
   const [isLoading, setIsLoading] = createSignal(true);
-  const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
   const [recentRepositoriesBox, setRecentRepositoriesBox] = createSignal<
     BoxRenderable | undefined
   >();
   const [recentRepositoriesScrollBox, setRecentRepositoriesScrollBox] =
     createSignal<ScrollBoxRenderable | undefined>();
 
-  createEffect(() => {
-    const currentRepositories = repositories();
-    const currentSelectedPath = selectedPath();
-    const nextSelectedPath =
-      currentRepositories.find(
-        (repository) => repository.path === currentSelectedPath,
-      )?.path ??
-      currentRepositories[0]?.path ??
-      null;
+  const navigation = useNavigateList({ target: recentRepositoriesBox });
 
-    if (nextSelectedPath !== currentSelectedPath) {
-      setSelectedPath(nextSelectedPath);
-    }
-  });
+  createEffect(() => navigation.setCount(repositories().length));
 
-  function moveSelection(offset: number): void {
-    const currentRepositories = repositories();
-    if (currentRepositories.length === 0) {
-      return;
-    }
-
-    const currentSelectedPath = selectedPath();
-    const currentRepository =
-      currentRepositories.find(
-        (repository) => repository.path === currentSelectedPath,
-      ) ?? currentRepositories[0]!;
-    const nextRepository = moveInList(
-      currentRepositories,
-      currentRepository,
-      offset,
-    );
-    setSelectedPath(nextRepository.path);
-    recentRepositoriesScrollBox()?.scrollChildIntoView(nextRepository.path);
-  }
+  useScrollIntoView(
+    () => repositories()[navigation.index()]?.path,
+    recentRepositoriesScrollBox,
+  );
 
   async function activateSelectedRepository(): Promise<void> {
-    const currentRepositories = repositories();
-    const currentSelectedPath = selectedPath();
-    const selectedRepository = currentRepositories.find(
-      (repository) => repository.path === currentSelectedPath,
-    );
+    const selectedRepository = repositories()[navigation.index()];
     if (selectedRepository == null) {
       return;
     }
@@ -86,27 +56,7 @@ export function Default() {
 
   useBindings(() => ({
     target: recentRepositoriesBox,
-    commands: [
-      {
-        name: "default.repositories.move-up",
-        run: () => moveSelection(-1),
-      },
-      {
-        name: "default.repositories.move-down",
-        run: () => moveSelection(1),
-      },
-      {
-        name: "default.repositories.activate",
-        run: activateSelectedRepository,
-      },
-    ],
-    bindings: [
-      { key: "k", cmd: "default.repositories.move-up" },
-      { key: "up", cmd: "default.repositories.move-up" },
-      { key: "j", cmd: "default.repositories.move-down" },
-      { key: "down", cmd: "default.repositories.move-down" },
-      { key: "return", cmd: "default.repositories.activate" },
-    ],
+    bindings: [{ key: "return", cmd: activateSelectedRepository }],
   }));
 
   onMount(() => {
@@ -180,7 +130,10 @@ export function Default() {
                     id={repository.path}
                     label={repository.name}
                     detail={repository.displayPath}
-                    selected={repository.path === selectedPath()}
+                    selected={
+                      repository.path ===
+                      repositories()[navigation.index()]?.path
+                    }
                   />
                 )}
               </For>

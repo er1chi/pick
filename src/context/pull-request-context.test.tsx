@@ -168,6 +168,30 @@ describe("pull request loading", () => {
     }
   });
 
+  test("reselecting the active pull request keeps its loaded patch", async () => {
+    const requests: Requests = { pullRequests: [], commitPatches: [] };
+    const { harness, dispose } = mount(requests);
+    try {
+      harness.view.openPullRequest(repository, 7);
+      await settle();
+      harness.view.selectFile("src/app.tsx");
+
+      harness.view.openPullRequest(repository, 7);
+      await settle();
+
+      expect(harness.view.view()).toEqual({
+        kind: "pr",
+        id: pullRequestViewId(repository, 7),
+        number: 7,
+      });
+      expect(harness.pullRequest.data()?.diff).toBe(pullRequestDiff);
+      expect(harness.view.currentPatch()).toBe(pullRequestDiff);
+      expect(requests.pullRequests).toEqual([7]);
+    } finally {
+      dispose();
+    }
+  });
+
   test("loading a pull request drops the previous pull request cache", async () => {
     const requests: Requests = { pullRequests: [], commitPatches: [] };
     const pending: Array<(patch: typeof commitDiffA) => void> = [];

@@ -150,13 +150,12 @@ export function ViewContextProvider(props: {
     repository: Pick<ForgeRepository, "owner" | "name">,
     number: number,
   ): void {
-    setPullRequestPatch(undefined);
-    clearCommitPatches();
-    setView({
-      kind: "pr",
-      id: pullRequestViewId(repository, number),
-      number,
-    });
+    const id = pullRequestViewId(repository, number);
+    if (viewPullRequest(view())?.id !== id) {
+      setPullRequestPatch(undefined);
+      clearCommitPatches();
+    }
+    setView({ kind: "pr", id, number });
   }
 
   function selectCommit(sha: string): void {

@@ -258,6 +258,18 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
   // frame is already laid out correctly.
   const [measuredWidth, setMeasuredWidth] = createSignal<number | undefined>();
   const containerWidth = () => measuredWidth() ?? props.widthHint ?? 0;
+  const rows = createMemo(() => splitRows(props.fileDiff));
+  // A side without any lines (a new file has no "Before", a deleted file no
+  // "After") is dropped so the other pane takes the full width. "After" stays
+  // when both sides are empty so the diff still renders a surface.
+  const hasBefore = createMemo(() =>
+    rows().some((row) => row.kind === "line" && row.left !== undefined),
+  );
+  const hasAfter = createMemo(
+    () =>
+      !hasBefore() ||
+      rows().some((row) => row.kind === "line" && row.right !== undefined),
+  );
 
   createEffect(() => {
     const node = container();
@@ -279,35 +291,40 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
   });
 
   createEffect(() => {
-    const left = leftScroll();
-    const right = rightScroll();
-    if (left === undefined || right === undefined) {
+    // Only the panes currently rendered take part in scrolling; a hidden
+    // pane's signal may still hold its previous, unmounted renderable.
+    const panes = [
+      hasBefore() ? leftScroll() : undefined,
+      hasAfter() ? rightScroll() : undefined,
+    ].filter((pane) => pane !== undefined);
+    if (panes.length === 0) {
       return;
     }
     // Hide the track while keeping the scrollbar renderables in the scrollbox:
     // scrolling, viewport math, and j/k syncing all read through them.
     // Assigning through the `visible` setter marks the visibility as manual so
     // ScrollBox's own recalculation does not turn the bars back on.
-    left.verticalScrollBar.visible = false;
-    left.horizontalScrollBar.visible = false;
-    right.verticalScrollBar.visible = false;
-    right.horizontalScrollBar.visible = false;
+    for (const pane of panes) {
+      pane.verticalScrollBar.visible = false;
+      pane.horizontalScrollBar.visible = false;
+    }
 
     const target: SplitFileDiffScrollTarget = {
       scrollBy(lines) {
-        left.scrollTop += lines;
-        right.scrollTop += lines;
+        for (const pane of panes) {
+          pane.scrollTop += lines;
+        }
       },
       reset() {
-        left.scrollTop = 0;
-        right.scrollTop = 0;
+        for (const pane of panes) {
+          pane.scrollTop = 0;
+        }
       },
     };
     props.scrollTargetRef?.(target);
     onCleanup(() => props.scrollTargetRef?.(undefined));
   });
 
-  const rows = createMemo(() => splitRows(props.fileDiff));
   const oldWidth = createMemo(() => lineWidth(rows(), "left"));
   const newWidth = createMemo(() => lineWidth(rows(), "right"));
   const disableLineNumbers = () => props.disableLineNumbers === true;
@@ -359,7 +376,7 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
         minHeight={0}
         gap={1}
       >
-        <Show when={rows().length > 1}>
+        <Show when={hasBefore()}>
           <DiffPane
             title="Before"
             side="left"
@@ -371,16 +388,18 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
             scrollRef={setLeftScroll}
           />
         </Show>
-        <DiffPane
-          title="After"
-          side="right"
-          rows={rows()}
-          width={newWidth()}
-          split={split()}
-          disableLineNumbers={disableLineNumbers()}
-          tokensFor={tokensFor}
-          scrollRef={setRightScroll}
-        />
+        <Show when={hasAfter()}>
+          <DiffPane
+            title="After"
+            side="right"
+            rows={rows()}
+            width={newWidth()}
+            split={split()}
+            disableLineNumbers={disableLineNumbers()}
+            tokensFor={tokensFor}
+            scrollRef={setRightScroll}
+          />
+        </Show>
       </box>
     </box>
   );

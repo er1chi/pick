@@ -9,6 +9,7 @@ import {
   visibleError,
   visibleValue,
 } from "@/features/main-view/utils/load-state";
+import { ForgeInvalidConnectionUrlError } from "@/services/forge/types";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
@@ -18,9 +19,12 @@ import { firstLine } from "@/utils/utils";
 import { SidebarBox, SidebarScrollBox } from "./sidebar-box";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
-import type { JSX } from "solid-js";
+import type { Accessor, JSX } from "solid-js";
 import type { PrTitles } from "@/features/main-view/hooks/use-pr-titles";
-import type { PullRequestSummary } from "@/services/forge/types";
+import type {
+  ForgeOperationError,
+  PullRequestSummary,
+} from "@/services/forge/types";
 import type { PullRequestPaneProps } from "../types";
 
 function listItems(titles: PrTitles): readonly PullRequestSummary[] {
@@ -29,6 +33,36 @@ function listItems(titles: PrTitles): readonly PullRequestSummary[] {
 
 function listError(titles: PrTitles): string | undefined {
   return visibleError(titles.list())?.message;
+}
+
+const connectionHint = "Try adjusting aliases in the forgejo-cli config.";
+const maskedUrl = "••••••••••••";
+
+/** A nudge toward the fix for an error the user can resolve in their config. */
+function listErrorHint(titles: PrTitles): string | undefined {
+  const error = visibleError(titles.list());
+  return error !== undefined && ForgeInvalidConnectionUrlError.is(error)
+    ? connectionHint
+    : undefined;
+}
+
+/** Toasts a list failure. A connection URL is masked until the user reveals
+ * it, since it can expose a private host. */
+function toastListError(error: ForgeOperationError): void {
+  if (!ForgeInvalidConnectionUrlError.is(error)) {
+    toast(error.message);
+    return;
+  }
+
+  const title = (url: string) => `${error.message} at ${url}`;
+  const id = toast(title(maskedUrl), {
+    description: connectionHint,
+    action: {
+      label: "Reveal",
+      onClick: () =>
+        toast(title(error.url), { id, description: connectionHint }),
+    },
+  });
 }
 
 function listIsTruncated(titles: PrTitles): boolean {
@@ -117,9 +151,9 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
 
   createEffect(() => {
     if (!noError) return;
-    const errorMsg = listError(props.titles);
-    if (!errorMsg) return;
-    toast(errorMsg);
+    const error = visibleError(props.titles.list());
+    if (!error) return;
+    toastListError(error);
   });
 
   // The box is content-sized so it never claims an equal flex share. Rows are
@@ -130,7 +164,7 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
       return 1;
     }
     if (listError(props.titles) !== undefined) {
-      return 3;
+      return listErrorHint(props.titles) === undefined ? 3 : 4;
     }
     const count = listItems(props.titles).length;
     if (count === 0) {
@@ -183,6 +217,13 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
               <text fg={colors.muted} wrapMode="none">
                 Press R to retry.
               </text>
+              <Show when={listErrorHint(props.titles)}>
+                {(hint: Accessor<string>) => (
+                  <text fg={colors.dim} wrapMode="none">
+                    {hint()}
+                  </text>
+                )}
+              </Show>
             </box>
           }
         >

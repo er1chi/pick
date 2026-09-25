@@ -50,6 +50,18 @@ export class ForgeCommandFailedError extends TaggedError(
   readonly message: string;
 }> {}
 
+/** The CLI reached the host it resolved from the git remote, but the host did
+ * not answer as the forge's API: `fj` keeps the port of an SSH remote
+ * (`ssh://git@host:222/...`) and sends its HTTPS request to the SSH port.
+ * `url` is kept out of `message` so the UI decides whether to reveal it. */
+export class ForgeInvalidConnectionUrlError extends TaggedError(
+  "ForgeInvalidConnectionUrlError",
+)<{
+  readonly kind: ForgeKind;
+  readonly url: string;
+  readonly message: string;
+}> {}
+
 export class ForgeOutputLimitExceededError extends TaggedError(
   "ForgeOutputLimitExceededError",
 )<{
@@ -97,6 +109,7 @@ export class ForgeUnexpectedError extends TaggedError("ForgeUnexpectedError")<{
 export type CliExecutionError =
   | ForgeCommandSpawnFailedError
   | ForgeCommandFailedError
+  | ForgeInvalidConnectionUrlError
   | ForgeOutputLimitExceededError
   | ForgeCancelledError
   | ForgeTimedOutError;

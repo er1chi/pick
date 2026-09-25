@@ -3,21 +3,21 @@ import {
   ForgeCancelledError,
   ForgeCommandFailedError,
   ForgeCommandSpawnFailedError,
+  ForgeInvalidConnectionUrlError,
   ForgeInvalidJsonError,
+  ForgeKind,
   ForgeOutputLimitExceededError,
   ForgeTimedOutError,
 } from "./types";
 
 import type { Result as ResultType } from "better-result";
-import type {
-  CliExecutionError,
-  ForgeKind,
-  ForgeOperationError,
-} from "./types";
+import type { CliExecutionError, ForgeOperationError } from "./types";
 
 const diagnosticOutputLimit = 1024 * 1024;
 const defaultMaxOutputBytes = 32 * 1024 * 1024;
 const defaultTimeoutMs = 30_000;
+const requestUrlPattern = /error sending request for url \((\S+)\)/;
+const invalidContentTypeMarker = "InvalidContentType";
 
 interface CliExecutionOptions {
   readonly signal?: AbortSignal;
@@ -125,14 +125,38 @@ export async function executeCli(
   return execution.andThen(({ stdout, stderr, exitCode }) =>
     exitCode === 0
       ? Result.ok(stdout)
-      : Result.err<never, CliExecutionError>(
-          new ForgeCommandFailedError({
-            kind,
-            exitCode,
-            message: stderr.trim() || `CLI exited with code ${exitCode}`,
-          }),
-        ),
+      : Result.err(commandFailure(kind, exitCode, stderr)),
   );
+}
+
+/** `fj` reports a TLS handshake answered by something other than TLS, such
+ * as an SSH server, as a corrupt message of type `InvalidContentType`. */
+function commandFailure(
+  kind: ForgeKind,
+  exitCode: number,
+  stderr: string,
+): CliExecutionError {
+  const requestUrl = requestUrlPattern.exec(stderr)?.[1];
+  if (
+    kind === ForgeKind.Forgejo &&
+    requestUrl !== undefined &&
+    stderr.includes(invalidContentTypeMarker)
+  ) {
+    const url = Result.try(() => new URL(requestUrl).origin).unwrapOr(
+      requestUrl,
+    );
+    return new ForgeInvalidConnectionUrlError({
+      kind,
+      url,
+      message: "Could not connect to the Forgejo API",
+    });
+  }
+
+  return new ForgeCommandFailedError({
+    kind,
+    exitCode,
+    message: stderr.trim() || `CLI exited with code ${exitCode}`,
+  });
 }
 
 export function decodeJson<T>(

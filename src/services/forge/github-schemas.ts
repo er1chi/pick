@@ -1,5 +1,6 @@
 import { type } from "arktype";
 import {
+  commitSchema,
   optionalNullableString,
   optionalNumber,
   optionalUser,
@@ -66,20 +67,6 @@ export const listItemSchema = type({
   author: optionalUser,
 });
 
-const gitIdentitySchema = type({ date: optionalNullableString })
-  .or("null")
-  .optional();
-const commitSchema = type({
-  sha: "string",
-  commit: type({
-    message: "string",
-    author: gitIdentitySchema,
-    committer: gitIdentitySchema,
-  }),
-  author: optionalUser,
-  committer: optionalUser,
-  html_url: optionalNullableString,
-});
 const commentSchema = type({
   user: optionalUser,
   body: optionalNullableString,

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { ForgejoApi } from "../forgejo-api";
 import { ForgejoService } from "../forgejo-service";
 import { ForgeKind, PullRequestState } from "../types";
 import { createFakeCli, exact, stdout } from "./fake-cli-runner";
 
 import type { Result as ResultType } from "better-result";
+import type { HttpFetch } from "../forgejo-api";
 import type { CannedCommand, FakeCli } from "./fake-cli-runner";
 
 const kind = ForgeKind.Forgejo;
@@ -36,8 +38,62 @@ const pullRequestView = {
 
 const comments = [{ id: 1, user: { login: "commenter" }, body: "Looks good" }];
 
-async function forgejoService(cli: FakeCli): Promise<ForgejoService> {
-  return unwrap(await ForgejoService.initialize(cwd, cli.run));
+const apiRoot = "https://forge.example/api/v1/repos/o/r";
+const commitsPath = "pulls/9/commits?stat=false&verification=false&files=false";
+
+function apiCommit(sha: string) {
+  return {
+    sha,
+    html_url: `${repositoryUrl}/commit/${sha}`,
+    commit: {
+      message: `commit ${sha}`,
+      author: { date: "2026-01-01T00:00:00Z" },
+      committer: { date: "2026-01-02T00:00:00Z" },
+    },
+    author: { login: "author" },
+    committer: null,
+  };
+}
+
+interface FakeRequest {
+  readonly url: string;
+  readonly authorization: string | null;
+}
+
+/** A Forgejo API that replies from `responses`, keyed by the URL below
+ * `apiRoot`, and records every request. Unknown URLs answer 404. */
+interface FakeResponse {
+  readonly body: string;
+  readonly headers?: Record<string, string>;
+}
+
+function commitsPage(
+  shas: readonly string[],
+  headers?: Record<string, string>,
+): FakeResponse {
+  return { body: JSON.stringify(shas.map(apiCommit)), headers };
+}
+
+function fakeApi(responses: Record<string, FakeResponse>, token?: string) {
+  const requests: FakeRequest[] = [];
+  const fetch: HttpFetch = async (url, init) => {
+    requests.push({
+      url,
+      authorization: new Headers(init.headers).get("authorization"),
+    });
+    const response = responses[url.slice(apiRoot.length + 1)];
+    return response === undefined
+      ? new Response("not found", { status: 404 })
+      : new Response(response.body, { headers: response.headers });
+  };
+  return { api: new ForgejoApi(fetch, async () => token), requests };
+}
+
+async function forgejoService(
+  cli: FakeCli,
+  api: ForgejoApi = fakeApi({}).api,
+): Promise<ForgejoService> {
+  return unwrap(await ForgejoService.initialize(cwd, cli.run, api));
 }
 
 function unwrap<T, E>(result: ResultType<T, E>): T {
@@ -114,7 +170,10 @@ describe("ForgejoService.loadPullRequest", () => {
       ],
       [exact("pr view 9 --repo o/r diff"), stdout(diffText)],
     ]);
-    const service = await forgejoService(cli);
+    const { api } = fakeApi({
+      [`${commitsPath}&page=1&limit=50`]: commitsPage(["abc"]),
+    });
+    const service = await forgejoService(cli, api);
 
     const document = unwrap(await service.loadPullRequest(9));
 
@@ -122,7 +181,7 @@ describe("ForgejoService.loadPullRequest", () => {
     if (document.details.status === "available") {
       expect(document.details.value.number).toBe(9);
     }
-    expect(document.commits.status).toBe("unsupported");
+    expect(document.commits.status).toBe("available");
 
     const requestedReviewers = document.reviews.requestedReviewers;
     expect(requestedReviewers.status).toBe("available");
@@ -146,5 +205,79 @@ describe("ForgejoService.loadPullRequest", () => {
       expect(document.diff.value.text).toBe(diffText);
     }
     expectInvokedAsFj(cli);
+  });
+});
+
+describe("ForgejoApi", () => {
+  test("follows x-hasmore across commit pages with the stored token", async () => {
+    const cli = createFakeCli(kind, [
+      versionCommand,
+      repositoryCommand,
+      [
+        exact("--json pr view 9 --repo o/r"),
+        stdout(JSON.stringify(pullRequestView)),
+      ],
+    ]);
+    const { api, requests } = fakeApi(
+      {
+        [`${commitsPath}&page=1&limit=50`]: commitsPage(["a1"], {
+          "x-hasmore": "true",
+        }),
+        [`${commitsPath}&page=2&limit=50`]: commitsPage(["b2"]),
+      },
+      "secret",
+    );
+    const service = await forgejoService(cli, api);
+
+    const document = unwrap(await service.loadPullRequest(9));
+
+    expect(document.commits).toEqual({
+      status: "available",
+      truncated: false,
+      value: ["a1", "b2"].map((sha) => ({
+        sha,
+        message: `commit ${sha}`,
+        author: { login: "author" },
+        committer: null,
+        authoredAt: "2026-01-01T00:00:00Z",
+        committedAt: "2026-01-02T00:00:00Z",
+        url: `${repositoryUrl}/commit/${sha}`,
+      })),
+    });
+    expect(requests.map((request) => request.authorization)).toEqual([
+      "token secret",
+      "token secret",
+    ]);
+  });
+
+  test("reports a failed status as a failed commits section", async () => {
+    const cli = createFakeCli(kind, [versionCommand, repositoryCommand]);
+    const service = await forgejoService(cli);
+
+    const document = unwrap(await service.loadPullRequest(9));
+
+    expect(document.commits.status).toBe("failed");
+    if (document.commits.status === "failed") {
+      expect(document.commits.error).toMatchObject({
+        _tag: "ForgeRequestFailedError",
+        status: 404,
+      });
+    }
+  });
+
+  test("loads a single commit patch", async () => {
+    const cli = createFakeCli(kind, [versionCommand, repositoryCommand]);
+    const { api } = fakeApi({
+      "git/commits/abc1234.diff": { body: diffText },
+    });
+    const service = await forgejoService(cli, api);
+
+    const patch = unwrap(await service.getCommitPatch("abc1234"));
+
+    expect(patch).toEqual({
+      status: "available",
+      value: { text: diffText },
+      truncated: false,
+    });
   });
 });

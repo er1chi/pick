@@ -1,8 +1,10 @@
 import { type } from "arktype";
 import { Result } from "better-result";
 import { ForgeCli } from "./forge-cli";
+import { ForgejoApi } from "./forgejo-api";
 import {
   matchPullRequestNumber,
+  normalizeCommit,
   normalizeRepository,
   normalizeState,
   normalizeTeams,
@@ -10,8 +12,14 @@ import {
   normalizeUsers,
   withExpectedCommentCount,
 } from "./normalization";
-import { requestPullRequest, requestPullRequestList } from "./requests";
 import {
+  requestPullRequest,
+  requestPullRequestList,
+  validateCommitSha,
+  withRepository,
+} from "./requests";
+import {
+  commitSchema,
   optionalBoolean,
   optionalNullableString,
   optionalNumber,
@@ -20,7 +28,7 @@ import {
   teamSchema,
   userSchema,
 } from "./schema-primitives";
-import { available, failed, unsupported } from "./section";
+import { available, failed, sectionFromResult, unsupported } from "./section";
 import { ForgeKind } from "./types";
 
 import type { Result as ResultType } from "better-result";
@@ -97,7 +105,10 @@ export class ForgejoService implements Forge {
   public readonly kind = kind;
   private readonly repository: RepositoryLookup;
 
-  constructor(private readonly cli: ForgeCli) {
+  constructor(
+    private readonly cli: ForgeCli,
+    private readonly api: ForgejoApi = new ForgejoApi(),
+  ) {
     this.repository = cli.cachedJson(["--json", "repo", "view"], (cause) =>
       cli
         .parse(
@@ -111,9 +122,13 @@ export class ForgejoService implements Forge {
     );
   }
 
-  public static async initialize(cwd: string, run?: CliRunner) {
+  public static async initialize(
+    cwd: string,
+    run?: CliRunner,
+    api?: ForgejoApi,
+  ) {
     const initialized = await ForgeCli.initialize(kind, executable, cwd, run);
-    return initialized.map((cli) => new ForgejoService(cli));
+    return initialized.map((cli) => new ForgejoService(cli, api));
   }
 
   /** `fj pr search` has no limit flag and always fetches every page, so the
@@ -159,12 +174,21 @@ export class ForgejoService implements Forge {
   }
 
   public async getCommitPatch(
-    _sha: string,
-    _options: PullRequestResourceOptions = {},
+    sha: string,
+    options: PullRequestResourceOptions = {},
   ): Promise<ResultType<ForgeSection<PullRequestPatch>, ForgeOperationError>> {
-    return Result.ok(
-      unsupported("The Forgejo CLI does not expose a diff for a single commit"),
-    );
+    const valid = validateCommitSha(kind, sha);
+    if (valid.isErr()) {
+      return valid;
+    }
+    return withRepository(kind, this.repository, async (repository) => {
+      const diff = await this.api.text(
+        repository,
+        `git/commits/${sha}.diff`,
+        options.signal,
+      );
+      return Result.ok(sectionFromResult(diff.map((text) => ({ text }))));
+    });
   }
 
   private async loadDocument(
@@ -173,7 +197,7 @@ export class ForgejoService implements Forge {
     signal: AbortSignal | undefined,
   ): Promise<PullRequestDocument> {
     const pullRequest = ["pr", "view", String(number), "--repo"];
-    const [view, comments, diff] = await Promise.all([
+    const [view, comments, diff, commits] = await Promise.all([
       this.cli.json(
         ["--json", ...pullRequest, repository.fullName],
         (cause) =>
@@ -196,6 +220,19 @@ export class ForgejoService implements Forge {
         signal,
       ),
       this.cli.patch([...pullRequest, repository.fullName, "diff"], signal),
+      this.api.pagedJson(
+        repository,
+        `pulls/${number}/commits?stat=false&verification=false&files=false`,
+        (cause) =>
+          this.cli
+            .parse(
+              commitSchema.array(),
+              cause,
+              "Forgejo commits response did not match the schema",
+            )
+            .map((payload) => payload.map(normalizeCommit)),
+        signal,
+      ),
     ]);
 
     return {
@@ -206,9 +243,7 @@ export class ForgejoService implements Forge {
         ? withExpectedCommentCount(comments, view.value.comments ?? null)
         : comments,
       diff,
-      commits: unsupported(
-        "The Forgejo CLI prints pull request commits only as human-readable output",
-      ),
+      commits: sectionFromResult(commits),
       reviews: {
         reviews: unsupported(
           "The Forgejo CLI does not expose submitted pull request reviews",

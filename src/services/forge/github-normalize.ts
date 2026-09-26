@@ -1,4 +1,5 @@
 import {
+  normalizeCommit,
   normalizeGithubState,
   normalizeRepository,
   normalizeTeams,
@@ -83,15 +84,7 @@ export function normalizeDetails(
 export function normalizeCommits(
   payload: GithubCommitPages,
 ): readonly PullRequestCommit[] {
-  return payload.flat().map((commit) => ({
-    sha: commit.sha,
-    message: commit.commit.message,
-    author: normalizeUser(commit.author),
-    committer: normalizeUser(commit.committer),
-    authoredAt: commit.commit.author?.date ?? null,
-    committedAt: commit.commit.committer?.date ?? null,
-    url: commit.html_url ?? null,
-  }));
+  return payload.flat().map(normalizeCommit);
 }
 
 export function normalizeConversationComments(

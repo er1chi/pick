@@ -1,7 +1,11 @@
 import { Result } from "better-result";
 import { ForgeIncompatibleResponseError, PullRequestState } from "./types";
 
-import type { TeamPayload, UserPayload } from "./schema-primitives";
+import type {
+  CommitPayload,
+  TeamPayload,
+  UserPayload,
+} from "./schema-primitives";
 import type {
   ForgeKind,
   ForgeOperationError,
@@ -10,6 +14,7 @@ import type {
   ForgeTeam,
   ForgeUser,
   PullRequestComment,
+  PullRequestCommit,
 } from "./types";
 
 export function normalizeRepository(
@@ -53,6 +58,18 @@ export function normalizeTeams(
   payloads: readonly TeamPayload[] | null | undefined,
 ): readonly ForgeTeam[] {
   return (payloads ?? []).map((payload) => ({ name: payload.name }));
+}
+
+export function normalizeCommit(payload: CommitPayload): PullRequestCommit {
+  return {
+    sha: payload.sha,
+    message: payload.commit.message,
+    author: normalizeUser(payload.author),
+    committer: normalizeUser(payload.committer),
+    authoredAt: payload.commit.author?.date ?? null,
+    committedAt: payload.commit.committer?.date ?? null,
+    url: payload.html_url ?? null,
+  };
 }
 
 /** Marks comments as truncated when the forge reports more than it returned. */

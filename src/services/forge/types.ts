@@ -67,6 +67,16 @@ export class ForgeTimedOutError extends TaggedError("ForgeTimedOutError")<{
   readonly message: string;
 }> {}
 
+/** An HTTP request to the forge API failed. `status` is `null` when no
+ * response arrived. */
+export class ForgeRequestFailedError extends TaggedError(
+  "ForgeRequestFailedError",
+)<{
+  readonly kind: ForgeKind;
+  readonly status: number | null;
+  readonly message: string;
+}> {}
+
 export class ForgeInvalidRequestError extends TaggedError(
   "ForgeInvalidRequestError",
 )<{
@@ -103,6 +113,7 @@ export type CliExecutionError =
 
 export type ForgeOperationError =
   | CliExecutionError
+  | ForgeRequestFailedError
   | ForgeInvalidRequestError
   | ForgeInvalidJsonError
   | ForgeIncompatibleResponseError

@@ -129,8 +129,6 @@ export async function executeCli(
   );
 }
 
-/** `fj` reports a TLS handshake answered by something other than TLS, such
- * as an SSH server, as a corrupt message of type `InvalidContentType`. */
 function commandFailure(
   kind: ForgeKind,
   exitCode: number,

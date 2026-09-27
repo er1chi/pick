@@ -38,7 +38,6 @@ function listError(titles: PrTitles): string | undefined {
 const connectionHint = "Try adjusting aliases in the forgejo-cli config.";
 const maskedUrl = "••••••••••••";
 
-/** A nudge toward the fix for an error the user can resolve in their config. */
 function listErrorHint(titles: PrTitles): string | undefined {
   const error = visibleError(titles.list());
   return error !== undefined && ForgeInvalidConnectionUrlError.is(error)
@@ -46,8 +45,6 @@ function listErrorHint(titles: PrTitles): string | undefined {
     : undefined;
 }
 
-/** Toasts a list failure. A connection URL is masked until the user reveals
- * it, since it can expose a private host. */
 function toastListError(error: ForgeOperationError): void {
   if (!ForgeInvalidConnectionUrlError.is(error)) {
     toast(error.message);

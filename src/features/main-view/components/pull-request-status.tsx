@@ -32,10 +32,8 @@ export function PullRequestStatusLine(): JSX.Element {
     if (phase === "loading" || phase === "refreshing") {
       return phase;
     }
-    const current = viewContext.view();
     if (
-      current !== undefined &&
-      viewCommit(current) !== undefined &&
+      viewCommit(viewContext.view()) !== undefined &&
       viewContext.currentPatch() === undefined
     ) {
       return "loading";

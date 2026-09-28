@@ -114,8 +114,7 @@ export function usePr(): PullRequestContextValue {
   const openedId = createMemo(() => viewPullRequest(viewContext.view())?.id);
   const forge = createMemo(() => forgeContext.state().forge);
   const commitSha = createMemo(() => {
-    const opened = viewContext.view();
-    return opened === undefined ? undefined : viewCommit(opened);
+    return viewCommit(viewContext.view());
   });
 
   createEffect(

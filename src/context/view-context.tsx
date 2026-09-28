@@ -20,7 +20,7 @@ interface PullRequestIdentity {
   readonly number: number;
 }
 
-export type ActiveView = PullRequestIdentity &
+export type PullRequestView = PullRequestIdentity &
   (
     | { readonly kind: "pr" }
     | { readonly kind: "commit"; readonly sha: string }
@@ -30,6 +30,16 @@ export type ActiveView = PullRequestIdentity &
         readonly commit?: string;
       }
   );
+
+/** Local changes, with the uncommitted file whose diff is open, if any. */
+interface LocalView {
+  readonly kind: "local";
+  readonly file: string | undefined;
+}
+
+export type ActiveView = LocalView | PullRequestView;
+
+const localView: LocalView = { kind: "local", file: undefined };
 
 /** The commit a view is anchored to, when the view is a commit or a commit diff. */
 export function viewCommit(view: ActiveView): string | undefined {
@@ -43,16 +53,16 @@ export function viewCommit(view: ActiveView): string | undefined {
 }
 
 export function viewPullRequest(
-  view: ActiveView | undefined,
+  view: ActiveView,
 ): PullRequestIdentity | undefined {
-  if (view === undefined) {
+  if (view.kind === "local") {
     return undefined;
   }
   return { id: view.id, number: view.number };
 }
 
 export interface ViewContextValue {
-  readonly view: Accessor<ActiveView | undefined>;
+  readonly view: Accessor<ActiveView>;
   /**
    * The patch the files pane and the main diff both read. A selected commit
    * uses that commit's patch; otherwise this is the pull request diff.
@@ -63,7 +73,6 @@ export interface ViewContextValue {
     number: number,
   ): void;
   selectCommit(sha: string): void;
-  readonly localFile: Accessor<string | undefined>;
   selectFile(path: string): void;
   clearSelection(): void;
   /**
@@ -93,8 +102,8 @@ export function ViewContextProvider(props: {
   readonly initialView?: ActiveView;
   readonly children: JSX.Element;
 }): JSX.Element {
-  const [view, setView] = createSignal<ActiveView | undefined>(
-    props.initialView,
+  const [view, setView] = createSignal<ActiveView>(
+    props.initialView ?? localView,
   );
   const [pullRequestPatch, setPullRequestPatch] = createSignal<
     ForgeSection<PullRequestPatch> | undefined
@@ -102,14 +111,13 @@ export function ViewContextProvider(props: {
   const [localPatch, setLocalPatch] = createSignal<
     ForgeSection<PullRequestPatch> | undefined
   >();
-  const [localFile, setLocalFile] = createSignal<string | undefined>();
   const commitPatches = new Map<string, ForgeSection<PullRequestPatch>>();
   let commitPatchOwner: string | undefined;
   const [commitPatchVersion, setCommitPatchVersion] = createSignal(0);
 
   function currentPatch(): ForgeSection<PullRequestPatch> | undefined {
     const current = view();
-    if (current === undefined) {
+    if (current.kind === "local") {
       return localPatch();
     }
     const sha = viewCommit(current);
@@ -164,7 +172,6 @@ export function ViewContextProvider(props: {
       setPullRequestPatch(undefined);
       clearCommitPatches();
     }
-    setLocalFile(undefined);
     setView({ kind: "pr", id, number });
   }
 
@@ -178,8 +185,8 @@ export function ViewContextProvider(props: {
 
   function selectFile(path: string): void {
     const current = view();
-    if (current === undefined) {
-      setLocalFile(path);
+    if (current.kind === "local") {
+      setView({ kind: "local", file: path });
       return;
     }
     const commit = viewCommit(current);
@@ -211,8 +218,8 @@ export function ViewContextProvider(props: {
 
   function closeFile(): void {
     const current = view();
-    if (current === undefined) {
-      setLocalFile(undefined);
+    if (current.kind === "local") {
+      setView(localView);
       return;
     }
     if (current.kind === "diff" && current.commit !== undefined) {
@@ -230,7 +237,7 @@ export function ViewContextProvider(props: {
   function close(): void {
     setPullRequestPatch(undefined);
     clearCommitPatches();
-    setView(undefined);
+    setView(localView);
   }
 
   const context: ViewContextValue = {
@@ -242,7 +249,6 @@ export function ViewContextProvider(props: {
     clearSelection,
     closeFile,
     close,
-    localFile,
     setPullRequestPatch,
     setLocalPatch,
     setCommitPatch,

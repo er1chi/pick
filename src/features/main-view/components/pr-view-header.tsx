@@ -4,7 +4,7 @@ import {
   type RepositoryForgeContextState,
 } from "@/context/forge-context";
 import { usePullRequest } from "@/context/pull-request-context";
-import { viewCommit, type ActiveView } from "@/context/view-context";
+import { viewCommit, type PullRequestView } from "@/context/view-context";
 import {
   CLOSE_AFFORDANCE_GAP,
   CLOSE_DIFF_LABEL,
@@ -71,7 +71,7 @@ function PersistentHeader(props: PersistentHeaderProps): JSX.Element {
   );
 }
 
-function contextBanner(view: ActiveView): string {
+function contextBanner(view: PullRequestView): string {
   const commit = viewCommit(view);
   const path = view.kind === "diff" ? view.path : undefined;
   // The full SHA stays in the commit metadata below; the fixed context line
@@ -156,7 +156,7 @@ export function LocalDiffHeader(props: {
 }
 
 interface PrViewHeaderProps {
-  readonly view: ActiveView;
+  readonly view: PullRequestView;
   readonly repositoryName: string;
   readonly titleLine: string | undefined;
   readonly headerKey: string;

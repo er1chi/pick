@@ -1,6 +1,6 @@
 import { createEffect, createResource } from "solid-js";
 import { useForgeContext } from "@/context/forge-context";
-import { useViewContext, viewPullRequest } from "@/context/view-context";
+import { useViewContext } from "@/context/view-context";
 import { available, unsupported } from "@/services/forge/section";
 import { readWorkingTreePatch } from "@/services/local/local";
 
@@ -9,7 +9,7 @@ export function useLocalPatch(): void {
   const viewContext = useViewContext();
   const [patch] = createResource(
     () =>
-      viewPullRequest(viewContext.view()) === undefined
+      viewContext.view().kind === "local"
         ? forgeContext.state().cwd
         : undefined,
     (cwd) => readWorkingTreePatch(cwd),

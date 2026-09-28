@@ -114,10 +114,7 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
               const highlighted = () =>
                 commit().sha === commits()[navigation.index()]?.sha;
               const active = () => {
-                const current = viewContext.view();
-                return (
-                  current !== undefined && commit().sha === viewCommit(current)
-                );
+                return commit().sha === viewCommit(viewContext.view());
               };
               return (
                 <SelectableRow

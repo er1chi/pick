@@ -8,6 +8,7 @@ import {
 } from "@/context/pull-request-context";
 import {
   pullRequestViewId,
+  viewPullRequest,
   useViewContext,
   ViewContextProvider,
   type ViewContextValue,
@@ -162,7 +163,9 @@ describe("pull request loading", () => {
 
       expect(requests.commitPatches).toEqual([commitA, commitB]);
       expect(harness.view.currentPatch()).toBe(commitDiffA);
-      expect(harness.view.view()?.id).toBe(pullRequestViewId(repository, 7));
+      expect(viewPullRequest(harness.view.view())?.id).toBe(
+        pullRequestViewId(repository, 7),
+      );
     } finally {
       dispose();
     }

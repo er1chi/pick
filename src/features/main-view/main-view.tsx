@@ -10,6 +10,7 @@ import {
   type Accessor,
 } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
+import { usePatchStore } from "@/context/patch-store";
 import { usePullRequest } from "@/context/pull-request-context";
 import {
   useViewContext,
@@ -59,6 +60,7 @@ export function PrView(props: PrViewProps) {
   const contentWidth = () =>
     Math.max(16, dimensions().width - MAIN_PANE_CHROME);
   const viewContext = useViewContext();
+  const patchStore = usePatchStore();
   const pullRequest = usePullRequest();
   const view = () => viewContext.view();
   const pullRequestView = (): PullRequestView | undefined => {
@@ -223,7 +225,7 @@ export function PrView(props: PrViewProps) {
   });
 
   createEffect(() => {
-    prewarmSplitHighlights(patchFileIndex(viewContext.currentPatch()).files);
+    prewarmSplitHighlights(patchFileIndex(patchStore.currentPatch()).files);
   });
 
   createEffect(

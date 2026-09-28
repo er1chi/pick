@@ -1,5 +1,5 @@
 import { createMemo, For, Show, type Accessor, type JSX } from "solid-js";
-import { useViewContext } from "@/context/view-context";
+import { usePatchStore } from "@/context/patch-store";
 import {
   MutedLine,
   oneLine,
@@ -22,9 +22,9 @@ interface CommitMetadataProps {
 }
 
 export function CommitMetadata(props: CommitMetadataProps): JSX.Element {
-  const viewContext = useViewContext();
+  const patchStore = usePatchStore();
   const counts = createMemo(() => {
-    const section = viewContext.cachedCommitPatch(props.sha);
+    const section = patchStore.cachedCommitPatch(props.sha);
     return section?.status === "available"
       ? patchFileIndex(section).counts
       : undefined;

@@ -3,6 +3,11 @@ import { describe, expect, test } from "bun:test";
 import { createRoot } from "solid-js";
 import { ForgeContextProvider } from "@/context/forge-context";
 import {
+  PatchStoreProvider,
+  usePatchStore,
+  type PatchStoreValue,
+} from "@/context/patch-store";
+import {
   PullRequestProvider,
   usePullRequest,
 } from "@/context/pull-request-context";
@@ -68,12 +73,14 @@ function forgeState(requests: Requests): ForgeContextState {
 interface Harness {
   readonly view: ViewContextValue;
   readonly pullRequest: PullRequestContextValue;
+  readonly patches: PatchStoreValue;
 }
 
 function Probe(props: { readonly ready: (harness: Harness) => void }): null {
   props.ready({
     view: useViewContext(),
     pullRequest: usePullRequest(),
+    patches: usePatchStore(),
   });
   return null;
 }
@@ -88,9 +95,11 @@ function mountState(state: ForgeContextState) {
     const tree: JSX.Element = (
       <ForgeContextProvider value={state}>
         <ViewContextProvider>
-          <PullRequestProvider>
-            <Probe ready={(value) => (harness = value)} />
-          </PullRequestProvider>
+          <PatchStoreProvider>
+            <PullRequestProvider>
+              <Probe ready={(value) => (harness = value)} />
+            </PullRequestProvider>
+          </PatchStoreProvider>
         </ViewContextProvider>
       </ForgeContextProvider>
     );
@@ -120,7 +129,7 @@ describe("pull request loading", () => {
 
       expect(requests.pullRequests).toEqual([7]);
       expect(harness.pullRequest.data()?.diff).toBe(pullRequestDiff);
-      expect(harness.view.currentPatch()).toBe(pullRequestDiff);
+      expect(harness.patches.currentPatch()).toBe(pullRequestDiff);
 
       harness.view.selectFile("src/app.tsx");
       await settle();
@@ -128,7 +137,7 @@ describe("pull request loading", () => {
       expect(requests.pullRequests).toEqual([7]);
       expect(requests.commitPatches).toEqual([]);
       expect(harness.pullRequest.data()?.diff).toBe(pullRequestDiff);
-      expect(harness.view.currentPatch()).toBe(pullRequestDiff);
+      expect(harness.patches.currentPatch()).toBe(pullRequestDiff);
       expect(harness.view.view()?.kind).toBe("diff");
 
       harness.view.selectCommit(commitA);
@@ -137,32 +146,32 @@ describe("pull request loading", () => {
       expect(requests.pullRequests).toEqual([7]);
       expect(requests.commitPatches).toEqual([commitA]);
       expect(harness.pullRequest.data()?.diff).toBe(pullRequestDiff);
-      expect(harness.view.currentPatch()).toBe(commitDiffA);
+      expect(harness.patches.currentPatch()).toBe(commitDiffA);
 
       harness.view.selectFile("src/app.tsx");
       await settle();
 
       expect(requests.commitPatches).toEqual([commitA]);
-      expect(harness.view.currentPatch()).toBe(commitDiffA);
+      expect(harness.patches.currentPatch()).toBe(commitDiffA);
 
       harness.view.clearSelection();
       harness.view.selectCommit(commitA);
       await settle();
 
       expect(requests.commitPatches).toEqual([commitA]);
-      expect(harness.view.currentPatch()).toBe(commitDiffA);
+      expect(harness.patches.currentPatch()).toBe(commitDiffA);
 
       harness.view.selectCommit(commitB);
       await settle();
 
       expect(requests.commitPatches).toEqual([commitA, commitB]);
-      expect(harness.view.currentPatch()).toBe(commitDiffB);
+      expect(harness.patches.currentPatch()).toBe(commitDiffB);
 
       harness.view.selectCommit(commitA);
       await settle();
 
       expect(requests.commitPatches).toEqual([commitA, commitB]);
-      expect(harness.view.currentPatch()).toBe(commitDiffA);
+      expect(harness.patches.currentPatch()).toBe(commitDiffA);
       expect(viewPullRequest(harness.view.view())?.id).toBe(
         pullRequestViewId(repository, 7),
       );
@@ -188,7 +197,7 @@ describe("pull request loading", () => {
         number: 7,
       });
       expect(harness.pullRequest.data()?.diff).toBe(pullRequestDiff);
-      expect(harness.view.currentPatch()).toBe(pullRequestDiff);
+      expect(harness.patches.currentPatch()).toBe(pullRequestDiff);
       expect(requests.pullRequests).toEqual([7]);
     } finally {
       dispose();
@@ -244,13 +253,13 @@ describe("pull request loading", () => {
       await settle();
 
       expect(harness.pullRequest.data()?.diff).toBe(secondDiff);
-      expect(harness.view.currentPatch()).toBe(secondDiff);
+      expect(harness.patches.currentPatch()).toBe(secondDiff);
       expect(requests.pullRequests).toEqual([7, 8]);
 
       harness.view.selectCommit(commitA);
       await settle();
       expect(requests.commitPatches).toEqual([commitA, commitA]);
-      expect(harness.view.currentPatch()).toBeUndefined();
+      expect(harness.patches.currentPatch()).toBeUndefined();
 
       const resolveSecond = pending[1];
       if (resolveSecond === undefined) {
@@ -260,7 +269,7 @@ describe("pull request loading", () => {
       }
       resolveSecond(secondCommit);
       await settle();
-      expect(harness.view.currentPatch()).toBe(secondCommit);
+      expect(harness.patches.currentPatch()).toBe(secondCommit);
       expect(requests.pullRequests).toEqual([7, 8]);
     } finally {
       dispose();

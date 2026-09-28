@@ -1,5 +1,5 @@
 import { For, Show, createMemo, type Accessor, type JSX } from "solid-js";
-import { useViewContext } from "@/context/view-context";
+import { usePatchStore } from "@/context/patch-store";
 import { oneLine } from "@/features/main-view/components/pr-view-chrome";
 import {
   SplitFileDiff,
@@ -83,14 +83,14 @@ interface SelectedDiffProps {
 }
 
 export function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
-  const viewContext = useViewContext();
+  const patchStore = usePatchStore();
   const fromCommit = () => props.commitSha !== undefined;
   const fileDiffs = createMemo(() =>
-    fileDiffsForPatch(viewContext.currentPatch(), props.path),
+    fileDiffsForPatch(patchStore.currentPatch(), props.path),
   );
 
   const notice = (): string | undefined => {
-    const section = viewContext.currentPatch();
+    const section = patchStore.currentPatch();
     if (section === undefined) {
       return undefined;
     }

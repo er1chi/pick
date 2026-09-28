@@ -1,5 +1,6 @@
 import cliSpinners from "cli-spinners";
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { usePatchStore } from "@/context/patch-store";
 import { usePullRequest } from "@/context/pull-request-context";
 import { useViewContext, viewCommit } from "@/context/view-context";
 import { oneLine } from "@/features/main-view/components/pr-view-chrome";
@@ -27,6 +28,7 @@ function useSpinnerFrame(active: Accessor<boolean>): Accessor<string> {
 export function PullRequestStatusLine(): JSX.Element {
   const pullRequest = usePullRequest();
   const viewContext = useViewContext();
+  const patchStore = usePatchStore();
   const activity = (): "loading" | "refreshing" | undefined => {
     const phase = pullRequest.phase();
     if (phase === "loading" || phase === "refreshing") {
@@ -34,7 +36,7 @@ export function PullRequestStatusLine(): JSX.Element {
     }
     if (
       viewCommit(viewContext.view()) !== undefined &&
-      viewContext.currentPatch() === undefined
+      patchStore.currentPatch() === undefined
     ) {
       return "loading";
     }

@@ -8,6 +8,7 @@ import {
   ForgeContextProvider,
   initializeForgeContext,
 } from "@/context/forge-context";
+import { PatchStoreProvider } from "@/context/patch-store";
 import { ViewContextProvider } from "@/context/view-context";
 import { createAppKeymap } from "@/shared/keymap";
 
@@ -23,13 +24,15 @@ await render(
   () => (
     <ForgeContextProvider value={forgeContext}>
       <ViewContextProvider>
-        <PaneStore.Provider>
-          <KeymapProvider keymap={keymap}>
-            <DialogProvider>
-              <App />
-            </DialogProvider>
-          </KeymapProvider>
-        </PaneStore.Provider>
+        <PatchStoreProvider>
+          <PaneStore.Provider>
+            <KeymapProvider keymap={keymap}>
+              <DialogProvider>
+                <App />
+              </DialogProvider>
+            </KeymapProvider>
+          </PaneStore.Provider>
+        </PatchStoreProvider>
       </ViewContextProvider>
     </ForgeContextProvider>
   ),

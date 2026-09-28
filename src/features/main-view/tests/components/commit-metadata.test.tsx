@@ -2,11 +2,14 @@ import { testRender } from "@opentui/solid";
 import { describe, expect, test } from "bun:test";
 import { onMount, type JSX } from "solid-js";
 import {
+  PatchStoreProvider,
+  usePatchStore,
+  type PatchStoreValue,
+} from "@/context/patch-store";
+import {
   pullRequestViewId,
-  useViewContext,
   ViewContextProvider,
   type ActiveView,
-  type ViewContextValue,
 } from "@/context/view-context";
 import { CommitMetadata } from "@/features/main-view/components/commit-metadata";
 import { available } from "@/services/forge/section";
@@ -46,41 +49,48 @@ index 1111111..2222222 100644
 `;
 
 function CommitMetadataHarness(props: {
-  readonly ready: (view: ViewContextValue) => void;
+  readonly ready: (patches: PatchStoreValue) => void;
 }): JSX.Element {
   return (
     <ViewContextProvider initialView={openPullRequest}>
-      <ReadyProbe ready={props.ready} />
-      <CommitMetadata sha={SHA} commit={commit} hasFile={false} maxWidth={80} />
+      <PatchStoreProvider>
+        <ReadyProbe ready={props.ready} />
+        <CommitMetadata
+          sha={SHA}
+          commit={commit}
+          hasFile={false}
+          maxWidth={80}
+        />
+      </PatchStoreProvider>
     </ViewContextProvider>
   );
 }
 
 function ReadyProbe(props: {
-  readonly ready: (view: ViewContextValue) => void;
+  readonly ready: (patches: PatchStoreValue) => void;
 }): null {
-  const view = useViewContext();
-  onMount(() => props.ready(view));
+  const patches = usePatchStore();
+  onMount(() => props.ready(patches));
   return null;
 }
 
 describe("CommitMetadata", () => {
   test("shows +/- counts when the commit patch arrives after mount", async () => {
-    let view: ViewContextValue | undefined;
+    let patches: PatchStoreValue | undefined;
     const setup = await testRender(
-      () => <CommitMetadataHarness ready={(value) => (view = value)} />,
+      () => <CommitMetadataHarness ready={(value) => (patches = value)} />,
       { width: 80, height: 12 },
     );
 
     try {
-      await setup.waitFor(() => view !== undefined);
+      await setup.waitFor(() => patches !== undefined);
       expect(setup.captureCharFrame()).not.toContain("+");
 
-      if (view === undefined) {
+      if (patches === undefined) {
         throw new Error("commit metadata harness did not mount");
       }
 
-      view.setCommitPatch(
+      patches.setCommitPatch(
         pullRequestId,
         SHA,
         available<PullRequestPatch>({ text: patchText }),

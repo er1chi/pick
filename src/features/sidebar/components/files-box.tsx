@@ -9,6 +9,7 @@ import {
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
 import { useForgeContext } from "@/context/forge-context";
+import { usePatchStore } from "@/context/patch-store";
 import { useViewContext, viewPullRequest } from "@/context/view-context";
 import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
 import {
@@ -99,6 +100,7 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
   const [_pane, setPane] = PaneStore.use();
   const isFocused = useFocusedPane(Pane.Files);
   const viewContext = useViewContext();
+  const patchStore = usePatchStore();
   const forgeContext = useForgeContext();
   const opened = () => viewPullRequest(viewContext.view());
   const [localChanges] = createResource(
@@ -109,7 +111,7 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
     if (opened() === undefined) {
       return localFiles(localChanges.latest);
     }
-    return changedFiles(viewContext.currentPatch());
+    return changedFiles(patchStore.currentPatch());
   });
   const paths = createMemo(() => {
     const view = filesView();

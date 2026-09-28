@@ -1,6 +1,7 @@
 import { createEffect, createMemo, on, onCleanup } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
 import { useForgeContext } from "@/context/forge-context";
+import { usePatchStore } from "@/context/patch-store";
 import {
   useViewContext,
   viewCommit,
@@ -42,6 +43,7 @@ function isReusableCommitPatch(
 export function usePr(): PullRequestContextValue {
   const forgeContext = useForgeContext();
   const viewContext = useViewContext();
+  const patchStore = usePatchStore();
   const [state, setState] = createStore<PullRequestState>({
     data: undefined,
     phase: "idle",
@@ -59,13 +61,13 @@ export function usePr(): PullRequestContextValue {
     const id = ++requestId;
     if (opened === undefined || forge === undefined) {
       setState({ data: undefined, phase: "idle", error: undefined });
-      viewContext.setPullRequestPatch(undefined);
-      viewContext.clearCommitPatches();
+      patchStore.setPullRequestPatch(undefined);
+      patchStore.clearCommitPatches();
       return;
     }
     setState({ data: undefined, phase: nextPhase, error: undefined });
-    viewContext.setPullRequestPatch(undefined);
-    viewContext.clearCommitPatches();
+    patchStore.setPullRequestPatch(undefined);
+    patchStore.clearCommitPatches();
     const abort = new AbortController();
     controller = abort;
     void applyPullRequest(id, abort, forge, opened.number);
@@ -88,7 +90,7 @@ export function usePr(): PullRequestContextValue {
       return;
     }
     setState({ data: result.value, phase: "ready", error: undefined });
-    viewContext.setPullRequestPatch(result.value.diff);
+    patchStore.setPullRequestPatch(result.value.diff);
   }
 
   async function applyCommitPatch(
@@ -102,10 +104,10 @@ export function usePr(): PullRequestContextValue {
       return;
     }
     if (result.isErr()) {
-      viewContext.setCommitPatch(pullRequestId, sha, failed(result.error));
+      patchStore.setCommitPatch(pullRequestId, sha, failed(result.error));
       return;
     }
-    viewContext.setCommitPatch(pullRequestId, sha, result.value);
+    patchStore.setCommitPatch(pullRequestId, sha, result.value);
   }
 
   // Memos compare with ===, so a new view object with the same pull request
@@ -133,7 +135,7 @@ export function usePr(): PullRequestContextValue {
       if (pullRequestId === undefined) {
         return;
       }
-      const cached = viewContext.cachedCommitPatch(sha);
+      const cached = patchStore.cachedCommitPatch(sha);
       if (cached !== undefined && isReusableCommitPatch(cached)) {
         return;
       }

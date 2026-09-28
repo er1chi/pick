@@ -50,6 +50,14 @@ export class ForgeCommandFailedError extends TaggedError(
   readonly message: string;
 }> {}
 
+export class ForgeInvalidConnectionUrlError extends TaggedError(
+  "ForgeInvalidConnectionUrlError",
+)<{
+  readonly kind: ForgeKind;
+  readonly url: string;
+  readonly message: string;
+}> {}
+
 export class ForgeOutputLimitExceededError extends TaggedError(
   "ForgeOutputLimitExceededError",
 )<{
@@ -107,6 +115,7 @@ export class ForgeUnexpectedError extends TaggedError("ForgeUnexpectedError")<{
 export type CliExecutionError =
   | ForgeCommandSpawnFailedError
   | ForgeCommandFailedError
+  | ForgeInvalidConnectionUrlError
   | ForgeOutputLimitExceededError
   | ForgeCancelledError
   | ForgeTimedOutError;

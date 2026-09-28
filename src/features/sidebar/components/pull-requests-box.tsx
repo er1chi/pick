@@ -35,6 +35,12 @@ function listError(titles: PrTitles): string | undefined {
   return visibleError(titles.list())?.message;
 }
 
+const filterLabels = {
+  open: "Open",
+  closed: "Closed",
+  all: "All",
+} as const;
+
 const connectionHint = "Try adjusting aliases in the forgejo-cli config.";
 const maskedUrl = "••••••••••••";
 
@@ -177,25 +183,14 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
   return (
     <SidebarBox
       id={Pane.PullRequests}
-      title="[2] Pull Requests"
+      title={`[2] Pull Requests · ${filterLabels[props.titles.filter()]}`}
+      bottomTitle="[O]pen [C]losed [A]ll"
+      bottomTitleAlignment="right"
       active={isFocused()}
       boxRef={setBox}
-      height={3 + bodyRowCount()}
+      height={2 + bodyRowCount()}
       handleMouseFocus={handleMouseFocus}
     >
-      <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1}>
-        <text fg={props.titles.filter() === "open" ? colors.blue : colors.dim}>
-          <strong>[O]pen</strong>
-        </text>
-        <text
-          fg={props.titles.filter() === "closed" ? colors.blue : colors.dim}
-        >
-          <strong>[C]losed</strong>
-        </text>
-        <text fg={props.titles.filter() === "all" ? colors.blue : colors.dim}>
-          <strong>[A]ll</strong>
-        </text>
-      </box>
       <Show
         when={!listIsPending(props.titles)}
         fallback={

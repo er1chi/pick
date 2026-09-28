@@ -3,14 +3,18 @@ import { Index, createEffect, createMemo, createSignal } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
 import { usePullRequest } from "@/context/pull-request-context";
-import { useViewContext, viewCommit } from "@/context/view-context";
+import {
+  useViewContext,
+  viewCommit,
+  viewPullRequest,
+} from "@/context/view-context";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { Pane } from "@/types";
 import { firstLine } from "@/utils/utils";
 import { EmptyGate } from "./empty-gate";
-import { SidebarBox, SidebarScrollBox } from "./sidebar-box";
+import { scopedTitle, SidebarBox, SidebarScrollBox } from "./sidebar-box";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "solid-js";
@@ -25,9 +29,9 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
   const navigation = useNavigateList({ target: box });
   const viewContext = useViewContext();
   const pullRequest = usePullRequest();
-  const opened = () => viewContext.view() !== undefined;
+  const opened = () => viewPullRequest(viewContext.view());
   const commits = createMemo<readonly PullRequestCommit[]>(() => {
-    if (!opened()) {
+    if (opened() === undefined) {
       return [];
     }
     const section = pullRequest.data()?.commits;
@@ -65,7 +69,7 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
   return (
     <SidebarBox
       id={Pane.Commits}
-      title="[1] Commits"
+      title={scopedTitle("[1] Commits", opened()?.number)}
       active={isFocused()}
       boxRef={setBox}
       height={boxHeight()}
@@ -74,9 +78,8 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
       handleMouseFocus={handleMouseFocus}
     >
       <EmptyGate
-        opened={opened()}
         hasItems={commits().length > 0}
-        emptyText="No commits."
+        emptyText={opened() === undefined ? "No local commits." : "No commits."}
       >
         <SidebarScrollBox scrollRef={setScrollBox} hideScrollbar>
           <Index each={commits()}>

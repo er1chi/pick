@@ -1,14 +1,15 @@
 import { Result } from "better-result";
 import { GitCommandFailedError, GitUnavailableError } from "./types";
 
-import type { GitRemoteError } from "./types";
+import type { GitError } from "./types";
 
-export async function readGitRemoteOutput(
+async function runGit(
   cwd: string,
-): Promise<Result<string, GitRemoteError>> {
+  args: readonly string[],
+): Promise<Result<string, GitError>> {
   const execution = await Result.tryPromise({
     try: async () => {
-      const subprocess = Bun.spawn(["git", "remote", "-v"], {
+      const subprocess = Bun.spawn(["git", ...args], {
         cwd,
         stdin: "ignore",
         stdout: "pipe",
@@ -32,11 +33,17 @@ export async function readGitRemoteOutput(
   return execution.andThen(({ stdout, exitCode }) =>
     exitCode === 0
       ? Result.ok(stdout)
-      : Result.err<never, GitRemoteError>(
+      : Result.err<never, GitError>(
           new GitCommandFailedError({
             exitCode,
-            message: `git remote -v exited with code ${exitCode}`,
+            message: `git ${args.join(" ")} exited with code ${exitCode}`,
           }),
         ),
   );
+}
+
+export async function readGitRemoteOutput(
+  cwd: string,
+): Promise<Result<string, GitError>> {
+  return runGit(cwd, ["remote", "-v"]);
 }

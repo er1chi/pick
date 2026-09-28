@@ -11,4 +11,4 @@ export class GitCommandFailedError extends TaggedError(
   readonly message: string;
 }> {}
 
-export type GitRemoteError = GitUnavailableError | GitCommandFailedError;
+export type GitError = GitUnavailableError | GitCommandFailedError;

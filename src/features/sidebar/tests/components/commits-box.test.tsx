@@ -86,7 +86,6 @@ function pullRequestValue(
 
 const listedPullRequest = pullRequestValue(() => [COMMIT_A, COMMIT_B]);
 
-/** An open pull request means local history is never read from `cwd`. */
 const localRepository = {
   kind: ApplicationContext.Local,
   cwd: "/repo",

@@ -9,8 +9,6 @@ import type {
   GitStash,
 } from "./types";
 
-/** Runs git and returns its stdout. `okExitCodes` lists the codes that mean
- * success, since some commands (like `diff --no-index`) exit 1 on a result. */
 async function runGit(
   cwd: string,
   args: readonly string[],
@@ -57,11 +55,8 @@ export async function readGitRemoteOutput(
   return runGit(cwd, ["remote", "-v"]);
 }
 
-/** Refnames cannot contain control characters, so tabs split the fields. */
 const branchFormat = "--format=%(HEAD)\t%(refname:short)\t%(symref)";
 
-/** Local branches from `git branch`, or remote-tracking ones from
- * `git branch -r` without symbolic refs such as `origin/HEAD`. */
 export async function readBranches(
   cwd: string,
   scope: GitBranchScope,
@@ -81,7 +76,6 @@ export async function readBranches(
   );
 }
 
-/** Stashes from `git stash list`, newest first. */
 export async function readStashes(
   cwd: string,
 ): Promise<Result<readonly GitStash[], GitError>> {
@@ -98,16 +92,12 @@ export async function readStashes(
 
 const commitLimit = 200;
 
-/** The most recent commits on the checked-out branch, newest first. A commit
- * counts as pushed once any remote-tracking branch reaches it. */
 export async function readCommits(
   cwd: string,
 ): Promise<Result<readonly GitCommit[], GitError>> {
   const limit = `--max-count=${commitLimit}`;
   const [log, localOnly] = await Promise.all([
     runGit(cwd, ["log", limit, "--format=%H%x09%s"]),
-    // Both walks share one order, so the local commits among the listed ones
-    // are always within the same limit.
     runGit(cwd, ["log", limit, "--format=%H", "HEAD", "--not", "--remotes"]),
   ]);
   return Result.gen(function* () {
@@ -124,7 +114,6 @@ export async function readCommits(
   });
 }
 
-/** Paths with uncommitted changes, staged or not, including untracked files. */
 export async function readChangedFiles(
   cwd: string,
 ): Promise<Result<readonly string[], GitError>> {
@@ -143,7 +132,6 @@ export async function readChangedFiles(
         continue;
       }
       paths.push(entry.slice(3));
-      // Renames and copies are followed by an entry holding the source path.
       if (/[RC]/.test(entry.slice(0, 2))) {
         index += 1;
       }
@@ -154,8 +142,6 @@ export async function readChangedFiles(
 
 const diffOptions = ["--no-color", "--no-ext-diff"];
 
-/** Every uncommitted change as one patch: staged and unstaged edits to tracked
- * files against `HEAD`, followed by each untracked file as an addition. */
 export async function readWorkingTreePatch(
   cwd: string,
 ): Promise<Result<string, GitError>> {

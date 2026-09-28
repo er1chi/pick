@@ -1,5 +1,5 @@
 import { For, Show, createMemo, type Accessor, type JSX } from "solid-js";
-import { useViewContext } from "@/context/view-context";
+import { usePatchStore } from "@/context/patch-store";
 import { oneLine } from "@/features/main-view/components/pr-view-chrome";
 import {
   SplitFileDiff,
@@ -72,10 +72,8 @@ const lockedNotice =
 
 interface SelectedDiffProps {
   readonly path: string;
-  /** The commit the diff comes from, when it is one commit's diff. */
   readonly commitSha: string | undefined;
   readonly commit: PullRequestCommit | undefined;
-  /** Names the diff's source, such as "Pull request diff". */
   readonly label: string;
   readonly revealLocked: boolean;
   readonly maxWidth: number;
@@ -85,14 +83,14 @@ interface SelectedDiffProps {
 }
 
 export function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
-  const viewContext = useViewContext();
+  const patchStore = usePatchStore();
   const fromCommit = () => props.commitSha !== undefined;
   const fileDiffs = createMemo(() =>
-    fileDiffsForPatch(viewContext.currentPatch(), props.path),
+    fileDiffsForPatch(patchStore.currentPatch(), props.path),
   );
 
   const notice = (): string | undefined => {
-    const section = viewContext.currentPatch();
+    const section = patchStore.currentPatch();
     if (section === undefined) {
       return undefined;
     }

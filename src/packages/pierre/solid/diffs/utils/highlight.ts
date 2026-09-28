@@ -26,11 +26,6 @@ export interface SplitTokens {
   readonly right?: readonly (readonly ThemedToken[])[];
 }
 
-/**
- * Line rows grouped by hunk, in row order. Hunks are separate stretches of the
- * file, so each is tokenized alone: grammar state such as an open block
- * comment must not carry across the lines a hunk boundary skips.
- */
 function hunkLineRows(
   rows: readonly SplitDisplayRow[],
 ): readonly (readonly SplitLineRow[])[] {
@@ -107,8 +102,6 @@ async function tokenizeSide(
   return highlighter.codeToTokens(code, { lang, theme: SPLIT_THEME }).tokens;
 }
 
-/** Tokens for one side, one hunk at a time so grammar state resets at each
- * hunk while multiline strings and comments inside a hunk stay coherent. */
 async function tokenizeSideByHunk(
   lang: SupportedLanguages,
   hunks: readonly (readonly SplitLineRow[])[],

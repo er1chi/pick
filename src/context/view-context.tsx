@@ -2,17 +2,13 @@ import { createContext, createSignal, useContext } from "solid-js";
 
 import type { JSX } from "@opentui/solid";
 import type { Accessor } from "solid-js";
-import type {
-  ForgeRepository,
-  ForgeSection,
-  PullRequestPatch,
-} from "@/services/forge/types";
+import type { ForgeRepository } from "@/services/forge/types";
 
 export function pullRequestViewId(
   repository: Pick<ForgeRepository, "owner" | "name">,
   number: number,
 ): string {
-  return `${repository.owner}-${repository.name}-${number}`;
+  return `${repository.owner}/${repository.name}#${number}`;
 }
 
 interface PullRequestIdentity {
@@ -20,16 +16,25 @@ interface PullRequestIdentity {
   readonly number: number;
 }
 
-export type ActiveView = PullRequestIdentity &
+export type PullRequestView = PullRequestIdentity &
   (
     | { readonly kind: "pr" }
     | { readonly kind: "commit"; readonly sha: string }
     | {
         readonly kind: "diff";
         readonly path: string;
-        readonly commit?: string;
+        readonly commit: string | undefined;
       }
   );
+
+interface LocalView {
+  readonly kind: "local";
+  readonly file: string | undefined;
+}
+
+export type ActiveView = LocalView | PullRequestView;
+
+const localView: LocalView = { kind: "local", file: undefined };
 
 /** The commit a view is anchored to, when the view is a commit or a commit diff. */
 export function viewCommit(view: ActiveView): string | undefined {
@@ -42,51 +47,24 @@ export function viewCommit(view: ActiveView): string | undefined {
   return undefined;
 }
 
-export function viewPullRequest(
-  view: ActiveView | undefined,
-): PullRequestIdentity | undefined {
-  if (view === undefined) {
-    return undefined;
-  }
-  return { id: view.id, number: view.number };
+export function viewPullRequest(view: ActiveView): PullRequestView | undefined {
+  return view.kind === "local" ? undefined : view;
 }
 
 export interface ViewContextValue {
-  readonly view: Accessor<ActiveView | undefined>;
-  /**
-   * The patch the files pane and the main diff both read. A selected commit
-   * uses that commit's patch; otherwise this is the pull request diff, or the
-   * uncommitted changes when no pull request is open.
-   */
-  readonly currentPatch: Accessor<ForgeSection<PullRequestPatch> | undefined>;
+  readonly view: Accessor<ActiveView>;
   openPullRequest(
     repository: Pick<ForgeRepository, "owner" | "name">,
     number: number,
   ): void;
   selectCommit(sha: string): void;
-  /** The uncommitted file whose diff is open while no pull request is. */
-  readonly localFile: Accessor<string | undefined>;
   selectFile(path: string): void;
-  clearSelection(): void;
   /**
-   * Close the open file diff, keeping a selected commit; with no diff
-   * open, behaves like clearSelection.
+   * Close the open file diff, keeping a selected commit; with no diff open,
+   * return to the pull request overview.
    */
   closeFile(): void;
   close(): void;
-  setPullRequestPatch(patch: ForgeSection<PullRequestPatch> | undefined): void;
-  setLocalPatch(patch: ForgeSection<PullRequestPatch> | undefined): void;
-  /**
-   * Store one commit's patch for the open pull request. A result for any other
-   * pull request is ignored, so the cache never holds more than one.
-   */
-  setCommitPatch(
-    pullRequestId: string,
-    sha: string,
-    patch: ForgeSection<PullRequestPatch>,
-  ): void;
-  cachedCommitPatch(sha: string): ForgeSection<PullRequestPatch> | undefined;
-  clearCommitPatches(): void;
 }
 
 const ViewContext = createContext<ViewContextValue>();
@@ -95,79 +73,15 @@ export function ViewContextProvider(props: {
   readonly initialView?: ActiveView;
   readonly children: JSX.Element;
 }): JSX.Element {
-  const [view, setView] = createSignal<ActiveView | undefined>(
-    props.initialView,
+  const [view, setView] = createSignal<ActiveView>(
+    props.initialView ?? localView,
   );
-  const [pullRequestPatch, setPullRequestPatch] = createSignal<
-    ForgeSection<PullRequestPatch> | undefined
-  >();
-  const [localPatch, setLocalPatch] = createSignal<
-    ForgeSection<PullRequestPatch> | undefined
-  >();
-  const [localFile, setLocalFile] = createSignal<string | undefined>();
-  const commitPatches = new Map<string, ForgeSection<PullRequestPatch>>();
-  let commitPatchOwner: string | undefined;
-  const [commitPatchVersion, setCommitPatchVersion] = createSignal(0);
-
-  function currentPatch(): ForgeSection<PullRequestPatch> | undefined {
-    const current = view();
-    if (current === undefined) {
-      return localPatch();
-    }
-    const sha = viewCommit(current);
-    if (sha !== undefined) {
-      commitPatchVersion();
-      return commitPatches.get(sha);
-    }
-    return pullRequestPatch();
-  }
-
-  function setCommitPatch(
-    pullRequestId: string,
-    sha: string,
-    patch: ForgeSection<PullRequestPatch>,
-  ): void {
-    if (viewPullRequest(view())?.id !== pullRequestId) {
-      return;
-    }
-    if (commitPatchOwner !== pullRequestId) {
-      commitPatches.clear();
-      commitPatchOwner = pullRequestId;
-    }
-    commitPatches.set(sha, patch);
-    setCommitPatchVersion((version) => version + 1);
-  }
-
-  function cachedCommitPatch(
-    sha: string,
-  ): ForgeSection<PullRequestPatch> | undefined {
-    commitPatchVersion();
-    if (commitPatchOwner !== viewPullRequest(view())?.id) {
-      return undefined;
-    }
-    return commitPatches.get(sha);
-  }
-
-  function clearCommitPatches(): void {
-    commitPatchOwner = undefined;
-    if (commitPatches.size === 0) {
-      return;
-    }
-    commitPatches.clear();
-    setCommitPatchVersion((version) => version + 1);
-  }
 
   function openPullRequest(
     repository: Pick<ForgeRepository, "owner" | "name">,
     number: number,
   ): void {
-    const id = pullRequestViewId(repository, number);
-    if (viewPullRequest(view())?.id !== id) {
-      setPullRequestPatch(undefined);
-      clearCommitPatches();
-    }
-    setLocalFile(undefined);
-    setView({ kind: "pr", id, number });
+    setView({ kind: "pr", id: pullRequestViewId(repository, number), number });
   }
 
   function selectCommit(sha: string): void {
@@ -180,18 +94,8 @@ export function ViewContextProvider(props: {
 
   function selectFile(path: string): void {
     const current = view();
-    if (current === undefined) {
-      setLocalFile(path);
-      return;
-    }
-    const commit = viewCommit(current);
-    if (commit === undefined) {
-      setView({
-        kind: "diff",
-        id: current.id,
-        number: current.number,
-        path,
-      });
+    if (current.kind === "local") {
+      setView({ kind: "local", file: path });
       return;
     }
     setView({
@@ -199,22 +103,14 @@ export function ViewContextProvider(props: {
       id: current.id,
       number: current.number,
       path,
-      commit,
+      commit: viewCommit(current),
     });
-  }
-
-  function clearSelection(): void {
-    const current = viewPullRequest(view());
-    if (current === undefined) {
-      return;
-    }
-    setView({ kind: "pr", id: current.id, number: current.number });
   }
 
   function closeFile(): void {
     const current = view();
-    if (current === undefined) {
-      setLocalFile(undefined);
+    if (current.kind === "local") {
+      setView(localView);
       return;
     }
     if (current.kind === "diff" && current.commit !== undefined) {
@@ -226,30 +122,20 @@ export function ViewContextProvider(props: {
       });
       return;
     }
-    clearSelection();
+    setView({ kind: "pr", id: current.id, number: current.number });
   }
 
   function close(): void {
-    setPullRequestPatch(undefined);
-    clearCommitPatches();
-    setView(undefined);
+    setView(localView);
   }
 
   const context: ViewContextValue = {
     view,
-    currentPatch,
     openPullRequest,
     selectCommit,
     selectFile,
-    clearSelection,
     closeFile,
     close,
-    localFile,
-    setPullRequestPatch,
-    setLocalPatch,
-    setCommitPatch,
-    cachedCommitPatch,
-    clearCommitPatches,
   };
 
   return (

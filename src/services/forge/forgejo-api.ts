@@ -23,7 +23,6 @@ const keysSchema = type({
 });
 
 export type HttpFetch = (url: string, init: RequestInit) => Promise<Response>;
-/** The token `fj` stored for an instance, or `undefined` to go anonymous. */
 export type TokenLookup = (instance: string) => Promise<string | undefined>;
 type Decoder<T> = (cause: unknown) => ResultType<T, ForgeOperationError>;
 
@@ -32,8 +31,6 @@ interface ApiResponse {
   readonly hasMore: boolean;
 }
 
-/** Reads a token from `fj`'s keys file, which keys each login by the
- * instance URL without its scheme. */
 async function readFjToken(instance: string): Promise<string | undefined> {
   const dataDir =
     process.env.FJ_DATA_DIR ??
@@ -51,15 +48,12 @@ async function readFjToken(instance: string): Promise<string | undefined> {
   return keys instanceof type.errors ? undefined : keys.hosts[instance]?.token;
 }
 
-/** Reads what `fj` does not expose from the Forgejo REST API, with the login
- * `fj` stored for the instance. */
 export class ForgejoApi {
   constructor(
     private readonly fetch: HttpFetch = globalThis.fetch,
     private readonly token: TokenLookup = readFjToken,
   ) {}
 
-  /** Every page of a list endpoint, following Forgejo's `x-hasmore` header. */
   async pagedJson<T>(
     repository: ForgeRepository,
     path: string,

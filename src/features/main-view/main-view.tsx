@@ -10,12 +10,13 @@ import {
   type Accessor,
 } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
+import { usePatchStore } from "@/context/patch-store";
 import { usePullRequest } from "@/context/pull-request-context";
 import {
   useViewContext,
   viewCommit,
   viewPullRequest,
-  type ActiveView,
+  type PullRequestView,
 } from "@/context/view-context";
 import { MAIN_PANE_CHROME } from "@/features/main-view/components/pr-view-chrome";
 import {
@@ -59,8 +60,13 @@ export function PrView(props: PrViewProps) {
   const contentWidth = () =>
     Math.max(16, dimensions().width - MAIN_PANE_CHROME);
   const viewContext = useViewContext();
+  const patchStore = usePatchStore();
   const pullRequest = usePullRequest();
   const view = () => viewContext.view();
+  const localFile = (): string | undefined => {
+    const current = view();
+    return current.kind === "local" ? current.file : undefined;
+  };
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
   const [overviewScroll, setOverviewScroll] = createSignal<
     ScrollBoxRenderable | undefined
@@ -88,8 +94,7 @@ export function PrView(props: PrViewProps) {
     return details?.status === "available" ? details.value : undefined;
   };
   const selectedCommitValue = createMemo(() => {
-    const current = view();
-    const sha = current === undefined ? undefined : viewCommit(current);
+    const sha = viewCommit(view());
     if (sha === undefined) {
       return undefined;
     }
@@ -117,11 +122,7 @@ export function PrView(props: PrViewProps) {
     return `${number ?? "none"}:${detailsKey}:${titleLine() ?? ""}:${headerRepositoryName()}`;
   };
 
-  /** A file diff is showing: a pull request's, or an uncommitted file's. */
-  const diffOpen = () =>
-    view() === undefined
-      ? viewContext.localFile() !== undefined
-      : view()?.kind === "diff";
+  const diffOpen = () => view().kind === "diff" || localFile() !== undefined;
 
   function scrollContent(lines: number): void {
     if (diffOpen()) {
@@ -220,12 +221,12 @@ export function PrView(props: PrViewProps) {
   });
 
   createEffect(() => {
-    prewarmSplitHighlights(patchFileIndex(viewContext.currentPatch()).files);
+    prewarmSplitHighlights(patchFileIndex(patchStore.currentPatch()).files);
   });
 
   createEffect(
     on(
-      [view, viewContext.localFile],
+      view,
       () => {
         if (diffOpen()) {
           diffScroll()?.reset();
@@ -256,7 +257,7 @@ export function PrView(props: PrViewProps) {
     );
   }
 
-  function mainViewContent(current: ActiveView): JSX.Element {
+  function mainViewContent(current: PullRequestView): JSX.Element {
     switch (current.kind) {
       case "pr":
         return (
@@ -336,10 +337,10 @@ export function PrView(props: PrViewProps) {
       }}
     >
       <Show
-        when={view()}
+        when={opened()}
         fallback={
           <Show
-            when={viewContext.localFile()}
+            when={localFile()}
             fallback={<NoPullRequest state={currentState()} />}
           >
             {(path: Accessor<string>) => (
@@ -362,7 +363,7 @@ export function PrView(props: PrViewProps) {
           </Show>
         }
       >
-        {(current: Accessor<ActiveView>) => (
+        {(current: Accessor<PullRequestView>) => (
           <>
             <PullRequestStatusLine />
             <PrViewHeader

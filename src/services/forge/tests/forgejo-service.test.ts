@@ -60,8 +60,6 @@ interface FakeRequest {
   readonly authorization: string | null;
 }
 
-/** A Forgejo API that replies from `responses`, keyed by the URL below
- * `apiRoot`, and records every request. Unknown URLs answer 404. */
 interface FakeResponse {
   readonly body: string;
   readonly headers?: Record<string, string>;

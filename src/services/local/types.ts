@@ -13,6 +13,14 @@ export class GitCommandFailedError extends TaggedError(
 
 export type GitError = GitUnavailableError | GitCommandFailedError;
 
+export type GitBranchScope = "local" | "remote";
+
+export interface GitBranch {
+  readonly name: string;
+  /** Whether this is the checked-out branch. */
+  readonly current: boolean;
+}
+
 export interface GitStash {
   /** The stash's reflog name, such as `stash@{0}`. */
   readonly ref: string;

@@ -1,3 +1,4 @@
+import { BranchesBox } from "@/features/sidebar/components/branches-box";
 import { CommitsBox } from "@/features/sidebar/components/commits-box";
 import { FilesBox } from "@/features/sidebar/components/files-box";
 import { PullRequestsBox } from "@/features/sidebar/components/pull-requests-box";
@@ -28,6 +29,7 @@ export function Sidebar(props: SidebarProps) {
       <FilesBox rowWidth={SIDEBAR_ROW_WIDTH} />
       <CommitsBox rowWidth={SIDEBAR_ROW_WIDTH} />
       <StashesBox rowWidth={SIDEBAR_ROW_WIDTH} />
+      <BranchesBox rowWidth={SIDEBAR_ROW_WIDTH} />
       <PullRequestsBox titles={props.titles} rowWidth={SIDEBAR_ROW_WIDTH} />
     </box>
   );

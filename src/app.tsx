@@ -64,7 +64,7 @@ function repositoryFooterBindings(
   }
 
   const base: readonly FooterBinding[] = [
-    { key: "0-4", label: "Files/Commits/PRs/Main/Stashes" },
+    { key: "0-5", label: "Files/Commits/PRs/Main/Stashes/Branches" },
     { key: "Ctrl+Q", label: "Quit" },
   ];
 
@@ -88,6 +88,12 @@ function repositoryFooterBindings(
       return [...base, { key: "j/k", label: "Navigate/select commit" }];
     case Pane.Stashes:
       return [...base, { key: "j/k", label: "Navigate" }];
+    case Pane.Branches:
+      return [
+        ...base,
+        { key: "j/k", label: "Navigate" },
+        { key: "l/r", label: "Local/Remote" },
+      ];
     case Pane.Main:
       return [
         ...base,
@@ -166,6 +172,10 @@ function RepositoryShell(props: {
         run: () => setPane({ active: Pane.Stashes }),
       },
       {
+        name: "pane.branches",
+        run: () => setPane({ active: Pane.Branches }),
+      },
+      {
         name: "toggle-sidebar",
         run: () => {
           setSidebarVisible((p) => !p);
@@ -182,6 +192,7 @@ function RepositoryShell(props: {
       { key: "2", cmd: "pane.pull-requests" },
       { key: "3", cmd: "pane.main" },
       { key: "4", cmd: "pane.stashes" },
+      { key: "5", cmd: "pane.branches" },
       { key: " e", cmd: "toggle-sidebar" },
     ],
   }));

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  readBranches,
   readChangedFiles,
   readCommits,
   readStashes,
@@ -36,7 +37,9 @@ beforeAll(async () => {
     "-m",
     "init",
   );
+  git("branch", "feature");
   git("update-ref", "refs/remotes/origin/main", "HEAD");
+  git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
   git(
     "-c",
     "user.name=t",
@@ -65,6 +68,21 @@ beforeAll(async () => {
 afterAll(() => rm(repo, { recursive: true, force: true }));
 
 describe("local repository reads", () => {
+  test("lists local branches and marks the checked-out one", async () => {
+    const branches = (await readBranches(repo, "local")).unwrap();
+
+    expect(branches).toEqual([
+      { name: "feature", current: false },
+      { name: "main", current: true },
+    ]);
+  });
+
+  test("lists remote branches without the symbolic HEAD", async () => {
+    const branches = (await readBranches(repo, "remote")).unwrap();
+
+    expect(branches).toEqual([{ name: "origin/main", current: false }]);
+  });
+
   test("lists stashes with their messages", async () => {
     const stashes = (await readStashes(repo)).unwrap();
 

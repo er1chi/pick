@@ -1,7 +1,7 @@
 import { Result } from "better-result";
 import { GitCommandFailedError, GitUnavailableError } from "./types";
 
-import type { GitCommit, GitError } from "./types";
+import type { GitCommit, GitError, GitStash } from "./types";
 
 /** Runs git and returns its stdout. `okExitCodes` lists the codes that mean
  * success, since some commands (like `diff --no-index`) exit 1 on a result. */
@@ -49,6 +49,21 @@ export async function readGitRemoteOutput(
   cwd: string,
 ): Promise<Result<string, GitError>> {
   return runGit(cwd, ["remote", "-v"]);
+}
+
+/** Stashes from `git stash list`, newest first. */
+export async function readStashes(
+  cwd: string,
+): Promise<Result<readonly GitStash[], GitError>> {
+  const output = await runGit(cwd, ["stash", "list", "--format=%gd%x09%s"]);
+  return output.map((text) =>
+    text.split("\n").flatMap((line) => {
+      const [ref, ...message] = line.split("\t");
+      return ref === undefined || ref === ""
+        ? []
+        : [{ ref, message: message.join("\t") }];
+    }),
+  );
 }
 
 const commitLimit = 200;

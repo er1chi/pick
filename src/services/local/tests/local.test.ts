@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readChangedFiles, readCommits, readWorkingTreePatch } from "../local";
+import {
+  readChangedFiles,
+  readCommits,
+  readStashes,
+  readWorkingTreePatch,
+} from "../local";
 
 let repo: string;
 
@@ -43,11 +48,31 @@ beforeAll(async () => {
     "-m",
     "local work",
   );
+  await writeFile(join(repo, "notes.txt"), "draft\n");
+  git(
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "stash",
+    "push",
+    "-u",
+    "-m",
+    "wip notes",
+  );
 });
 
 afterAll(() => rm(repo, { recursive: true, force: true }));
 
 describe("local repository reads", () => {
+  test("lists stashes with their messages", async () => {
+    const stashes = (await readStashes(repo)).unwrap();
+
+    expect(stashes).toEqual([
+      { ref: "stash@{0}", message: "On main: wip notes" },
+    ]);
+  });
+
   test("lists the branch's commits and marks which are pushed", async () => {
     const commits = (await readCommits(repo)).unwrap();
 

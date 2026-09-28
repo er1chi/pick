@@ -1,6 +1,7 @@
 import { CommitsBox } from "@/features/sidebar/components/commits-box";
 import { FilesBox } from "@/features/sidebar/components/files-box";
 import { PullRequestsBox } from "@/features/sidebar/components/pull-requests-box";
+import { StashesBox } from "@/features/sidebar/components/stashes-box";
 
 import type { BoxProps } from "@opentui/solid";
 import type { PrTitles } from "@/features/main-view/hooks/use-pr-titles";
@@ -26,6 +27,7 @@ export function Sidebar(props: SidebarProps) {
     >
       <FilesBox rowWidth={SIDEBAR_ROW_WIDTH} />
       <CommitsBox rowWidth={SIDEBAR_ROW_WIDTH} />
+      <StashesBox rowWidth={SIDEBAR_ROW_WIDTH} />
       <PullRequestsBox titles={props.titles} rowWidth={SIDEBAR_ROW_WIDTH} />
     </box>
   );

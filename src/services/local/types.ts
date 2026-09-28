@@ -13,6 +13,12 @@ export class GitCommandFailedError extends TaggedError(
 
 export type GitError = GitUnavailableError | GitCommandFailedError;
 
+export interface GitStash {
+  /** The stash's reflog name, such as `stash@{0}`. */
+  readonly ref: string;
+  readonly message: string;
+}
+
 export interface GitCommit {
   readonly sha: string;
   /** The commit subject, its first message line. */

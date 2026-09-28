@@ -26,10 +26,25 @@ export interface SplitTokens {
   readonly right?: readonly (readonly ThemedToken[])[];
 }
 
-function getLineRows(
+/**
+ * Line rows grouped by hunk, in row order. Hunks are separate stretches of the
+ * file, so each is tokenized alone: grammar state such as an open block
+ * comment must not carry across the lines a hunk boundary skips.
+ */
+function hunkLineRows(
   rows: readonly SplitDisplayRow[],
-): readonly SplitLineRow[] {
-  return rows.filter((row): row is SplitLineRow => row.kind === "line");
+): readonly (readonly SplitLineRow[])[] {
+  let current: SplitLineRow[] = [];
+  const hunks = [current];
+  for (const row of rows) {
+    if (row.kind === "line") {
+      current.push(row);
+      continue;
+    }
+    current = [];
+    hunks.push(current);
+  }
+  return hunks.filter((hunk) => hunk.length > 0);
 }
 
 /**
@@ -89,9 +104,25 @@ async function tokenizeSide(
     themes: [SPLIT_THEME],
     langs: [lang],
   });
-  // One call per side keeps the grammar state coherent across every rendered
-  // line, including multiline strings and block comments.
   return highlighter.codeToTokens(code, { lang, theme: SPLIT_THEME }).tokens;
+}
+
+/** Tokens for one side, one hunk at a time so grammar state resets at each
+ * hunk while multiline strings and comments inside a hunk stay coherent. */
+async function tokenizeSideByHunk(
+  lang: SupportedLanguages,
+  hunks: readonly (readonly SplitLineRow[])[],
+  side: "left" | "right",
+): Promise<readonly (readonly ThemedToken[])[]> {
+  const perHunk = await Promise.all(
+    hunks.map((hunk) => {
+      const lines = sideLines(hunk, side);
+      return hasContent(lines)
+        ? tokenizeSide(lang, lines.join("\n"))
+        : lines.map(() => []);
+    }),
+  );
+  return perHunk.flat();
 }
 
 async function tokenizeSplitRows(
@@ -103,7 +134,8 @@ async function tokenizeSplitRows(
     return undefined;
   }
 
-  const lineRows = getLineRows(rows);
+  const hunks = hunkLineRows(rows);
+  const lineRows = hunks.flat();
   const left = sideLines(lineRows, "left");
   const right = sideLines(lineRows, "right");
   if (!hasContent(left) && !hasContent(right)) {
@@ -118,8 +150,8 @@ async function tokenizeSplitRows(
   }
 
   const [leftTokens, rightTokens] = await Promise.all([
-    hasContent(left) ? tokenizeSide(lang, leftCode) : undefined,
-    hasContent(right) ? tokenizeSide(lang, rightCode) : undefined,
+    hasContent(left) ? tokenizeSideByHunk(lang, hunks, "left") : undefined,
+    hasContent(right) ? tokenizeSideByHunk(lang, hunks, "right") : undefined,
   ]);
   return { left: leftTokens, right: rightTokens };
 }

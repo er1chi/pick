@@ -1,3 +1,4 @@
+import { BorderChars } from "@opentui/core";
 import {
   createEffect,
   createMemo,
@@ -12,13 +13,20 @@ import { colors } from "@/theme";
 import { highlightSplitRows } from "./utils/highlight";
 import { splitRows, type SplitDisplayRow } from "./utils/split-rows";
 
-import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
+import type {
+  BorderCharacters,
+  BorderSides,
+  BoxRenderable,
+  ScrollBoxRenderable,
+} from "@opentui/core";
 import type { FileDiffMetadata, ThemedToken } from "@pierre/diffs";
 import type { DisplayRow, DisplayRowKind } from "./utils/display-row";
 
 export interface SplitFileDiffScrollTarget {
   scrollBy(lines: number): void;
   reset(): void;
+  /** Scroll the next (1) or previous (-1) hunk header to the top. */
+  jumpHunk(direction: 1 | -1): void;
 }
 
 export interface SplitFileDiffProps {
@@ -34,14 +42,20 @@ export interface SplitFileDiffProps {
    * seed for the initial render.
    */
   widthHint?: number;
+  /**
+   * Columns between the Before and After surfaces. At the default of 0 they
+   * share one divider line; any larger gap draws two separately bordered
+   * surfaces.
+   */
+  gap?: number;
 }
 
 /**
- * Below this container width the two code surfaces stack. Each surface spends
- * two columns on its border and a few more on the gutter, so at this threshold
- * the narrower surface still keeps a usable stretch of code visible.
+ * Below this container width the two code surfaces stack. At this threshold
+ * each surface keeps roughly 50 columns of code beside its border and gutter;
+ * with the 32-column sidebar and main pane chrome, it is a 150-column terminal.
  */
-const SPLIT_LAYOUT_MIN_WIDTH = 72;
+const SPLIT_LAYOUT_MIN_WIDTH = 113;
 
 type Side = "left" | "right";
 
@@ -162,6 +176,30 @@ function SplitCell(props: {
   );
 }
 
+// Wide enough to cover any pane; the row clips what does not fit.
+const fillerDots = "· ".repeat(256);
+
+/** Marks a side that has no line where the other side does: dots across the
+ * whole row over a translucent tint of that side's color. */
+function FillerRow(props: { side: Side }) {
+  return (
+    <box
+      width="100%"
+      height={1}
+      flexShrink={0}
+      minWidth={0}
+      overflow="hidden"
+      backgroundColor={
+        props.side === "left" ? colors.deletionFiller : colors.additionFiller
+      }
+    >
+      <text fg={colors.fillerDot} wrapMode="none">
+        {fillerDots}
+      </text>
+    </box>
+  );
+}
+
 /**
  * One row inside a bordered code surface. Hunk headers repeat in each surface
  * so the "Before" and "After" columns stay row-aligned when split.
@@ -192,6 +230,9 @@ function PaneRow(props: {
 
   const sideRow = props.side === "left" ? row.left : row.right;
   const line = props.side === "left" ? sideRow?.oldLine : sideRow?.newLine;
+  if (sideRow === undefined) {
+    return <FillerRow side={props.side} />;
+  }
 
   return (
     <SplitCell
@@ -203,6 +244,16 @@ function PaneRow(props: {
     />
   );
 }
+
+// Joined panes draw one divider: the left pane keeps its right edge, with tee
+// corners where the right pane's top and bottom lines meet it, and the right
+// pane drops its left edge.
+const leftPaneChars: BorderCharacters = {
+  ...BorderChars.single,
+  topRight: BorderChars.single.topT,
+  bottomRight: BorderChars.single.bottomT,
+};
+const rightPaneSides: BorderSides[] = ["top", "right", "bottom"];
 
 /**
  * A single bordered code surface. In split mode both surfaces grow to share the
@@ -218,6 +269,8 @@ function DiffPane(props: {
   disableLineNumbers: boolean;
   tokensFor: (rowKey: string, side: Side) => readonly ThemedToken[] | undefined;
   scrollRef: (element: ScrollBoxRenderable) => void;
+  /** Side by side with the other pane: they share one divider line. */
+  joined: boolean;
 }) {
   return (
     <scrollbox
@@ -228,7 +281,10 @@ function DiffPane(props: {
       flexShrink={1}
       minWidth={0}
       minHeight={0}
-      border
+      border={props.joined && props.side === "right" ? rightPaneSides : true}
+      customBorderChars={
+        props.joined && props.side === "left" ? leftPaneChars : undefined
+      }
       borderColor={colors.border}
       title={props.title}
       titleColor={colors.dim}
@@ -259,6 +315,11 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
   const [measuredWidth, setMeasuredWidth] = createSignal<number | undefined>();
   const containerWidth = () => measuredWidth() ?? props.widthHint ?? 0;
   const rows = createMemo(() => splitRows(props.fileDiff));
+  // Every row is one line tall, so a header's row index is the scroll offset
+  // that puts it at the top of a pane.
+  const hunkOffsets = createMemo(() =>
+    rows().flatMap((row, index) => (row.kind === "hunk-header" ? [index] : [])),
+  );
   // A side without any lines (a new file has no "Before", a deleted file no
   // "After") is dropped so the other pane takes the full width. "After" stays
   // when both sides are empty so the diff still renders a surface.
@@ -320,6 +381,20 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
           pane.scrollTop = 0;
         }
       },
+      jumpHunk(direction) {
+        const current = panes[0]?.scrollTop ?? 0;
+        const offsets = hunkOffsets();
+        const target =
+          direction === 1
+            ? offsets.find((offset) => offset > current)
+            : offsets.findLast((offset) => offset < current);
+        if (target === undefined) {
+          return;
+        }
+        for (const pane of panes) {
+          pane.scrollTop = target;
+        }
+      },
     };
     props.scrollTargetRef?.(target);
     onCleanup(() => props.scrollTargetRef?.(undefined));
@@ -329,6 +404,8 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
   const newWidth = createMemo(() => lineWidth(rows(), "right"));
   const disableLineNumbers = () => props.disableLineNumbers === true;
   const split = () => containerWidth() >= SPLIT_LAYOUT_MIN_WIDTH;
+  const gap = () => props.gap ?? 0;
+  const joined = () => split() && hasBefore() && hasAfter() && gap() === 0;
 
   const highlightInput = createMemo(() => ({
     fileDiff: props.fileDiff,
@@ -374,7 +451,7 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
         flexGrow={1}
         flexShrink={1}
         minHeight={0}
-        gap={1}
+        gap={gap()}
       >
         <Show when={hasBefore()}>
           <DiffPane
@@ -386,6 +463,7 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
             disableLineNumbers={disableLineNumbers()}
             tokensFor={tokensFor}
             scrollRef={setLeftScroll}
+            joined={joined()}
           />
         </Show>
         <Show when={hasAfter()}>
@@ -398,6 +476,7 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
             disableLineNumbers={disableLineNumbers()}
             tokensFor={tokensFor}
             scrollRef={setRightScroll}
+            joined={joined()}
           />
         </Show>
       </box>

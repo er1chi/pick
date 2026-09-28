@@ -1,7 +1,7 @@
 export const colors = {
   background: "#1f1f28",
   blue: "#7e9cd8",
-  green: "#98bb6c",
+  green: "#b3d98a",
   purple: "#957fb8",
   yellow: "#e6c384",
   red: "#ff5d62",
@@ -10,6 +10,9 @@ export const colors = {
   dim: "#54546d",
   border: "#54546d",
   selected: "#2a2a37",
-  additionBackground: "#2b3328",
+  additionBackground: "#36502f",
   deletionBackground: "#43242b",
+  deletionFiller: "#43242b33",
+  additionFiller: "#36502f33",
+  fillerDot: "#dcd7ba33",
 } as const;

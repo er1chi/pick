@@ -90,6 +90,7 @@ function repositoryFooterBindings(
       return [
         ...base,
         { key: "j/k", label: "Scroll" },
+        { key: "[/]", label: "Prev/next hunk" },
         { key: "r", label: "Retry" },
         { key: "e", label: "Reveal lock files" },
         { key: "o", label: "Close diff" },

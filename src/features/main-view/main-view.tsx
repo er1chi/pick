@@ -63,10 +63,6 @@ export function PrView(props: PrViewProps) {
   const patchStore = usePatchStore();
   const pullRequest = usePullRequest();
   const view = () => viewContext.view();
-  const pullRequestView = (): PullRequestView | undefined => {
-    const current = view();
-    return current.kind === "local" ? undefined : current;
-  };
   const localFile = (): string | undefined => {
     const current = view();
     return current.kind === "local" ? current.file : undefined;
@@ -341,7 +337,7 @@ export function PrView(props: PrViewProps) {
       }}
     >
       <Show
-        when={pullRequestView()}
+        when={opened()}
         fallback={
           <Show
             when={localFile()}

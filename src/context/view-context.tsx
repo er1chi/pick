@@ -48,13 +48,8 @@ export function viewCommit(view: ActiveView): string | undefined {
   return undefined;
 }
 
-export function viewPullRequest(
-  view: ActiveView,
-): PullRequestIdentity | undefined {
-  if (view.kind === "local") {
-    return undefined;
-  }
-  return { id: view.id, number: view.number };
+export function viewPullRequest(view: ActiveView): PullRequestView | undefined {
+  return view.kind === "local" ? undefined : view;
 }
 
 export interface ViewContextValue {

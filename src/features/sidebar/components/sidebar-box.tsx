@@ -1,6 +1,5 @@
 import { colors } from "@/theme";
 
-/** Labels a pane with what it is showing: the open pull request, or local state. */
 export function scopedTitle(title: string, pullRequest: number | undefined) {
   return `${title} · ${pullRequest === undefined ? "Local" : `PR #${pullRequest}`}`;
 }

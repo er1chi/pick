@@ -13,7 +13,6 @@ const gitIdentitySchema = type({ date: optionalNullableString })
   .or("null")
   .optional();
 
-/** A commit as the GitHub REST API returns it; Forgejo's API matches it. */
 export const commitSchema = type({
   sha: "string",
   commit: type({

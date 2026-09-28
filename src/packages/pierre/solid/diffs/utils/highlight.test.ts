@@ -3,8 +3,6 @@ import { describe, expect, test } from "bun:test";
 import { highlightSplitRows } from "./highlight";
 import { splitRows } from "./split-rows";
 
-// The first hunk ends inside a doc comment whose closing line falls between
-// the hunks, as in a real diff that skips unchanged lines.
 const patch = `diff --git a/view.ts b/view.ts
 index 1111111..2222222 100644
 --- a/view.ts

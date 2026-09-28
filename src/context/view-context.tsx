@@ -55,8 +55,7 @@ export interface ViewContextValue {
   readonly view: Accessor<ActiveView | undefined>;
   /**
    * The patch the files pane and the main diff both read. A selected commit
-   * uses that commit's patch; otherwise this is the pull request diff, or the
-   * uncommitted changes when no pull request is open.
+   * uses that commit's patch; otherwise this is the pull request diff.
    */
   readonly currentPatch: Accessor<ForgeSection<PullRequestPatch> | undefined>;
   openPullRequest(
@@ -64,7 +63,6 @@ export interface ViewContextValue {
     number: number,
   ): void;
   selectCommit(sha: string): void;
-  /** The uncommitted file whose diff is open while no pull request is. */
   readonly localFile: Accessor<string | undefined>;
   selectFile(path: string): void;
   clearSelection(): void;

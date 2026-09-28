@@ -72,10 +72,8 @@ const lockedNotice =
 
 interface SelectedDiffProps {
   readonly path: string;
-  /** The commit the diff comes from, when it is one commit's diff. */
   readonly commitSha: string | undefined;
   readonly commit: PullRequestCommit | undefined;
-  /** Names the diff's source, such as "Pull request diff". */
   readonly label: string;
   readonly revealLocked: boolean;
   readonly maxWidth: number;

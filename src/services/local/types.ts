@@ -17,20 +17,16 @@ export type GitBranchScope = "local" | "remote";
 
 export interface GitBranch {
   readonly name: string;
-  /** Whether this is the checked-out branch. */
   readonly current: boolean;
 }
 
 export interface GitStash {
-  /** The stash's reflog name, such as `stash@{0}`. */
   readonly ref: string;
   readonly message: string;
 }
 
 export interface GitCommit {
   readonly sha: string;
-  /** The commit subject, its first message line. */
   readonly message: string;
-  /** Whether any remote-tracking branch already contains the commit. */
   readonly pushed: boolean;
 }

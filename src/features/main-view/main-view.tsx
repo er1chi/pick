@@ -117,7 +117,6 @@ export function PrView(props: PrViewProps) {
     return `${number ?? "none"}:${detailsKey}:${titleLine() ?? ""}:${headerRepositoryName()}`;
   };
 
-  /** A file diff is showing: a pull request's, or an uncommitted file's. */
   const diffOpen = () =>
     view() === undefined
       ? viewContext.localFile() !== undefined

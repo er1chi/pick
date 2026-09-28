@@ -30,7 +30,6 @@ import type { JSX } from "solid-js";
 import type { GitCommit } from "@/services/local/types";
 import type { SidebarPaneProps } from "../types";
 
-/** A pull request commit, or a local one that knows whether it is pushed. */
 type CommitRow = Omit<GitCommit, "pushed"> & { readonly pushed?: boolean };
 
 const pushedMarker = { text: "✓", color: colors.dim };
@@ -53,7 +52,6 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
   const pullRequest = usePullRequest();
   const forgeContext = useForgeContext();
   const opened = () => viewPullRequest(viewContext.view());
-  // Local history loads only while no pull request is open.
   const [localCommits] = createResource(
     () => (opened() === undefined ? forgeContext.state().cwd : undefined),
     (cwd) => readCommits(cwd),

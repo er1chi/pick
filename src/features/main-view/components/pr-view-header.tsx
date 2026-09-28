@@ -91,12 +91,10 @@ function contextBanner(view: ActiveView): string {
 
 interface ContextRowProps {
   readonly banner: string;
-  /** Close labels drawn at the right edge, left to right. */
   readonly affordances: readonly string[];
   readonly maxWidth: number;
 }
 
-/** The fixed top row: what is being viewed, and how to close it. */
 function ContextRow(props: ContextRowProps): JSX.Element {
   const affordancesWidth = () =>
     props.affordances.reduce(
@@ -144,7 +142,6 @@ function ContextRow(props: ContextRowProps): JSX.Element {
   );
 }
 
-/** The header for an uncommitted file's diff, shown while no PR is open. */
 export function LocalDiffHeader(props: {
   readonly path: string;
   readonly maxWidth: number;

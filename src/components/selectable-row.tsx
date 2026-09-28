@@ -6,11 +6,9 @@ import { truncateEnd } from "@/utils/truncate";
 export interface SelectableRowProps {
   readonly id: string;
   readonly selected: boolean;
-  /** Dim structural text drawn before the label, such as tree guides. */
   readonly guide?: string;
   readonly label: string;
   readonly detail?: string;
-  /** A one-character status drawn at the right edge. */
   readonly marker?: { readonly text: string; readonly color: string };
   readonly maxWidth?: number;
 }

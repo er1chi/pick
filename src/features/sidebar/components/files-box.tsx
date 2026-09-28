@@ -101,7 +101,6 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
   const viewContext = useViewContext();
   const forgeContext = useForgeContext();
   const opened = () => viewPullRequest(viewContext.view());
-  // Uncommitted changes load only while no pull request is open.
   const [localChanges] = createResource(
     () => (opened() === undefined ? forgeContext.state().cwd : undefined),
     (cwd) => readChangedFiles(cwd),

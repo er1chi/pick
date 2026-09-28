@@ -10,7 +10,6 @@ export function fileTreeRowLabel(row: FileTreeVisibleRow): string {
   return segments.map((segment) => segment.name).join("/");
 }
 
-/** One vertical guide per ancestor directory, so nesting reads at a glance. */
 export function fileTreeRowGuides(row: FileTreeVisibleRow): string {
   return "│ ".repeat(row.depth);
 }

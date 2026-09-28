@@ -25,7 +25,6 @@ import type { DisplayRow, DisplayRowKind } from "./utils/display-row";
 export interface SplitFileDiffScrollTarget {
   scrollBy(lines: number): void;
   reset(): void;
-  /** Scroll the next (1) or previous (-1) hunk header to the top. */
   jumpHunk(direction: 1 | -1): void;
 }
 
@@ -42,18 +41,10 @@ export interface SplitFileDiffProps {
    * seed for the initial render.
    */
   widthHint?: number;
-  /**
-   * Columns between the Before and After surfaces. At the default of 0 they
-   * share one divider line; any larger gap draws two separately bordered
-   * surfaces.
-   */
   gap?: number;
 }
 
 /**
- * Below this container width the two code surfaces stack. At this threshold
- * each surface keeps roughly 50 columns of code beside its border and gutter;
- * with the 32-column sidebar and main pane chrome, it is a 150-column terminal.
  */
 const SPLIT_LAYOUT_MIN_WIDTH = 113;
 
@@ -176,11 +167,8 @@ function SplitCell(props: {
   );
 }
 
-// Wide enough to cover any pane; the row clips what does not fit.
 const fillerDots = "· ".repeat(256);
 
-/** Marks a side that has no line where the other side does: dots across the
- * whole row over a translucent tint of that side's color. */
 function FillerRow(props: { side: Side }) {
   return (
     <box
@@ -245,9 +233,6 @@ function PaneRow(props: {
   );
 }
 
-// Joined panes draw one divider: the left pane keeps its right edge, with tee
-// corners where the right pane's top and bottom lines meet it, and the right
-// pane drops its left edge.
 const leftPaneChars: BorderCharacters = {
   ...BorderChars.single,
   topRight: BorderChars.single.topT,
@@ -269,7 +254,6 @@ function DiffPane(props: {
   disableLineNumbers: boolean;
   tokensFor: (rowKey: string, side: Side) => readonly ThemedToken[] | undefined;
   scrollRef: (element: ScrollBoxRenderable) => void;
-  /** Side by side with the other pane: they share one divider line. */
   joined: boolean;
 }) {
   return (
@@ -315,8 +299,6 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
   const [measuredWidth, setMeasuredWidth] = createSignal<number | undefined>();
   const containerWidth = () => measuredWidth() ?? props.widthHint ?? 0;
   const rows = createMemo(() => splitRows(props.fileDiff));
-  // Every row is one line tall, so a header's row index is the scroll offset
-  // that puts it at the top of a pane.
   const hunkOffsets = createMemo(() =>
     rows().flatMap((row, index) => (row.kind === "hunk-header" ? [index] : [])),
   );

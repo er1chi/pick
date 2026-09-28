@@ -20,8 +20,7 @@ const emptyCommitPatches: CommitPatchCache = {
 export interface PatchStoreValue {
   /**
    * The patch the files pane and the main diff both read. A selected commit
-   * uses that commit's patch; otherwise this is the pull request diff, or the
-   * uncommitted changes in the local view.
+   * uses that commit's patch; otherwise this is the pull request diff.
    */
   readonly currentPatch: Accessor<PatchSection | undefined>;
   setPullRequestPatch(patch: PatchSection | undefined): void;
@@ -37,7 +36,6 @@ export interface PatchStoreValue {
 
 const PatchStore = createContext<PatchStoreValue>();
 
-/** Holds the patches the loaders fetch, separate from what is being viewed. */
 export function PatchStoreProvider(props: {
   readonly children: JSX.Element;
 }): JSX.Element {

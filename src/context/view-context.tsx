@@ -27,7 +27,6 @@ export type PullRequestView = PullRequestIdentity &
       }
   );
 
-/** Local changes, with the uncommitted file whose diff is open, if any. */
 interface LocalView {
   readonly kind: "local";
   readonly file: string | undefined;

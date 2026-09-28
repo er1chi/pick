@@ -60,10 +60,9 @@ export interface ViewContextValue {
   ): void;
   selectCommit(sha: string): void;
   selectFile(path: string): void;
-  clearSelection(): void;
   /**
-   * Close the open file diff, keeping a selected commit; with no diff
-   * open, behaves like clearSelection.
+   * Close the open file diff, keeping a selected commit; with no diff open,
+   * return to the pull request overview.
    */
   closeFile(): void;
   close(): void;
@@ -109,14 +108,6 @@ export function ViewContextProvider(props: {
     });
   }
 
-  function clearSelection(): void {
-    const current = viewPullRequest(view());
-    if (current === undefined) {
-      return;
-    }
-    setView({ kind: "pr", id: current.id, number: current.number });
-  }
-
   function closeFile(): void {
     const current = view();
     if (current.kind === "local") {
@@ -132,7 +123,7 @@ export function ViewContextProvider(props: {
       });
       return;
     }
-    clearSelection();
+    setView({ kind: "pr", id: current.id, number: current.number });
   }
 
   function close(): void {
@@ -144,7 +135,6 @@ export function ViewContextProvider(props: {
     openPullRequest,
     selectCommit,
     selectFile,
-    clearSelection,
     closeFile,
     close,
   };

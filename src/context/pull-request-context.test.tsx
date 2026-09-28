@@ -154,7 +154,8 @@ describe("pull request loading", () => {
       expect(requests.commitPatches).toEqual([commitA]);
       expect(harness.patches.currentPatch()).toBe(commitDiffA);
 
-      harness.view.clearSelection();
+      harness.view.closeFile();
+      harness.view.closeFile();
       harness.view.selectCommit(commitA);
       await settle();
 
@@ -295,7 +296,7 @@ describe("view context", () => {
         sha: "abc",
       });
 
-      harness.view.clearSelection();
+      harness.view.closeFile();
       harness.view.selectFile("a.ts");
       harness.view.closeFile();
       expect(harness.view.view()).toEqual({

@@ -1,7 +1,7 @@
 import { Result } from "better-result";
 import { GitCommandFailedError, GitUnavailableError } from "./types";
 
-import type { GitError } from "./types";
+import type { GitCommit, GitError } from "./types";
 
 /** Runs git and returns its stdout. `okExitCodes` lists the codes that mean
  * success, since some commands (like `diff --no-index`) exit 1 on a result. */
@@ -49,6 +49,34 @@ export async function readGitRemoteOutput(
   cwd: string,
 ): Promise<Result<string, GitError>> {
   return runGit(cwd, ["remote", "-v"]);
+}
+
+const commitLimit = 200;
+
+/** The most recent commits on the checked-out branch, newest first. A commit
+ * counts as pushed once any remote-tracking branch reaches it. */
+export async function readCommits(
+  cwd: string,
+): Promise<Result<readonly GitCommit[], GitError>> {
+  const limit = `--max-count=${commitLimit}`;
+  const [log, localOnly] = await Promise.all([
+    runGit(cwd, ["log", limit, "--format=%H%x09%s"]),
+    // Both walks share one order, so the local commits among the listed ones
+    // are always within the same limit.
+    runGit(cwd, ["log", limit, "--format=%H", "HEAD", "--not", "--remotes"]),
+  ]);
+  return Result.gen(function* () {
+    const unpushed = new Set((yield* localOnly).split("\n"));
+    const text = yield* log;
+    return Result.ok(
+      text.split("\n").flatMap((line) => {
+        const [sha, ...subject] = line.split("\t");
+        return sha === undefined || sha === ""
+          ? []
+          : [{ sha, message: subject.join("\t"), pushed: !unpushed.has(sha) }];
+      }),
+    );
+  });
 }
 
 /** Paths with uncommitted changes, staged or not, including untracked files. */

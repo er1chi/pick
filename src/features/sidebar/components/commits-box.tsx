@@ -1,16 +1,25 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { Index, createEffect, createMemo, createSignal } from "solid-js";
+import {
+  Index,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+} from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
+import { useForgeContext } from "@/context/forge-context";
 import { usePullRequest } from "@/context/pull-request-context";
 import {
   useViewContext,
   viewCommit,
   viewPullRequest,
 } from "@/context/view-context";
+import { readCommits } from "@/services/local/local";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
+import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { firstLine } from "@/utils/utils";
 import { EmptyGate } from "./empty-gate";
@@ -18,8 +27,21 @@ import { scopedTitle, SidebarBox, SidebarScrollBox } from "./sidebar-box";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "solid-js";
-import type { PullRequestCommit } from "@/services/forge/types";
+import type { GitCommit } from "@/services/local/types";
 import type { SidebarPaneProps } from "../types";
+
+/** A pull request commit, or a local one that knows whether it is pushed. */
+type CommitRow = Omit<GitCommit, "pushed"> & { readonly pushed?: boolean };
+
+const pushedMarker = { text: "✓", color: colors.dim };
+const localMarker = { text: "↑", color: colors.yellow };
+
+function pushMarker(commit: CommitRow) {
+  if (commit.pushed === undefined) {
+    return undefined;
+  }
+  return commit.pushed ? pushedMarker : localMarker;
+}
 
 export function CommitsBox(props: SidebarPaneProps): JSX.Element {
   const [box, setBox] = createSignal<BoxRenderable>();
@@ -29,10 +51,17 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
   const navigation = useNavigateList({ target: box });
   const viewContext = useViewContext();
   const pullRequest = usePullRequest();
+  const forgeContext = useForgeContext();
   const opened = () => viewPullRequest(viewContext.view());
-  const commits = createMemo<readonly PullRequestCommit[]>(() => {
+  // Local history loads only while no pull request is open.
+  const [localCommits] = createResource(
+    () => (opened() === undefined ? forgeContext.state().cwd : undefined),
+    (cwd) => readCommits(cwd),
+  );
+  const commits = createMemo<readonly CommitRow[]>(() => {
     if (opened() === undefined) {
-      return [];
+      const result = localCommits.latest;
+      return result === undefined || result.isErr() ? [] : result.value;
     }
     const section = pullRequest.data()?.commits;
     return section?.status === "available" ? section.value : [];
@@ -47,7 +76,7 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
 
   function activateHighlighted(): void {
     const sha = commits()[navigation.index()]?.sha;
-    if (sha !== undefined) {
+    if (sha !== undefined && opened() !== undefined) {
       viewContext.selectCommit(sha);
       setPane({ active: Pane.Files });
     }
@@ -98,6 +127,7 @@ export function CommitsBox(props: SidebarPaneProps): JSX.Element {
                   selected={(isFocused() && highlighted()) || active()}
                   label={commit().sha.slice(0, 7)}
                   detail={firstLine(commit().message)}
+                  marker={pushMarker(commit())}
                   maxWidth={props.rowWidth - 1}
                 />
               );

@@ -10,13 +10,16 @@ export function fileTreeRowLabel(row: FileTreeVisibleRow): string {
   return segments.map((segment) => segment.name).join("/");
 }
 
+/** One vertical guide per ancestor directory, so nesting reads at a glance. */
+export function fileTreeRowGuides(row: FileTreeVisibleRow): string {
+  return "│ ".repeat(row.depth);
+}
+
 export function fileTreeRowPrefix(row: FileTreeVisibleRow): string {
-  const indent = "  ".repeat(row.depth);
   if (row.kind === "directory") {
-    const chevron = row.isExpanded ? "▾ " : "▸ ";
-    return `${indent}${chevron}`;
+    return row.isExpanded ? "▾ " : "▸ ";
   }
-  return `${indent}  `;
+  return "  ";
 }
 
 function rowBackground(row: FileTreeVisibleRow): string | undefined {
@@ -44,6 +47,7 @@ export function FileTreeRow(props: { row: FileTreeVisibleRow }) {
       backgroundColor={rowBackground(props.row)}
     >
       <text fg={fg()}>
+        <span style={{ fg: colors.dim }}>{fileTreeRowGuides(props.row)}</span>
         {fileTreeRowPrefix(props.row)}
         {fileTreeRowLabel(props.row)}
       </text>

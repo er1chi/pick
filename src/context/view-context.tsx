@@ -55,7 +55,8 @@ export interface ViewContextValue {
   readonly view: Accessor<ActiveView | undefined>;
   /**
    * The patch the files pane and the main diff both read. A selected commit
-   * uses that commit's patch; otherwise this is the pull request diff.
+   * uses that commit's patch; otherwise this is the pull request diff, or the
+   * uncommitted changes when no pull request is open.
    */
   readonly currentPatch: Accessor<ForgeSection<PullRequestPatch> | undefined>;
   openPullRequest(
@@ -63,6 +64,8 @@ export interface ViewContextValue {
     number: number,
   ): void;
   selectCommit(sha: string): void;
+  /** The uncommitted file whose diff is open while no pull request is. */
+  readonly localFile: Accessor<string | undefined>;
   selectFile(path: string): void;
   clearSelection(): void;
   /**
@@ -72,6 +75,7 @@ export interface ViewContextValue {
   closeFile(): void;
   close(): void;
   setPullRequestPatch(patch: ForgeSection<PullRequestPatch> | undefined): void;
+  setLocalPatch(patch: ForgeSection<PullRequestPatch> | undefined): void;
   /**
    * Store one commit's patch for the open pull request. A result for any other
    * pull request is ignored, so the cache never holds more than one.
@@ -97,13 +101,20 @@ export function ViewContextProvider(props: {
   const [pullRequestPatch, setPullRequestPatch] = createSignal<
     ForgeSection<PullRequestPatch> | undefined
   >();
+  const [localPatch, setLocalPatch] = createSignal<
+    ForgeSection<PullRequestPatch> | undefined
+  >();
+  const [localFile, setLocalFile] = createSignal<string | undefined>();
   const commitPatches = new Map<string, ForgeSection<PullRequestPatch>>();
   let commitPatchOwner: string | undefined;
   const [commitPatchVersion, setCommitPatchVersion] = createSignal(0);
 
   function currentPatch(): ForgeSection<PullRequestPatch> | undefined {
     const current = view();
-    const sha = current === undefined ? undefined : viewCommit(current);
+    if (current === undefined) {
+      return localPatch();
+    }
+    const sha = viewCommit(current);
     if (sha !== undefined) {
       commitPatchVersion();
       return commitPatches.get(sha);
@@ -155,6 +166,7 @@ export function ViewContextProvider(props: {
       setPullRequestPatch(undefined);
       clearCommitPatches();
     }
+    setLocalFile(undefined);
     setView({ kind: "pr", id, number });
   }
 
@@ -169,6 +181,7 @@ export function ViewContextProvider(props: {
   function selectFile(path: string): void {
     const current = view();
     if (current === undefined) {
+      setLocalFile(path);
       return;
     }
     const commit = viewCommit(current);
@@ -201,6 +214,7 @@ export function ViewContextProvider(props: {
   function closeFile(): void {
     const current = view();
     if (current === undefined) {
+      setLocalFile(undefined);
       return;
     }
     if (current.kind === "diff" && current.commit !== undefined) {
@@ -230,7 +244,9 @@ export function ViewContextProvider(props: {
     clearSelection,
     closeFile,
     close,
+    localFile,
     setPullRequestPatch,
+    setLocalPatch,
     setCommitPatch,
     cachedCommitPatch,
     clearCommitPatches,

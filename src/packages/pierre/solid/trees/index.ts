@@ -1,6 +1,10 @@
 export { FileTree, type FileTreeProps } from "./file-tree";
 export { FileTreeRow } from "./file-tree-row";
-export { fileTreeRowLabel, fileTreeRowPrefix } from "./file-tree-row";
+export {
+  fileTreeRowGuides,
+  fileTreeRowLabel,
+  fileTreeRowPrefix,
+} from "./file-tree-row";
 export { useFileTree, type UseFileTreeResult } from "./hooks/use-file-tree";
 export {
   useFileTreeSearch,

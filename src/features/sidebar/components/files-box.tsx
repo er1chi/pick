@@ -1,17 +1,26 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { Index, createEffect, createMemo, createSignal } from "solid-js";
+import {
+  Index,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+} from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
+import { useForgeContext } from "@/context/forge-context";
 import { useViewContext, viewPullRequest } from "@/context/view-context";
 import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
 import {
   areVisibleRowsEqual,
+  fileTreeRowGuides,
   fileTreeRowLabel,
   fileTreeRowPrefix,
   getAllVisibleRows,
   useFileTree,
   useFileTreeSelector,
 } from "@/packages/pierre/solid/trees";
+import { readChangedFiles } from "@/services/local/local";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
@@ -21,8 +30,10 @@ import { scopedTitle, SidebarBox, SidebarScrollBox } from "./sidebar-box";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { FileTree as FileTreeModel } from "@pierre/trees";
+import type { Result } from "better-result";
 import type { JSX } from "solid-js";
 import type { ForgeSection, PullRequestPatch } from "@/services/forge/types";
+import type { GitError } from "@/services/local/types";
 import type { SidebarPaneProps } from "../types";
 
 type FilesView =
@@ -61,6 +72,20 @@ function changedFiles(
   };
 }
 
+function localFiles(
+  result: Result<readonly string[], GitError> | undefined,
+): FilesView {
+  if (result === undefined) {
+    return { kind: "message", text: "Loading changes…" };
+  }
+  if (result.isErr()) {
+    return { kind: "message", text: "Could not read local changes." };
+  }
+  return result.value.length === 0
+    ? { kind: "message", text: "No local changes." }
+    : { kind: "list", paths: result.value };
+}
+
 function toggleFocusedDirectory(model: FileTreeModel): void {
   const item = model.getFocusedItem();
   if (item !== null && "toggle" in item) {
@@ -74,10 +99,16 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
   const [_pane, setPane] = PaneStore.use();
   const isFocused = useFocusedPane(Pane.Files);
   const viewContext = useViewContext();
+  const forgeContext = useForgeContext();
   const opened = () => viewPullRequest(viewContext.view());
+  // Uncommitted changes load only while no pull request is open.
+  const [localChanges] = createResource(
+    () => (opened() === undefined ? forgeContext.state().cwd : undefined),
+    (cwd) => readChangedFiles(cwd),
+  );
   const filesView = createMemo<FilesView>(() => {
     if (opened() === undefined) {
-      return { kind: "message", text: "No local changes." };
+      return localFiles(localChanges.latest);
     }
     return changedFiles(viewContext.currentPatch());
   });
@@ -161,7 +192,10 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
   return (
     <SidebarBox
       id={Pane.Files}
-      title={scopedTitle("[0] Files", opened()?.number)}
+      title={scopedTitle(
+        opened() === undefined ? "[0] Changes" : "[0] Files",
+        opened()?.number,
+      )}
       active={isFocused()}
       boxRef={setBox}
       flexGrow={1}
@@ -174,6 +208,7 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
               <SelectableRow
                 id={`file-${row().path}`}
                 selected={row().isFocused}
+                guide={fileTreeRowGuides(row())}
                 label={`${fileTreeRowPrefix(row())}${fileTreeRowLabel(row())}`}
                 maxWidth={props.rowWidth}
               />

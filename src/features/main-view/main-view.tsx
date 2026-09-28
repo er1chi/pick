@@ -19,6 +19,7 @@ import {
 } from "@/context/view-context";
 import { MAIN_PANE_CHROME } from "@/features/main-view/components/pr-view-chrome";
 import {
+  LocalDiffHeader,
   NoPullRequest,
   PrViewHeader,
 } from "@/features/main-view/components/pr-view-header";
@@ -116,8 +117,14 @@ export function PrView(props: PrViewProps) {
     return `${number ?? "none"}:${detailsKey}:${titleLine() ?? ""}:${headerRepositoryName()}`;
   };
 
+  /** A file diff is showing: a pull request's, or an uncommitted file's. */
+  const diffOpen = () =>
+    view() === undefined
+      ? viewContext.localFile() !== undefined
+      : view()?.kind === "diff";
+
   function scrollContent(lines: number): void {
-    if (view()?.kind === "diff") {
+    if (diffOpen()) {
       diffScroll()?.scrollBy(lines);
       return;
     }
@@ -188,7 +195,7 @@ export function PrView(props: PrViewProps) {
       return;
     }
     const overview = overviewScroll();
-    if (view()?.kind !== "diff" && overview !== undefined) {
+    if (!diffOpen() && overview !== undefined) {
       overview.focus();
       return;
     }
@@ -200,9 +207,9 @@ export function PrView(props: PrViewProps) {
 
   createEffect(
     on(
-      view,
-      (current) => {
-        if (current?.kind === "diff") {
+      [view, viewContext.localFile],
+      () => {
+        if (diffOpen()) {
           diffScroll()?.reset();
           return;
         }
@@ -214,6 +221,22 @@ export function PrView(props: PrViewProps) {
       { defer: true },
     ),
   );
+
+  function hintLine(text: string): JSX.Element {
+    return (
+      <box
+        height={1}
+        width="100%"
+        flexGrow={0}
+        flexShrink={0}
+        overflow="hidden"
+      >
+        <text fg={colors.dim} wrapMode="none" truncate>
+          {truncateEnd(text, contentWidth())}
+        </text>
+      </box>
+    );
+  }
 
   function mainViewContent(current: ActiveView): JSX.Element {
     switch (current.kind) {
@@ -256,8 +279,12 @@ export function PrView(props: PrViewProps) {
       case "diff":
         return (
           <SelectedDiffBody
-            view={current}
+            path={current.path}
+            commitSha={current.commit}
             commit={selectedCommitValue()}
+            label={
+              current.commit === undefined ? "Pull request diff" : "Commit diff"
+            }
             revealLocked={revealLocked()}
             maxWidth={contentWidth()}
             setDiffScroll={setDiffScroll}
@@ -290,7 +317,31 @@ export function PrView(props: PrViewProps) {
         setPane({ active: Pane.Main });
       }}
     >
-      <Show when={view()} fallback={<NoPullRequest state={currentState()} />}>
+      <Show
+        when={view()}
+        fallback={
+          <Show
+            when={viewContext.localFile()}
+            fallback={<NoPullRequest state={currentState()} />}
+          >
+            {(path: Accessor<string>) => (
+              <>
+                <LocalDiffHeader path={path()} maxWidth={contentWidth()} />
+                <SelectedDiffBody
+                  path={path()}
+                  commitSha={undefined}
+                  commit={undefined}
+                  label="Working tree diff"
+                  revealLocked={revealLocked()}
+                  maxWidth={contentWidth()}
+                  setDiffScroll={setDiffScroll}
+                />
+                {hintLine("j/k scroll · e lock files · o close diff")}
+              </>
+            )}
+          </Show>
+        }
+      >
         {(current: Accessor<ActiveView>) => (
           <>
             <PullRequestStatusLine />
@@ -302,20 +353,7 @@ export function PrView(props: PrViewProps) {
               maxWidth={contentWidth()}
             />
             {mainViewContent(current())}
-            <box
-              height={1}
-              width="100%"
-              flexGrow={0}
-              flexShrink={0}
-              overflow="hidden"
-            >
-              <text fg={colors.dim} wrapMode="none" truncate>
-                {truncateEnd(
-                  "j/k scroll · e lock files · x close PR",
-                  contentWidth(),
-                )}
-              </text>
-            </box>
+            {hintLine("j/k scroll · e lock files · x close PR")}
           </>
         )}
       </Show>

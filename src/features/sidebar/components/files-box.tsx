@@ -2,7 +2,7 @@ import { useBindings } from "@opentui/keymap/solid";
 import { Index, createEffect, createMemo, createSignal } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { PaneStore } from "@/context/active-pane-context";
-import { useViewContext } from "@/context/view-context";
+import { useViewContext, viewPullRequest } from "@/context/view-context";
 import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
 import {
   areVisibleRowsEqual,
@@ -17,7 +17,7 @@ import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { Pane } from "@/types";
 import { EmptyGate } from "./empty-gate";
-import { SidebarBox, SidebarScrollBox } from "./sidebar-box";
+import { scopedTitle, SidebarBox, SidebarScrollBox } from "./sidebar-box";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { FileTree as FileTreeModel } from "@pierre/trees";
@@ -74,10 +74,10 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
   const [_pane, setPane] = PaneStore.use();
   const isFocused = useFocusedPane(Pane.Files);
   const viewContext = useViewContext();
-  const opened = () => viewContext.view() !== undefined;
+  const opened = () => viewPullRequest(viewContext.view());
   const filesView = createMemo<FilesView>(() => {
-    if (!opened()) {
-      return { kind: "list", paths: [] };
+    if (opened() === undefined) {
+      return { kind: "message", text: "No local changes." };
     }
     return changedFiles(viewContext.currentPatch());
   });
@@ -161,17 +161,13 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
   return (
     <SidebarBox
       id={Pane.Files}
-      title="[0] Files"
+      title={scopedTitle("[0] Files", opened()?.number)}
       active={isFocused()}
       boxRef={setBox}
       flexGrow={1}
       handleMouseFocus={handleMouseFocus}
     >
-      <EmptyGate
-        opened={opened()}
-        hasItems={rows().length > 0}
-        emptyText={emptyText()}
-      >
+      <EmptyGate hasItems={rows().length > 0} emptyText={emptyText()}>
         <SidebarScrollBox scrollRef={setScrollBox} hideScrollbar>
           <Index each={rows()}>
             {(row) => (

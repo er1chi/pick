@@ -245,10 +245,10 @@ export function NoPullRequest(props: {
         }
       >
         <text fg={colors.yellow}>
-          <strong>Context: No pull request open</strong>
+          <strong>Context: Local changes</strong>
         </text>
         <text fg={colors.muted}>
-          Select a pull request in the sidebar and press enter to open it.
+          Select a pull request in the sidebar and press enter to review it.
         </text>
       </Show>
     </box>

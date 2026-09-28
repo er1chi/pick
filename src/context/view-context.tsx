@@ -8,7 +8,7 @@ export function pullRequestViewId(
   repository: Pick<ForgeRepository, "owner" | "name">,
   number: number,
 ): string {
-  return `${repository.owner}-${repository.name}-${number}`;
+  return `${repository.owner}/${repository.name}#${number}`;
 }
 
 interface PullRequestIdentity {

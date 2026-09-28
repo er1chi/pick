@@ -174,6 +174,22 @@ export function PrView(props: PrViewProps) {
         run: closeOpened,
       },
       {
+        name: "pr-view.next-hunk",
+        run: () => {
+          if (diffOpen()) {
+            diffScroll()?.jumpHunk(1);
+          }
+        },
+      },
+      {
+        name: "pr-view.previous-hunk",
+        run: () => {
+          if (diffOpen()) {
+            diffScroll()?.jumpHunk(-1);
+          }
+        },
+      },
+      {
         name: "pr-view.close-diff",
         run: closeDiff,
       },
@@ -185,6 +201,8 @@ export function PrView(props: PrViewProps) {
       { key: "e", cmd: "pr-view.toggle-locked-files" },
       { key: "x", cmd: "pr-view.close" },
       { key: "o", cmd: "pr-view.close-diff" },
+      { key: "]", cmd: "pr-view.next-hunk" },
+      { key: "[", cmd: "pr-view.previous-hunk" },
     ],
   }));
 
@@ -305,7 +323,7 @@ export function PrView(props: PrViewProps) {
       minWidth={0}
       height="100%"
       overflow="hidden"
-      gap={1}
+      gap={0}
       paddingLeft={2}
       paddingRight={1}
       border
@@ -336,7 +354,9 @@ export function PrView(props: PrViewProps) {
                   maxWidth={contentWidth()}
                   setDiffScroll={setDiffScroll}
                 />
-                {hintLine("j/k scroll · e lock files · o close diff")}
+                {hintLine(
+                  "j/k scroll · [/] hunks · e lock files · o close diff",
+                )}
               </>
             )}
           </Show>

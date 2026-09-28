@@ -113,7 +113,7 @@ export function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
       flexShrink={1}
       minHeight={0}
       width="100%"
-      gap={1}
+      gap={0}
     >
       <Show when={props.commitSha} keyed>
         {(sha: string) => (

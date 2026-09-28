@@ -1,3 +1,4 @@
+import { Show, type Accessor } from "solid-js";
 import { colors } from "@/theme";
 import { sanitizeLine } from "@/utils/sanitize-line";
 import { truncateEnd } from "@/utils/truncate";
@@ -9,6 +10,8 @@ export interface SelectableRowProps {
   readonly guide?: string;
   readonly label: string;
   readonly detail?: string;
+  /** A one-character status drawn at the right edge. */
+  readonly marker?: { readonly text: string; readonly color: string };
   readonly maxWidth?: number;
 }
 
@@ -19,7 +22,12 @@ export function SelectableRow(props: SelectableRowProps) {
     const combined = detail === "" ? label : `${label} ${detail}`;
     return props.maxWidth === undefined
       ? combined
-      : truncateEnd(combined, props.maxWidth - (props.guide?.length ?? 0));
+      : truncateEnd(
+          combined,
+          props.maxWidth -
+            (props.guide?.length ?? 0) -
+            (props.marker === undefined ? 0 : props.marker.text.length + 1),
+        );
   };
 
   return (
@@ -32,10 +40,19 @@ export function SelectableRow(props: SelectableRowProps) {
       overflow="hidden"
       backgroundColor={props.selected ? colors.border : undefined}
     >
-      <text fg={colors.foreground} wrapMode="none" truncate>
+      <text fg={colors.foreground} wrapMode="none" truncate flexGrow={1}>
         <span style={{ fg: colors.dim }}>{props.guide ?? ""}</span>
         {line()}
       </text>
+      <Show when={props.marker}>
+        {(
+          marker: Accessor<{ readonly text: string; readonly color: string }>,
+        ) => (
+          <text fg={marker().color} wrapMode="none" flexShrink={0}>
+            {marker().text}
+          </text>
+        )}
+      </Show>
     </box>
   );
 }

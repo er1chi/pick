@@ -2,7 +2,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readChangedFiles, readWorkingTreePatch } from "../local";
+import { readChangedFiles, readCommits, readWorkingTreePatch } from "../local";
+
+let repo: string;
+
+function git(...args: string[]): void {
+  gitIn(repo, ...args);
+}
 
 function gitIn(cwd: string, ...args: string[]): void {
   const result = Bun.spawnSync(["git", ...args], { cwd });
@@ -10,6 +16,49 @@ function gitIn(cwd: string, ...args: string[]): void {
     throw new Error(`git ${args.join(" ")}: ${result.stderr.toString()}`);
   }
 }
+
+beforeAll(async () => {
+  repo = await mkdtemp(join(tmpdir(), "pick-branches-"));
+  git("init", "-q", "-b", "main");
+  git(
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-q",
+    "--allow-empty",
+    "-m",
+    "init",
+  );
+  git("update-ref", "refs/remotes/origin/main", "HEAD");
+  git(
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-q",
+    "--allow-empty",
+    "-m",
+    "local work",
+  );
+});
+
+afterAll(() => rm(repo, { recursive: true, force: true }));
+
+describe("local repository reads", () => {
+  test("lists the branch's commits and marks which are pushed", async () => {
+    const commits = (await readCommits(repo)).unwrap();
+
+    expect(commits.map(({ message, pushed }) => ({ message, pushed }))).toEqual(
+      [
+        { message: "local work", pushed: false },
+        { message: "init", pushed: true },
+      ],
+    );
+  });
+});
 
 describe("working tree changes", () => {
   let dir: string;

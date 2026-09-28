@@ -13,6 +13,10 @@ import {
 } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
 import {
+  ApplicationContext,
+  ForgeContextProvider,
+} from "@/context/forge-context";
+import {
   PullRequestProvider,
   type PullRequestContextValue,
 } from "@/context/pull-request-context";
@@ -82,22 +86,31 @@ function pullRequestValue(
 
 const listedPullRequest = pullRequestValue(() => [COMMIT_A, COMMIT_B]);
 
+/** An open pull request means local history is never read from `cwd`. */
+const localRepository = {
+  kind: ApplicationContext.Local,
+  cwd: "/repo",
+  forge: undefined,
+} as const;
+
 /** Mounts CommitsBox. Defaults the active pane to Commits so `j` is received. */
 function CommitsBoxHarness(props: { readonly pane?: Pane }): JSX.Element {
   const renderer = useRenderer();
   // Create the keymap once; it needs the renderer, not per-render setup.
   const keymap = createMemo(() => createAppKeymap(renderer));
   return (
-    <PaneStore.Provider>
-      <KeymapProvider keymap={keymap()}>
-        <ViewContextProvider initialView={openPullRequest}>
-          <PullRequestProvider value={listedPullRequest}>
-            <SetActivePane pane={props.pane ?? Pane.Commits} />
-            <CommitsBox rowWidth={30} />
-          </PullRequestProvider>
-        </ViewContextProvider>
-      </KeymapProvider>
-    </PaneStore.Provider>
+    <ForgeContextProvider value={localRepository}>
+      <PaneStore.Provider>
+        <KeymapProvider keymap={keymap()}>
+          <ViewContextProvider initialView={openPullRequest}>
+            <PullRequestProvider value={listedPullRequest}>
+              <SetActivePane pane={props.pane ?? Pane.Commits} />
+              <CommitsBox rowWidth={30} />
+            </PullRequestProvider>
+          </ViewContextProvider>
+        </KeymapProvider>
+      </PaneStore.Provider>
+    </ForgeContextProvider>
   );
 }
 
@@ -124,22 +137,24 @@ function CommitsBoxLayoutHarness(props: {
   onMount(() => props.ready({ setCommits, setFileRows }));
 
   return (
-    <PaneStore.Provider>
-      <KeymapProvider keymap={keymap()}>
-        <ViewContextProvider initialView={openPullRequest}>
-          <PullRequestProvider value={pullRequest}>
-            <box flexDirection="column" width={40} height={20}>
-              <box flexGrow={1} minHeight={0} overflow="hidden">
-                <For each={Array.from({ length: fileRows() })}>
-                  {(_, index) => <text id={`file-row-${index()}`}>file</text>}
-                </For>
+    <ForgeContextProvider value={localRepository}>
+      <PaneStore.Provider>
+        <KeymapProvider keymap={keymap()}>
+          <ViewContextProvider initialView={openPullRequest}>
+            <PullRequestProvider value={pullRequest}>
+              <box flexDirection="column" width={40} height={20}>
+                <box flexGrow={1} minHeight={0} overflow="hidden">
+                  <For each={Array.from({ length: fileRows() })}>
+                    {(_, index) => <text id={`file-row-${index()}`}>file</text>}
+                  </For>
+                </box>
+                <CommitsBox rowWidth={30} />
               </box>
-              <CommitsBox rowWidth={30} />
-            </box>
-          </PullRequestProvider>
-        </ViewContextProvider>
-      </KeymapProvider>
-    </PaneStore.Provider>
+            </PullRequestProvider>
+          </ViewContextProvider>
+        </KeymapProvider>
+      </PaneStore.Provider>
+    </ForgeContextProvider>
   );
 }
 

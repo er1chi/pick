@@ -3,5 +3,6 @@ export enum Pane {
   PullRequests = "pull-requests",
   Commits = "commits",
   Stashes = "stashes",
+  Branches = "branches",
   Main = "main",
 }

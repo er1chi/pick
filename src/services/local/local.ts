@@ -1,7 +1,13 @@
 import { Result } from "better-result";
 import { GitCommandFailedError, GitUnavailableError } from "./types";
 
-import type { GitCommit, GitError, GitStash } from "./types";
+import type {
+  GitBranch,
+  GitBranchScope,
+  GitCommit,
+  GitError,
+  GitStash,
+} from "./types";
 
 /** Runs git and returns its stdout. `okExitCodes` lists the codes that mean
  * success, since some commands (like `diff --no-index`) exit 1 on a result. */
@@ -49,6 +55,30 @@ export async function readGitRemoteOutput(
   cwd: string,
 ): Promise<Result<string, GitError>> {
   return runGit(cwd, ["remote", "-v"]);
+}
+
+/** Refnames cannot contain control characters, so tabs split the fields. */
+const branchFormat = "--format=%(HEAD)\t%(refname:short)\t%(symref)";
+
+/** Local branches from `git branch`, or remote-tracking ones from
+ * `git branch -r` without symbolic refs such as `origin/HEAD`. */
+export async function readBranches(
+  cwd: string,
+  scope: GitBranchScope,
+): Promise<Result<readonly GitBranch[], GitError>> {
+  const args =
+    scope === "remote"
+      ? ["branch", "-r", branchFormat]
+      : ["branch", branchFormat];
+  const output = await runGit(cwd, args);
+  return output.map((text) =>
+    text.split("\n").flatMap((line) => {
+      const [head, name, symref] = line.split("\t");
+      return name === undefined || name === "" || symref !== ""
+        ? []
+        : [{ name, current: head === "*" }];
+    }),
+  );
 }
 
 /** Stashes from `git stash list`, newest first. */

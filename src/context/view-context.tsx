@@ -23,7 +23,7 @@ export type PullRequestView = PullRequestIdentity &
     | {
         readonly kind: "diff";
         readonly path: string;
-        readonly commit?: string;
+        readonly commit: string | undefined;
       }
   );
 
@@ -105,22 +105,12 @@ export function ViewContextProvider(props: {
       setView({ kind: "local", file: path });
       return;
     }
-    const commit = viewCommit(current);
-    if (commit === undefined) {
-      setView({
-        kind: "diff",
-        id: current.id,
-        number: current.number,
-        path,
-      });
-      return;
-    }
     setView({
       kind: "diff",
       id: current.id,
       number: current.number,
       path,
-      commit,
+      commit: viewCommit(current),
     });
   }
 

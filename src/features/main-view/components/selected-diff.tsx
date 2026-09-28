@@ -1,5 +1,5 @@
 import { For, Show, createMemo, type Accessor, type JSX } from "solid-js";
-import { useViewContext, type ActiveView } from "@/context/view-context";
+import { useViewContext } from "@/context/view-context";
 import { oneLine } from "@/features/main-view/components/pr-view-chrome";
 import {
   SplitFileDiff,
@@ -71,8 +71,12 @@ const lockedNotice =
   "Lock file contents are hidden by default. Press e to show them.";
 
 interface SelectedDiffProps {
-  readonly view: Extract<ActiveView, { kind: "diff" }>;
+  readonly path: string;
+  /** The commit the diff comes from, when it is one commit's diff. */
+  readonly commitSha: string | undefined;
   readonly commit: PullRequestCommit | undefined;
+  /** Names the diff's source, such as "Pull request diff". */
+  readonly label: string;
   readonly revealLocked: boolean;
   readonly maxWidth: number;
   readonly setDiffScroll: (
@@ -82,9 +86,9 @@ interface SelectedDiffProps {
 
 export function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
   const viewContext = useViewContext();
-  const fromCommit = () => props.view.commit !== undefined;
+  const fromCommit = () => props.commitSha !== undefined;
   const fileDiffs = createMemo(() =>
-    fileDiffsForPatch(viewContext.currentPatch(), props.view.path),
+    fileDiffsForPatch(viewContext.currentPatch(), props.path),
   );
 
   const notice = (): string | undefined => {
@@ -111,7 +115,7 @@ export function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
       width="100%"
       gap={1}
     >
-      <Show when={props.view.commit} keyed>
+      <Show when={props.commitSha} keyed>
         {(sha: string) => (
           <scrollbox
             flexGrow={0}
@@ -139,12 +143,7 @@ export function SelectedDiffBody(props: SelectedDiffProps): JSX.Element {
       >
         {oneLine(
           <text fg={colors.dim} wrapMode="none" truncate>
-            {truncateEnd(
-              fromCommit()
-                ? `Commit diff · ${props.view.path}`
-                : `Pull request diff · ${props.view.path}`,
-              props.maxWidth,
-            )}
+            {truncateEnd(`${props.label} · ${props.path}`, props.maxWidth)}
           </text>,
         )}
         <Show

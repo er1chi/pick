@@ -8,6 +8,6 @@ export interface PaneState {
 export const PaneStore = createSimpleContext<PaneState>({
   name: "pane",
   init: {
-    active: Pane.PullRequests,
+    active: Pane.Files,
   },
 });

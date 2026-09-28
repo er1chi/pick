@@ -3,9 +3,12 @@ import { GitCommandFailedError, GitUnavailableError } from "./types";
 
 import type { GitError } from "./types";
 
+/** Runs git and returns its stdout. `okExitCodes` lists the codes that mean
+ * success, since some commands (like `diff --no-index`) exit 1 on a result. */
 async function runGit(
   cwd: string,
   args: readonly string[],
+  okExitCodes: readonly number[] = [0],
 ): Promise<Result<string, GitError>> {
   const execution = await Result.tryPromise({
     try: async () => {
@@ -31,7 +34,7 @@ async function runGit(
   });
 
   return execution.andThen(({ stdout, exitCode }) =>
-    exitCode === 0
+    okExitCodes.includes(exitCode)
       ? Result.ok(stdout)
       : Result.err<never, GitError>(
           new GitCommandFailedError({
@@ -46,4 +49,61 @@ export async function readGitRemoteOutput(
   cwd: string,
 ): Promise<Result<string, GitError>> {
   return runGit(cwd, ["remote", "-v"]);
+}
+
+/** Paths with uncommitted changes, staged or not, including untracked files. */
+export async function readChangedFiles(
+  cwd: string,
+): Promise<Result<readonly string[], GitError>> {
+  const output = await runGit(cwd, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all",
+  ]);
+  return output.map((text) => {
+    const entries = text.split("\0");
+    const paths: string[] = [];
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index] ?? "";
+      if (entry.length < 4) {
+        continue;
+      }
+      paths.push(entry.slice(3));
+      // Renames and copies are followed by an entry holding the source path.
+      if (/[RC]/.test(entry.slice(0, 2))) {
+        index += 1;
+      }
+    }
+    return paths;
+  });
+}
+
+const diffOptions = ["--no-color", "--no-ext-diff"];
+
+/** Every uncommitted change as one patch: staged and unstaged edits to tracked
+ * files against `HEAD`, followed by each untracked file as an addition. */
+export async function readWorkingTreePatch(
+  cwd: string,
+): Promise<Result<string, GitError>> {
+  const [tracked, untracked] = await Promise.all([
+    runGit(cwd, ["diff", ...diffOptions, "HEAD"]),
+    runGit(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]),
+  ]);
+  if (untracked.isErr()) {
+    return untracked;
+  }
+  const additions = await Promise.all(
+    untracked.value
+      .split("\0")
+      .filter((path) => path !== "")
+      .map((path) =>
+        runGit(
+          cwd,
+          ["diff", ...diffOptions, "--no-index", "--", "/dev/null", path],
+          [0, 1],
+        ),
+      ),
+  );
+  return Result.all([tracked, ...additions]).map((parts) => parts.join(""));
 }

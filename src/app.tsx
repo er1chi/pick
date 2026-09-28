@@ -16,6 +16,7 @@ import {
 } from "@/context/view-context";
 import { Default } from "@/features/default/default";
 import { Footer, type FooterBinding } from "@/features/footer/footer";
+import { useLocalPatch } from "@/features/main-view/hooks/use-local-patch";
 import { usePrTitles } from "@/features/main-view/hooks/use-pr-titles";
 import { PrView } from "@/features/main-view/main-view";
 import { LoadStatus } from "@/features/main-view/types";
@@ -117,6 +118,7 @@ function RepositoryShell(props: {
   const viewContext = useViewContext();
   const contextLabel = repositoryContextLabel(props.state.kind);
   const titles = usePrTitles();
+  useLocalPatch();
 
   createEffect(() => {
     const opened = viewPullRequest(viewContext.view());

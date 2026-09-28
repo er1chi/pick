@@ -5,6 +5,8 @@ import { truncateEnd } from "@/utils/truncate";
 export interface SelectableRowProps {
   readonly id: string;
   readonly selected: boolean;
+  /** Dim structural text drawn before the label, such as tree guides. */
+  readonly guide?: string;
   readonly label: string;
   readonly detail?: string;
   readonly maxWidth?: number;
@@ -17,7 +19,7 @@ export function SelectableRow(props: SelectableRowProps) {
     const combined = detail === "" ? label : `${label} ${detail}`;
     return props.maxWidth === undefined
       ? combined
-      : truncateEnd(combined, props.maxWidth);
+      : truncateEnd(combined, props.maxWidth - (props.guide?.length ?? 0));
   };
 
   return (
@@ -31,6 +33,7 @@ export function SelectableRow(props: SelectableRowProps) {
       backgroundColor={props.selected ? colors.border : undefined}
     >
       <text fg={colors.foreground} wrapMode="none" truncate>
+        <span style={{ fg: colors.dim }}>{props.guide ?? ""}</span>
         {line()}
       </text>
     </box>

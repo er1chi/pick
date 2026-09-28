@@ -89,6 +89,75 @@ function contextBanner(view: ActiveView): string {
   return "Context: Pull request";
 }
 
+interface ContextRowProps {
+  readonly banner: string;
+  /** Close labels drawn at the right edge, left to right. */
+  readonly affordances: readonly string[];
+  readonly maxWidth: number;
+}
+
+/** The fixed top row: what is being viewed, and how to close it. */
+function ContextRow(props: ContextRowProps): JSX.Element {
+  const affordancesWidth = () =>
+    props.affordances.reduce(
+      (width, label, index) =>
+        width + label.length + (index === 0 ? 0 : CLOSE_AFFORDANCE_GAP),
+      0,
+    );
+  const bannerWidth = () =>
+    Math.max(8, props.maxWidth - affordancesWidth() - 1);
+
+  return (
+    <box
+      flexDirection="row"
+      width="100%"
+      height={1}
+      flexGrow={0}
+      flexShrink={0}
+    >
+      <box
+        flexGrow={1}
+        flexShrink={1}
+        minWidth={0}
+        height={1}
+        overflow="hidden"
+      >
+        <text fg={colors.blue} wrapMode="none" truncate>
+          <strong>{truncateEnd(props.banner, bannerWidth())}</strong>
+        </text>
+      </box>
+      <box
+        flexShrink={0}
+        height={1}
+        flexDirection="row"
+        gap={CLOSE_AFFORDANCE_GAP}
+      >
+        <For each={props.affordances}>
+          {(label) => (
+            <text fg={colors.red} wrapMode="none">
+              {label}
+            </text>
+          )}
+        </For>
+      </box>
+    </box>
+  );
+}
+
+/** The header for an uncommitted file's diff, shown while no PR is open. */
+export function LocalDiffHeader(props: {
+  readonly path: string;
+  readonly maxWidth: number;
+}): JSX.Element {
+  return (
+    <ContextRow
+      banner={`Context: Local changes · File ${props.path}`}
+      affordances={[CLOSE_DIFF_LABEL]}
+      maxWidth={props.maxWidth}
+    />
+  );
+}
+
 interface PrViewHeaderProps {
   readonly view: ActiveView;
   readonly repositoryName: string;
@@ -100,13 +169,6 @@ interface PrViewHeaderProps {
 export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
   const pullRequest = usePullRequest();
   const diffContextSelected = () => props.view.kind !== "pr";
-  const closeAffordancesWidth = () =>
-    CLOSE_PR_LABEL.length +
-    (diffContextSelected()
-      ? CLOSE_AFFORDANCE_GAP + CLOSE_DIFF_LABEL.length
-      : 0);
-  const contextTextWidth = () =>
-    Math.max(8, props.maxWidth - closeAffordancesWidth() - 1);
   const detailsSection = () => pullRequest.data()?.details;
   const details = () => {
     const section = detailsSection();
@@ -125,42 +187,15 @@ export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
       flexGrow={0}
       flexShrink={0}
     >
-      <box
-        flexDirection="row"
-        width="100%"
-        height={1}
-        flexGrow={0}
-        flexShrink={0}
-      >
-        <box
-          flexGrow={1}
-          flexShrink={1}
-          minWidth={0}
-          height={1}
-          overflow="hidden"
-        >
-          <text fg={colors.blue} wrapMode="none" truncate>
-            <strong>
-              {truncateEnd(contextBanner(props.view), contextTextWidth())}
-            </strong>
-          </text>
-        </box>
-        <box
-          flexShrink={0}
-          height={1}
-          flexDirection="row"
-          gap={CLOSE_AFFORDANCE_GAP}
-        >
-          <Show when={diffContextSelected()}>
-            <text fg={colors.red} wrapMode="none">
-              {CLOSE_DIFF_LABEL}
-            </text>
-          </Show>
-          <text fg={colors.red} wrapMode="none">
-            {CLOSE_PR_LABEL}
-          </text>
-        </box>
-      </box>
+      <ContextRow
+        banner={contextBanner(props.view)}
+        affordances={
+          diffContextSelected()
+            ? [CLOSE_DIFF_LABEL, CLOSE_PR_LABEL]
+            : [CLOSE_PR_LABEL]
+        }
+        maxWidth={props.maxWidth}
+      />
       <Show keyed when={props.headerKey}>
         {() => (
           <PersistentHeader

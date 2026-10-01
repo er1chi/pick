@@ -4,6 +4,7 @@ import {
   ForgeCommandFailedError,
   ForgeCommandSpawnFailedError,
   ForgeExecutableUnavailableError,
+  ForgeOutputLimitExceededError,
   ForgeTimedOutError,
   ForgeVersionCheckFailedError,
 } from "./types";
@@ -29,6 +30,8 @@ export async function executeCli(
         error.match({
           CliSpawnFailedError: ({ message }) =>
             new ForgeCommandSpawnFailedError({ kind, message }),
+          CliOutputLimitError: ({ message }) =>
+            new ForgeOutputLimitExceededError({ kind, message }),
           CliTimedOutError: ({ message }) =>
             new ForgeTimedOutError({ kind, message }),
         }),

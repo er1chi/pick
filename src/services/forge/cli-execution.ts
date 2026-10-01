@@ -1,6 +1,5 @@
 import { Result, TaggedError } from "better-result";
 import {
-  ForgeCancelledError,
   ForgeCommandFailedError,
   ForgeCommandSpawnFailedError,
   ForgeOutputLimitExceededError,
@@ -10,14 +9,8 @@ import {
 import type { CliExecutionError, ForgeKind } from "./types";
 
 const diagnosticOutputLimit = 1024 * 1024;
-const defaultMaxOutputBytes = 32 * 1024 * 1024;
-const defaultTimeoutMs = 30_000;
-
-interface CliExecutionOptions {
-  readonly signal?: AbortSignal;
-  readonly timeoutMs?: number;
-  readonly maxOutputBytes?: number;
-}
+const maxOutputBytes = 32 * 1024 * 1024;
+const timeoutMs = 30_000;
 
 /** Internal abort signal for the stream readers, mapped to a domain error by
  * the `catch` handler of the surrounding `Result.tryPromise`. */
@@ -30,17 +23,7 @@ export async function executeCli(
   executable: string,
   args: readonly string[],
   cwd: string,
-  options: CliExecutionOptions = {},
 ): Promise<Result<string, CliExecutionError>> {
-  if (options.signal?.aborted) {
-    return Result.err(
-      new ForgeCancelledError({
-        kind,
-        message: "CLI execution was cancelled before it started",
-      }),
-    );
-  }
-
   const execution = await Result.tryPromise({
     try: async () => {
       const subprocess = Bun.spawn([executable, ...args], {
@@ -49,42 +32,19 @@ export async function executeCli(
         stdout: "pipe",
         stderr: "pipe",
       });
-      let cancelled = false;
       let timedOut = false;
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
-
-      const cancel = () => {
-        cancelled = true;
-        subprocess.kill();
-      };
-      const expire = () => {
+      const timeout = setTimeout(() => {
         timedOut = true;
         subprocess.kill();
-      };
-
-      options.signal?.addEventListener("abort", cancel, { once: true });
-      timeout = setTimeout(expire, timeoutMs);
+      }, timeoutMs);
 
       try {
         const [stdout, stderr, exitCode] = await Promise.all([
-          readStream(
-            subprocess.stdout,
-            kind,
-            options.maxOutputBytes ?? defaultMaxOutputBytes,
-          ),
+          readStream(subprocess.stdout, kind, maxOutputBytes),
           readStream(subprocess.stderr, kind, diagnosticOutputLimit),
           subprocess.exited,
         ]);
 
-        if (cancelled) {
-          throw new CliOutputFailure({
-            failure: new ForgeCancelledError({
-              kind,
-              message: "CLI execution was cancelled",
-            }),
-          });
-        }
         if (timedOut) {
           throw new CliOutputFailure({
             failure: new ForgeTimedOutError({
@@ -99,10 +59,7 @@ export async function executeCli(
         subprocess.kill();
         throw cause;
       } finally {
-        if (timeout !== undefined) {
-          clearTimeout(timeout);
-        }
-        options.signal?.removeEventListener("abort", cancel);
+        clearTimeout(timeout);
       }
     },
     catch: (cause): CliExecutionError => {

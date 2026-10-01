@@ -1,4 +1,5 @@
 import { Result } from "better-result";
+import { runCli } from "@/utils/cli";
 import { GitCommandFailedError, GitUnavailableError } from "./types";
 
 import type {
@@ -14,39 +15,21 @@ async function runGit(
   args: readonly string[],
   okExitCodes: readonly number[] = [0],
 ): Promise<Result<string, GitError>> {
-  const execution = await Result.tryPromise({
-    try: async () => {
-      const subprocess = Bun.spawn(["git", ...args], {
-        cwd,
-        stdin: "ignore",
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-
-      const [stdout, , exitCode] = await Promise.all([
-        new Response(subprocess.stdout).text(),
-        new Response(subprocess.stderr).text(),
-        subprocess.exited,
-      ]);
-
-      return { stdout, exitCode };
-    },
-    catch: () =>
-      new GitUnavailableError({
-        message: "git could not be executed",
-      }),
-  });
-
-  return execution.andThen(({ stdout, exitCode }) =>
-    okExitCodes.includes(exitCode)
-      ? Result.ok(stdout)
-      : Result.err<never, GitError>(
-          new GitCommandFailedError({
-            exitCode,
-            message: `git ${args.join(" ")} exited with code ${exitCode}`,
-          }),
-        ),
-  );
+  const execution = await runCli("git", args, cwd);
+  return execution
+    .mapError(
+      (error): GitError => new GitUnavailableError({ message: error.message }),
+    )
+    .andThen(({ stdout, exitCode }) =>
+      okExitCodes.includes(exitCode)
+        ? Result.ok(stdout)
+        : Result.err<never, GitError>(
+            new GitCommandFailedError({
+              exitCode,
+              message: `git ${args.join(" ")} exited with code ${exitCode}`,
+            }),
+          ),
+    );
 }
 
 export async function readGitRemoteOutput(

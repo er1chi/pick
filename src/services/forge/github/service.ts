@@ -1,6 +1,6 @@
 import { Result } from "better-result";
-import { executeCli } from "../cli-execution";
 import { decoder, ForgeApi } from "../forge-api";
+import { executeCli } from "../forge-cli";
 import { verifyCli } from "../forge-cli";
 import { normalizeCommit, normalizeSummary } from "../normalization";
 import { repositoryForRemotes } from "../remote";

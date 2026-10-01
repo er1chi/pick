@@ -10,7 +10,6 @@ import {
   normalizeTeams,
   normalizeUser,
   normalizeUsers,
-  withExpectedCommentCount,
 } from "../normalization";
 import { repositoryForRemotes } from "../remote";
 import {
@@ -326,5 +325,19 @@ function normalizeComment(payload: ForgejoComment): PullRequestComment {
     author: normalizeUser(payload.user),
     body: payload.body ?? null,
     createdAt: payload.created_at ?? null,
+  };
+}
+
+/** Marks comments as truncated when the forge reports more than it returned. */
+function withExpectedCommentCount(
+  section: ForgeSection<readonly PullRequestComment[]>,
+  expectedCount: number | null,
+): ForgeSection<readonly PullRequestComment[]> {
+  if (section.status !== "available" || expectedCount === null) {
+    return section;
+  }
+  return {
+    ...section,
+    truncated: section.value.length < expectedCount,
   };
 }

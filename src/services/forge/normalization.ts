@@ -11,10 +11,8 @@ import type {
   ForgeKind,
   ForgeOperationError,
   ForgeRepository,
-  ForgeSection,
   ForgeTeam,
   ForgeUser,
-  PullRequestComment,
   PullRequestCommit,
   PullRequestSummary,
 } from "./types";
@@ -83,20 +81,6 @@ export function normalizeCommit(payload: CommitPayload): PullRequestCommit {
     authoredAt: payload.commit.author?.date ?? null,
     committedAt: payload.commit.committer?.date ?? null,
     url: payload.html_url ?? null,
-  };
-}
-
-/** Marks comments as truncated when the forge reports more than it returned. */
-export function withExpectedCommentCount(
-  section: ForgeSection<readonly PullRequestComment[]>,
-  expectedCount: number | null,
-): ForgeSection<readonly PullRequestComment[]> {
-  if (section.status !== "available" || expectedCount === null) {
-    return section;
-  }
-  return {
-    ...section,
-    truncated: section.value.length < expectedCount,
   };
 }
 

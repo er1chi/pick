@@ -1,14 +1,9 @@
-import { normalizeTeams, normalizeUser, normalizeUsers } from "./normalization";
+import {
+  normalizeTeams,
+  normalizeUser,
+  normalizeUsers,
+} from "../normalization";
 
-import type {
-  GithubChecks,
-  GithubComments,
-  GithubLinkedIssues,
-  GithubProjects,
-  GithubPullRequestView,
-  GithubRequestedReviewers,
-  GithubReviews,
-} from "./github-schemas";
 import type {
   ForgeRepository,
   PullRequestCheck,
@@ -19,7 +14,16 @@ import type {
   PullRequestReview,
   PullRequestReviewComment,
   PullRequestReviewerRequests,
-} from "./types";
+} from "../types";
+import type {
+  GithubChecks,
+  GithubComments,
+  GithubLinkedIssues,
+  GithubProjects,
+  GithubPullRequestView,
+  GithubRequestedReviewers,
+  GithubReviews,
+} from "./schemas";
 
 type GithubComment = GithubComments[number];
 

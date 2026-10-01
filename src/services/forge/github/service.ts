@@ -1,7 +1,18 @@
 import { Result } from "better-result";
-import { executeCli } from "./cli-execution";
-import { decoder, ForgeApi } from "./forge-api";
-import { verifyCli } from "./forge-cli";
+import { executeCli } from "../cli-execution";
+import { decoder, ForgeApi } from "../forge-api";
+import { verifyCli } from "../forge-cli";
+import { normalizeCommit, normalizeSummary } from "../normalization";
+import { repositoryForRemotes } from "../remote";
+import {
+  requestPullRequest,
+  requestPullRequestList,
+  validateCommitSha,
+  withRepository,
+} from "../requests";
+import { pullSummarySchema } from "../schema-primitives";
+import { available, failed, sectionFrom, sectionFromResult } from "../section";
+import { ForgeKind } from "../types";
 import {
   normalizeChecks,
   normalizeConversationComments,
@@ -11,29 +22,14 @@ import {
   normalizeRequestedReviewers,
   normalizeReviewComments,
   normalizeReviews,
-} from "./github-normalize";
-import {
-  pullRequestProjectsQuery,
-  pullRequestViewQuery,
-} from "./github-queries";
-import * as githubSchemas from "./github-schemas";
-import { normalizeCommit, normalizeSummary } from "./normalization";
-import { repositoryForRemotes } from "./remote";
-import {
-  requestPullRequest,
-  requestPullRequestList,
-  validateCommitSha,
-  withRepository,
-} from "./requests";
-import { pullSummarySchema } from "./schema-primitives";
-import { available, failed, sectionFrom, sectionFromResult } from "./section";
-import { ForgeKind } from "./types";
+} from "./normalize";
+import { pullRequestProjectsQuery, pullRequestViewQuery } from "./queries";
+import * as githubSchemas from "./schemas";
 
 import type { type } from "arktype";
 import type { Result as ResultType } from "better-result";
-import type { Decoder } from "./forge-api";
-import type { GithubPullRequestView } from "./github-schemas";
-import type { RepositoryLookup } from "./requests";
+import type { Decoder } from "../forge-api";
+import type { RepositoryLookup } from "../requests";
 import type {
   Forge,
   ForgeOperationError,
@@ -49,7 +45,8 @@ import type {
   PullRequestProject,
   PullRequestResourceOptions,
   PullRequestReviewsResource,
-} from "./types";
+} from "../types";
+import type { GithubPullRequestView } from "./schemas";
 
 const executable = "gh";
 const kind = ForgeKind.GitHub;

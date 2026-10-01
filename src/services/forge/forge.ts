@@ -1,5 +1,5 @@
-import { ForgejoService } from "./forgejo-service";
-import { GithubService } from "./github-service";
+import { ForgejoService } from "./forgejo/service";
+import { GithubService } from "./github/service";
 import { ForgeKind } from "./types";
 
 import type { Result } from "better-result";

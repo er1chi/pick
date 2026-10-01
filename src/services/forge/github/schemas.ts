@@ -7,7 +7,7 @@ import {
   safeIntegerSchema,
   teamSchema,
   userSchema,
-} from "./schema-primitives";
+} from "../schema-primitives";
 
 const optionalUnknown = type("unknown").optional();
 

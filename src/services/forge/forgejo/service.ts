@@ -2,8 +2,8 @@ import { type } from "arktype";
 import { Result } from "better-result";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { decoder, ForgeApi } from "./forge-api";
-import { verifyCli } from "./forge-cli";
+import { decoder, ForgeApi } from "../forge-api";
+import { verifyCli } from "../forge-cli";
 import {
   normalizeCommit,
   normalizeSummary,
@@ -11,14 +11,14 @@ import {
   normalizeUser,
   normalizeUsers,
   withExpectedCommentCount,
-} from "./normalization";
-import { repositoryForRemotes } from "./remote";
+} from "../normalization";
+import { repositoryForRemotes } from "../remote";
 import {
   requestPullRequest,
   requestPullRequestList,
   validateCommitSha,
   withRepository,
-} from "./requests";
+} from "../requests";
 import {
   commitSchema,
   optionalBoolean,
@@ -29,12 +29,12 @@ import {
   safeIntegerSchema,
   teamSchema,
   userSchema,
-} from "./schema-primitives";
-import { available, failed, sectionFrom, unsupported } from "./section";
-import { ForgeInvalidRequestError, ForgeKind } from "./types";
+} from "../schema-primitives";
+import { available, failed, sectionFrom, unsupported } from "../section";
+import { ForgeInvalidRequestError, ForgeKind } from "../types";
 
 import type { Result as ResultType } from "better-result";
-import type { RepositoryLookup } from "./requests";
+import type { RepositoryLookup } from "../requests";
 import type {
   Forge,
   ForgeOperationError,
@@ -49,7 +49,7 @@ import type {
   PullRequestRef,
   PullRequestResourceOptions,
   PullRequestReviewerRequests,
-} from "./types";
+} from "../types";
 
 const executable = "fj";
 const kind = ForgeKind.Forgejo;

@@ -41,7 +41,8 @@ const filterLabels = {
   all: "All",
 } as const;
 
-const connectionHint = "Try adjusting aliases in the forgejo-cli config.";
+const connectionHint =
+  "Check that the remote URL points at the Forgejo instance.";
 const maskedUrl = "••••••••••••";
 
 function listErrorHint(titles: PrTitles): string | undefined {

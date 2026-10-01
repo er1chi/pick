@@ -1,17 +1,18 @@
 import { type } from "arktype";
 import { Result } from "better-result";
-import { ForgeCli } from "./forge-cli";
-import { ForgejoApi } from "./forgejo-api";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { decoder, ForgeApi } from "./forge-api";
+import { verifyCli } from "./forge-cli";
 import {
-  matchPullRequestNumber,
   normalizeCommit,
-  normalizeRepository,
-  normalizeState,
+  normalizeSummary,
   normalizeTeams,
   normalizeUser,
   normalizeUsers,
   withExpectedCommentCount,
 } from "./normalization";
+import { repositoryForRemotes } from "./remote";
 import {
   requestPullRequest,
   requestPullRequestList,
@@ -24,15 +25,15 @@ import {
   optionalNullableString,
   optionalNumber,
   optionalUser,
+  pullSummarySchema,
   safeIntegerSchema,
   teamSchema,
   userSchema,
 } from "./schema-primitives";
-import { available, failed, sectionFromResult, unsupported } from "./section";
-import { ForgeKind } from "./types";
+import { available, failed, sectionFrom, unsupported } from "./section";
+import { ForgeInvalidRequestError, ForgeKind } from "./types";
 
 import type { Result as ResultType } from "better-result";
-import type { CliRunner } from "./forge-cli";
 import type { RepositoryLookup } from "./requests";
 import type {
   Forge,
@@ -48,32 +49,19 @@ import type {
   PullRequestRef,
   PullRequestResourceOptions,
   PullRequestReviewerRequests,
-  PullRequestSummary,
 } from "./types";
 
 const executable = "fj";
 const kind = ForgeKind.Forgejo;
 
-const repositorySchema = type({
-  full_name: "string",
-  html_url: optionalNullableString,
+const keysSchema = type({
+  hosts: type({ "[string]": type({ token: "string" }) }),
 });
+
 const branchSchema = type({
   label: optionalNullableString,
   ref: optionalNullableString,
   sha: optionalNullableString,
-});
-const issueSchema = type({
-  number: safeIntegerSchema,
-  title: "string",
-  state: "string",
-  user: optionalUser,
-  pull_request: type({
-    draft: optionalBoolean,
-    merged: optionalBoolean,
-  })
-    .or("null")
-    .optional(),
 });
 const viewSchema = type({
   number: safeIntegerSchema,
@@ -97,42 +85,62 @@ const commentSchema = type({
 });
 
 type ForgejoView = typeof viewSchema.infer;
-type ForgejoIssue = typeof issueSchema.infer;
 type ForgejoComment = typeof commentSchema.infer;
 type ForgejoBranch = typeof branchSchema.infer;
 
-export class ForgejoService implements Forge {
-  public readonly kind = kind;
-  private readonly repository: RepositoryLookup;
+/** The token `fj auth` saved for the instance, which the CLI keeps in its data
+ * directory. */
+async function readFjToken(host: string): Promise<string | undefined> {
+  const dataDir =
+    process.env.FJ_DATA_DIR ??
+    join(
+      process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"),
+      "forgejo-cli",
+    );
+  const text = await Result.tryPromise(() =>
+    Bun.file(join(dataDir, "keys.json")).text(),
+  );
+  if (text.isErr()) {
+    return undefined;
+  }
+  const keys = keysSchema(Result.try(() => JSON.parse(text.value)).unwrapOr(0));
+  return keys instanceof type.errors ? undefined : keys.hosts[host]?.token;
+}
 
-  constructor(
-    private readonly cli: ForgeCli,
-    private readonly api: ForgejoApi = new ForgejoApi(),
-  ) {
-    this.repository = cli.cachedJson(["--json", "repo", "view"], (cause) =>
-      cli
-        .parse(
-          repositorySchema,
-          cause,
-          "Forgejo repository response did not match the schema",
-        )
-        .andThen((payload) =>
-          normalizeRepository(kind, payload.full_name, payload.html_url),
-        ),
+function apiUrl(
+  repository: ForgeRepository,
+): Result<string, ForgeOperationError> {
+  const suffix = `/${repository.fullName}`;
+  if (repository.url === null || !repository.url.endsWith(suffix)) {
+    return Result.err(
+      new ForgeInvalidRequestError({
+        kind,
+        message: "Forgejo did not report a web URL for this repository",
+      }),
     );
   }
+  return Result.ok(`${repository.url.slice(0, -suffix.length)}/api/v1`);
+}
 
-  public static async initialize(
-    cwd: string,
-    run?: CliRunner,
-    api?: ForgejoApi,
-  ) {
-    const initialized = await ForgeCli.initialize(kind, executable, cwd, run);
-    return initialized.map((cli) => new ForgejoService(cli, api));
+export class ForgejoService implements Forge {
+  public readonly kind = kind;
+
+  constructor(
+    private readonly repository: RepositoryLookup,
+    private readonly api: ForgeApi,
+  ) {}
+
+  public static async initialize(cwd: string, remoteOutput: string) {
+    const verified = await verifyCli(kind, executable, cwd);
+    const repository = repositoryForRemotes(kind, remoteOutput);
+    const api = new ForgeApi(kind, {
+      baseUrl: apiUrl,
+      token: readFjToken,
+      pageQuery: "limit=50",
+    });
+    return verified.map(() => new ForgejoService(async () => repository, api));
   }
 
-  /** `fj pr search` has no limit flag and always fetches every page, so the
-   * limit is applied to the full result. */
   public async getPullRequests(
     options: PullRequestListOptions = {},
   ): Promise<ResultType<PullRequestList, ForgeOperationError>> {
@@ -140,27 +148,20 @@ export class ForgejoService implements Forge {
       kind,
       this.repository,
       options,
-      (repository, { state }) =>
-        this.cli.json(
-          [
-            "--json",
-            "pr",
-            "search",
-            "--state",
-            state,
-            "--repo",
-            repository.fullName,
-          ],
-          (cause) =>
-            this.cli
-              .parse(
-                issueSchema.array(),
-                cause,
-                "Forgejo pull request list did not match the schema",
-              )
-              .map((payload) => payload.map(normalizeSummary)),
+      async (repository, { limit, state }) => {
+        const items = await this.api.pagedJson(
+          repository,
+          `pulls?state=${state}`,
+          decoder(
+            kind,
+            pullSummarySchema.array(),
+            "Forgejo pull request list did not match the schema",
+          ),
           options.signal,
-        ),
+          limit + 1,
+        );
+        return items.map((payload) => payload.map(normalizeSummary));
+      },
     );
   }
 
@@ -181,14 +182,14 @@ export class ForgejoService implements Forge {
     if (valid.isErr()) {
       return valid;
     }
-    return withRepository(kind, this.repository, async (repository) => {
-      const diff = await this.api.text(
-        repository,
-        `git/commits/${sha}.diff`,
-        options.signal,
-      );
-      return Result.ok(sectionFromResult(diff.map((text) => ({ text }))));
-    });
+    return withRepository(kind, this.repository, async (repository) =>
+      Result.ok(
+        await sectionFrom(
+          this.api.text(repository, `git/commits/${sha}.diff`, options.signal),
+          (text) => ({ text }),
+        ),
+      ),
+    );
   }
 
   private async loadDocument(
@@ -196,42 +197,47 @@ export class ForgejoService implements Forge {
     repository: ForgeRepository,
     signal: AbortSignal | undefined,
   ): Promise<PullRequestDocument> {
-    const pullRequest = ["pr", "view", String(number), "--repo"];
+    const path = `pulls/${number}`;
     const [view, comments, diff, commits] = await Promise.all([
-      this.cli.json(
-        ["--json", ...pullRequest, repository.fullName],
-        (cause) =>
-          this.cli
-            .parse(
-              viewSchema,
-              cause,
-              "Forgejo pull request response did not match the schema",
-            )
-            .andThen((payload) =>
-              matchPullRequestNumber(kind, payload, number),
-            ),
-        signal,
-      ),
-      this.cli.section(
-        ["--json", ...pullRequest, repository.fullName, "comments"],
-        commentSchema.array(),
-        (payload) => payload.map(normalizeComment),
-        "Forgejo comments response did not match the schema",
-        signal,
-      ),
-      this.cli.patch([...pullRequest, repository.fullName, "diff"], signal),
-      this.api.pagedJson(
+      this.api.json(
         repository,
-        `pulls/${number}/commits?stat=false&verification=false&files=false`,
-        (cause) =>
-          this.cli
-            .parse(
-              commitSchema.array(),
-              cause,
-              "Forgejo commits response did not match the schema",
-            )
-            .map((payload) => payload.map(normalizeCommit)),
+        path,
+        decoder(
+          kind,
+          viewSchema,
+          "Forgejo pull request response did not match the schema",
+        ),
         signal,
+      ),
+      sectionFrom(
+        this.api.pagedJson(
+          repository,
+          `issues/${number}/comments`,
+          decoder(
+            kind,
+            commentSchema.array(),
+            "Forgejo comments response did not match the schema",
+          ),
+          signal,
+        ),
+        (payload) => payload.map(normalizeComment),
+      ),
+      sectionFrom(
+        this.api.text(repository, `${path}.diff`, signal),
+        (text) => ({ text }),
+      ),
+      sectionFrom(
+        this.api.pagedJson(
+          repository,
+          `${path}/commits?stat=false&verification=false&files=false`,
+          decoder(
+            kind,
+            commitSchema.array(),
+            "Forgejo commits response did not match the schema",
+          ),
+          signal,
+        ),
+        (payload) => payload.map(normalizeCommit),
       ),
     ]);
 
@@ -243,42 +249,27 @@ export class ForgejoService implements Forge {
         ? withExpectedCommentCount(comments, view.value.comments ?? null)
         : comments,
       diff,
-      commits: sectionFromResult(commits),
+      commits,
       reviews: {
-        reviews: unsupported(
-          "The Forgejo CLI does not expose submitted pull request reviews",
-        ),
+        reviews: unsupported("Forgejo pull request reviews are not loaded"),
         reviewComments: unsupported(
-          "The Forgejo CLI does not expose inline review comments",
+          "Forgejo inline review comments are not loaded",
         ),
         requestedReviewers: view.isOk()
           ? normalizeRequestedReviewers(view.value)
           : failed(view.error),
       },
-      checks: unsupported(
-        "The Forgejo CLI prints pull request status only as human-readable output",
-      ),
+      checks: unsupported("Forgejo pull request checks are not loaded"),
       development: {
         projects: unsupported(
-          "Forgejo pull request projects are not exposed by the CLI",
+          "Forgejo pull request projects are not exposed by the API",
         ),
         linkedIssues: unsupported(
-          "Forgejo linked issue data is not exposed by the CLI",
+          "Forgejo linked issue data is not exposed by the API",
         ),
       },
     };
   }
-}
-
-function normalizeSummary(payload: ForgejoIssue): PullRequestSummary {
-  const pullRequest = payload.pull_request;
-  return {
-    number: payload.number,
-    title: payload.title,
-    state: normalizeState(payload.state, pullRequest?.merged === true),
-    isDraft: pullRequest?.draft ?? null,
-    author: normalizeUser(payload.user),
-  };
 }
 
 function normalizeDetails(

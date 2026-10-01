@@ -1,70 +1,36 @@
-import {
-  normalizeCommit,
-  normalizeGithubState,
-  normalizeRepository,
-  normalizeTeams,
-  normalizeUser,
-  normalizeUsers,
-} from "./normalization";
-import { ForgeKind } from "./types";
+import { normalizeTeams, normalizeUser, normalizeUsers } from "./normalization";
 
-import type { Result as ResultType } from "better-result";
 import type {
-  GithubCheck,
-  GithubCommentPages,
-  GithubCommitPages,
-  GithubLinkedIssue,
-  GithubListItem,
-  GithubProjectItem,
+  GithubChecks,
+  GithubComments,
+  GithubLinkedIssues,
+  GithubProjects,
   GithubPullRequestView,
-  GithubRepositoryPayload,
   GithubRequestedReviewers,
-  GithubReviewPages,
+  GithubReviews,
 } from "./github-schemas";
 import type {
-  ForgeOperationError,
   ForgeRepository,
   PullRequestCheck,
   PullRequestComment,
-  PullRequestCommit,
   PullRequestDetails,
   PullRequestLinkedIssue,
   PullRequestProject,
   PullRequestReview,
   PullRequestReviewComment,
   PullRequestReviewerRequests,
-  PullRequestSummary,
 } from "./types";
 
-type GithubComment = GithubCommentPages[number][number];
-
-export function normalizeRepositoryPayload(
-  payload: GithubRepositoryPayload,
-): ResultType<ForgeRepository, ForgeOperationError> {
-  return normalizeRepository(
-    ForgeKind.GitHub,
-    payload.nameWithOwner,
-    payload.url,
-  );
-}
-
-export function normalizeSummary(payload: GithubListItem): PullRequestSummary {
-  return {
-    number: payload.number,
-    title: payload.title,
-    state: normalizeGithubState(payload.state),
-    isDraft: payload.isDraft ?? null,
-    author: normalizeUser(payload.author),
-  };
-}
+type GithubComment = GithubComments[number];
 
 export function normalizeDetails(
   payload: GithubPullRequestView,
   repository: ForgeRepository,
+  number: number,
 ): PullRequestDetails {
   return {
     repository,
-    number: payload.number,
+    number,
     body: payload.body ?? null,
     createdAt: payload.createdAt ?? null,
     updatedAt: payload.updatedAt ?? null,
@@ -81,31 +47,25 @@ export function normalizeDetails(
   };
 }
 
-export function normalizeCommits(
-  payload: GithubCommitPages,
-): readonly PullRequestCommit[] {
-  return payload.flat().map(normalizeCommit);
-}
-
 export function normalizeConversationComments(
-  payload: GithubCommentPages,
+  payload: GithubComments,
 ): readonly PullRequestComment[] {
-  return payload.flat().map(normalizeComment);
+  return payload.map(normalizeComment);
 }
 
 export function normalizeReviewComments(
-  payload: GithubCommentPages,
+  payload: GithubComments,
 ): readonly PullRequestReviewComment[] {
-  return payload.flat().map((comment) => ({
+  return payload.map((comment) => ({
     ...normalizeComment(comment),
     path: comment.path ?? null,
   }));
 }
 
 export function normalizeReviews(
-  payload: GithubReviewPages,
+  payload: GithubReviews,
 ): readonly PullRequestReview[] {
-  return payload.flat().map((review) => ({
+  return payload.map((review) => ({
     author: normalizeUser(review.user),
     body: review.body ?? null,
     state: review.state,
@@ -123,9 +83,11 @@ export function normalizeRequestedReviewers(
 }
 
 export function normalizeChecks(
-  checks: readonly GithubCheck[],
+  commits: GithubChecks,
 ): readonly PullRequestCheck[] {
-  return checks.map((check) => ({
+  const contexts =
+    commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [];
+  return contexts.map((check) => ({
     name: check.name || check.context || "Unnamed check",
     status: check.status ?? check.state ?? "unknown",
     conclusion: check.conclusion ?? null,
@@ -134,18 +96,18 @@ export function normalizeChecks(
 }
 
 export function normalizeProjects(
-  projectItems: readonly GithubProjectItem[],
+  payload: GithubProjects,
 ): readonly PullRequestProject[] {
-  return projectItems.map((project) => ({
-    title: project.title,
-    status: project.status?.name || null,
+  return payload.projectItems.nodes.map((item) => ({
+    title: item.project.title,
+    status: item.fieldValueByName?.name || null,
   }));
 }
 
 export function normalizeLinkedIssues(
-  issues: readonly GithubLinkedIssue[],
+  issues: GithubLinkedIssues,
 ): readonly PullRequestLinkedIssue[] {
-  return issues.map((issue) => ({
+  return issues.nodes.map((issue) => ({
     repository: `${issue.repository.owner.login}/${issue.repository.name}`,
     number: issue.number,
   }));

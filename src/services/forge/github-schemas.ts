@@ -9,62 +9,30 @@ import {
   userSchema,
 } from "./schema-primitives";
 
-export const repositorySchema = type({
-  nameWithOwner: "string",
-  url: optionalNullableString,
-});
-
 const optionalUnknown = type("unknown").optional();
 
-/** The `gh pr view --json` fields read from the payload. */
-export const pullRequestViewFields = [
-  "number",
-  "body",
-  "createdAt",
-  "updatedAt",
-  "mergedAt",
-  "baseRefName",
-  "baseRefOid",
-  "headRefName",
-  "headRefOid",
-  "additions",
-  "deletions",
-  "mergeable",
-  "mergeStateStatus",
-  "reviewDecision",
-  "statusCheckRollup",
-  "projectItems",
-  "closingIssuesReferences",
-].join(",");
-
-/** Optional sections stay `unknown` here and are parsed separately, so a
- * checks or projects mismatch cannot fail details. */
+/** Checks and linked issues stay `unknown` here and are parsed separately, so
+ * a mismatch in either cannot fail details. */
 export const pullRequestViewSchema = type({
-  number: safeIntegerSchema,
-  body: optionalNullableString,
-  createdAt: optionalNullableString,
-  updatedAt: optionalNullableString,
-  mergedAt: optionalNullableString,
-  baseRefName: optionalNullableString,
-  baseRefOid: optionalNullableString,
-  headRefName: optionalNullableString,
-  headRefOid: optionalNullableString,
-  additions: optionalNumber,
-  deletions: optionalNumber,
-  mergeable: optionalNullableString,
-  mergeStateStatus: optionalNullableString,
-  reviewDecision: optionalNullableString,
-  statusCheckRollup: optionalUnknown,
-  projectItems: optionalUnknown,
-  closingIssuesReferences: optionalUnknown,
-});
-
-export const listItemSchema = type({
-  number: safeIntegerSchema,
-  title: "string",
-  state: "string",
-  isDraft: type("boolean | null").optional(),
-  author: optionalUser,
+  repository: type({
+    pullRequest: type({
+      body: optionalNullableString,
+      createdAt: optionalNullableString,
+      updatedAt: optionalNullableString,
+      mergedAt: optionalNullableString,
+      baseRefName: optionalNullableString,
+      baseRefOid: optionalNullableString,
+      headRefName: optionalNullableString,
+      headRefOid: optionalNullableString,
+      additions: optionalNumber,
+      deletions: optionalNumber,
+      mergeable: optionalNullableString,
+      mergeStateStatus: optionalNullableString,
+      reviewDecision: optionalNullableString,
+      commits: optionalUnknown,
+      closingIssuesReferences: optionalUnknown,
+    }),
+  }),
 });
 
 const commentSchema = type({
@@ -84,9 +52,9 @@ export const requestedReviewersSchema = type({
   teams: teamSchema.array(),
 });
 
-/** A `statusCheckRollup` entry: a CheckRun (`name`, `status`, `detailsUrl`)
+/** A status check rollup entry: a CheckRun (`name`, `status`, `detailsUrl`)
  * or a StatusContext (`context`, `state`, `targetUrl`). */
-export const checkSchema = type({
+const checkSchema = type({
   name: optionalNullableString,
   context: optionalNullableString,
   status: optionalNullableString,
@@ -96,32 +64,50 @@ export const checkSchema = type({
   targetUrl: optionalNullableString,
 });
 
-/** `gh` exports a project item as only its project title and Status field. */
-export const projectItemSchema = type({
-  title: "string",
-  status: type({ name: optionalNullableString }).or("null").optional(),
+/** The checks of the head commit, the last of the pull request's commits. */
+export const checksSchema = type({
+  nodes: type({
+    commit: type({
+      statusCheckRollup: type({
+        contexts: type({ nodes: checkSchema.array() }),
+      }).or("null"),
+    }),
+  }).array(),
 });
 
-/** `gh` exports a closing issue reference without its title or state. */
-export const linkedIssueSchema = type({
-  number: safeIntegerSchema,
+export const pullRequestProjectsSchema = type({
   repository: type({
-    name: "string",
-    owner: type({ login: "string" }),
+    pullRequest: type({
+      projectItems: type({
+        nodes: type({
+          project: type({ title: "string" }),
+          fieldValueByName: type({ name: optionalNullableString }).or("null"),
+        }).array(),
+      }),
+    }),
   }),
 });
 
-export const commitPagesSchema = commitSchema.array().array();
-export const commentPagesSchema = commentSchema.array().array();
-export const reviewPagesSchema = reviewSchema.array().array();
+export const linkedIssuesSchema = type({
+  nodes: type({
+    number: safeIntegerSchema,
+    repository: type({
+      name: "string",
+      owner: type({ login: "string" }),
+    }),
+  }).array(),
+});
 
-export type GithubRepositoryPayload = typeof repositorySchema.infer;
-export type GithubPullRequestView = typeof pullRequestViewSchema.infer;
-export type GithubListItem = typeof listItemSchema.infer;
-export type GithubCommitPages = typeof commitPagesSchema.infer;
-export type GithubCommentPages = typeof commentPagesSchema.infer;
-export type GithubReviewPages = typeof reviewPagesSchema.infer;
+export const commitsSchema = commitSchema.array();
+export const commentsSchema = commentSchema.array();
+export const reviewsSchema = reviewSchema.array();
+
+export type GithubPullRequestView =
+  (typeof pullRequestViewSchema.infer)["repository"]["pullRequest"];
+export type GithubComments = readonly (typeof commentSchema.infer)[];
+export type GithubReviews = readonly (typeof reviewSchema.infer)[];
 export type GithubRequestedReviewers = typeof requestedReviewersSchema.infer;
-export type GithubCheck = typeof checkSchema.infer;
-export type GithubProjectItem = typeof projectItemSchema.infer;
-export type GithubLinkedIssue = typeof linkedIssueSchema.infer;
+export type GithubChecks = typeof checksSchema.infer;
+export type GithubProjects =
+  (typeof pullRequestProjectsSchema.infer)["repository"]["pullRequest"];
+export type GithubLinkedIssues = typeof linkedIssuesSchema.infer;

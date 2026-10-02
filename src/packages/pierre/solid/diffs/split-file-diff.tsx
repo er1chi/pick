@@ -25,8 +25,11 @@ import type { DisplayRow, DisplayRowKind } from "./utils/display-row";
 export interface SplitFileDiffScrollTarget {
   scrollBy(lines: number): void;
   reset(): void;
-  jumpHunk(direction: 1 | -1): void;
+  jump(unit: DiffJumpUnit, direction: 1 | -1): void;
 }
+
+/** A hunk from the patch, or a run of changed lines inside one. */
+type DiffJumpUnit = "hunk" | "change";
 
 export interface SplitFileDiffProps {
   fileDiff: FileDiffMetadata;
@@ -132,6 +135,7 @@ function SplitCell(props: {
   width: number;
   disableLineNumbers: boolean;
   tokens: readonly ThemedToken[] | undefined;
+  active: boolean;
 }) {
   const gutter = () =>
     gutterText(props.row, props.line, props.width, props.disableLineNumbers);
@@ -149,7 +153,9 @@ function SplitCell(props: {
       backgroundColor={kindBackground(props.row?.kind)}
     >
       <text fg={kindColor(props.row?.kind)} wrapMode="none">
-        <span>{gutter()}</span>
+        <span style={{ fg: props.active ? colors.blue : undefined }}>
+          {gutter()}
+        </span>
         <Show
           when={props.tokens}
           fallback={<span>{props.row?.text ?? ""}</span>}
@@ -195,6 +201,7 @@ function FillerRow(props: { side: Side }) {
 function PaneRow(props: {
   row: SplitDisplayRow;
   side: Side;
+  active: boolean;
   width: number;
   disableLineNumbers: boolean;
   tokens: readonly ThemedToken[] | undefined;
@@ -209,7 +216,7 @@ function PaneRow(props: {
         flexShrink={0}
         overflow="hidden"
       >
-        <text fg={colors.dim} wrapMode="none">
+        <text fg={props.active ? colors.blue : colors.dim} wrapMode="none">
           {row.text}
         </text>
       </box>
@@ -229,6 +236,7 @@ function PaneRow(props: {
       width={props.width}
       disableLineNumbers={props.disableLineNumbers}
       tokens={props.tokens}
+      active={props.active}
     />
   );
 }
@@ -249,6 +257,7 @@ function DiffPane(props: {
   title: string;
   side: Side;
   rows: readonly SplitDisplayRow[];
+  activeKey: string | undefined;
   width: number;
   split: boolean;
   disableLineNumbers: boolean;
@@ -278,6 +287,7 @@ function DiffPane(props: {
           <PaneRow
             row={row}
             side={props.side}
+            active={row.key === props.activeKey}
             width={props.width}
             disableLineNumbers={props.disableLineNumbers}
             tokens={props.tokensFor(row.key, props.side)}
@@ -286,6 +296,24 @@ function DiffPane(props: {
       </For>
     </scrollbox>
   );
+}
+
+function isChangeRow(row: SplitDisplayRow | undefined): boolean {
+  return (
+    row?.kind === "line" &&
+    (row.left?.kind === "deletion" || row.right?.kind === "addition")
+  );
+}
+
+/** The first offset past `from` in `direction`, if any. */
+function offsetFrom(
+  offsets: readonly number[],
+  from: number,
+  direction: 1 | -1,
+): number | undefined {
+  return direction === 1
+    ? offsets.find((offset) => offset > from)
+    : offsets.findLast((offset) => offset < from);
 }
 
 export function SplitFileDiff(props: SplitFileDiffProps) {
@@ -302,6 +330,17 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
   const hunkOffsets = createMemo(() =>
     rows().flatMap((row, index) => (row.kind === "hunk-header" ? [index] : [])),
   );
+  const changeOffsets = createMemo(() =>
+    rows().flatMap((row, index) =>
+      isChangeRow(row) && !isChangeRow(rows()[index - 1]) ? [index] : [],
+    ),
+  );
+  // The row last jumped to. Targets near the end of the diff cannot all be
+  // scrolled to the top of the viewport, so the cursor is tracked separately
+  // from scrollTop and its row is highlighted to show where a jump landed.
+  const [activeRow, setActiveRow] = createSignal<number | undefined>();
+  const activeRowKey = () => rows()[activeRow() ?? -1]?.key;
+  let activeRowTop: number | undefined;
   // A side without any lines (a new file has no "Before", a deleted file no
   // "After") is dropped so the other pane takes the full width. "After" stays
   // when both sides are empty so the diff still renders a surface.
@@ -354,28 +393,37 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
 
     const target: SplitFileDiffScrollTarget = {
       scrollBy(lines) {
+        setActiveRow(undefined);
         for (const pane of panes) {
           pane.scrollTop += lines;
         }
       },
       reset() {
+        setActiveRow(undefined);
         for (const pane of panes) {
           pane.scrollTop = 0;
         }
       },
-      jumpHunk(direction) {
-        const current = panes[0]?.scrollTop ?? 0;
-        const offsets = hunkOffsets();
-        const target =
-          direction === 1
-            ? offsets.find((offset) => offset > current)
-            : offsets.findLast((offset) => offset < current);
+      jump(unit, direction) {
+        const top = panes[0]?.scrollTop ?? 0;
+        const active = activeRow();
+        // Step from the active row unless the view was scrolled since the
+        // last jump (e.g. by mouse), in which case start from the viewport.
+        const from =
+          active !== undefined && top === activeRowTop ? active : top;
+        const target = offsetFrom(
+          unit === "hunk" ? hunkOffsets() : changeOffsets(),
+          from,
+          direction,
+        );
         if (target === undefined) {
           return;
         }
+        setActiveRow(target);
         for (const pane of panes) {
           pane.scrollTop = target;
         }
+        activeRowTop = panes[0]?.scrollTop;
       },
     };
     props.scrollTargetRef?.(target);
@@ -440,6 +488,7 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
             title="Before"
             side="left"
             rows={rows()}
+            activeKey={activeRowKey()}
             width={oldWidth()}
             split={split()}
             disableLineNumbers={disableLineNumbers()}
@@ -453,6 +502,7 @@ export function SplitFileDiff(props: SplitFileDiffProps) {
             title="After"
             side="right"
             rows={rows()}
+            activeKey={activeRowKey()}
             width={newWidth()}
             split={split()}
             disableLineNumbers={disableLineNumbers()}

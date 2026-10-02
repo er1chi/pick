@@ -178,7 +178,7 @@ export function PrView(props: PrViewProps) {
         name: "pr-view.next-hunk",
         run: () => {
           if (diffOpen()) {
-            diffScroll()?.jumpHunk(1);
+            diffScroll()?.jump("hunk", 1);
           }
         },
       },
@@ -186,7 +186,23 @@ export function PrView(props: PrViewProps) {
         name: "pr-view.previous-hunk",
         run: () => {
           if (diffOpen()) {
-            diffScroll()?.jumpHunk(-1);
+            diffScroll()?.jump("hunk", -1);
+          }
+        },
+      },
+      {
+        name: "pr-view.next-change",
+        run: () => {
+          if (diffOpen()) {
+            diffScroll()?.jump("change", 1);
+          }
+        },
+      },
+      {
+        name: "pr-view.previous-change",
+        run: () => {
+          if (diffOpen()) {
+            diffScroll()?.jump("change", -1);
           }
         },
       },
@@ -202,8 +218,10 @@ export function PrView(props: PrViewProps) {
       { key: "e", cmd: "pr-view.toggle-locked-files" },
       { key: "x", cmd: "pr-view.close" },
       { key: "o", cmd: "pr-view.close-diff" },
-      { key: "]", cmd: "pr-view.next-hunk" },
-      { key: "[", cmd: "pr-view.previous-hunk" },
+      { key: "]", cmd: "pr-view.next-change" },
+      { key: "[", cmd: "pr-view.previous-change" },
+      { key: "}", cmd: "pr-view.next-hunk" },
+      { key: "{", cmd: "pr-view.previous-hunk" },
     ],
   }));
 
@@ -356,7 +374,7 @@ export function PrView(props: PrViewProps) {
                   setDiffScroll={setDiffScroll}
                 />
                 {hintLine(
-                  "j/k scroll · [/] hunks · e lock files · o close diff",
+                  "j/k scroll · [/] changes · {/} hunks · e lock files · o close diff",
                 )}
               </>
             )}

@@ -7,7 +7,6 @@ import {
   splitProps,
 } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
-import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { colors } from "@/theme";
@@ -63,8 +62,8 @@ export function useSidebarList<T>(
 ): SidebarList<T> {
   const [box, setBox] = createSignal<BoxRenderable>();
   const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
-  const [_pane, setPane] = PaneStore.use();
-  const isFocused = useFocusedPane(options.pane);
+  const [pane, setPane] = PaneStore.use();
+  const isFocused = createMemo(() => pane.active === options.pane);
   const navigation = useNavigateList({ target: box });
   const highlighted = createMemo(() => options.items()[navigation.index()]);
 

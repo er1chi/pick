@@ -1,18 +1,16 @@
 import { Result, TaggedError } from "better-result";
 import { resolve } from "node:path";
 import { createContext, createSignal, useContext } from "solid-js";
-import { initializeForge } from "@/services/forge/forge";
+import { ForgejoService } from "@/services/forge/forgejo/service";
+import { GithubService } from "@/services/forge/github/service";
 import { forgeKindForRemotes } from "@/services/forge/remote";
+import { ForgeKind } from "@/services/forge/types";
 import { readGitRemoteOutput } from "@/services/local/local";
 
 import type { JSX } from "@opentui/solid";
 import type { Result as ResultType } from "better-result";
 import type { Accessor } from "solid-js";
-import type {
-  Forge,
-  ForgeInitializationError,
-  ForgeKind,
-} from "@/services/forge/types";
+import type { Forge, ForgeInitializationError } from "@/services/forge/types";
 
 export enum ApplicationContext {
   Default = "application",
@@ -90,11 +88,10 @@ export async function initializeForgeContext(
     };
   }
 
-  const initialization = await initializeForge(
-    kind,
-    activeCwd,
-    remoteOutput.value,
-  );
+  const initialization =
+    kind === ForgeKind.GitHub
+      ? await GithubService.initialize(activeCwd, remoteOutput.value)
+      : await ForgejoService.initialize(activeCwd, remoteOutput.value);
   if (initialization.isErr()) {
     return {
       cwd: activeCwd,

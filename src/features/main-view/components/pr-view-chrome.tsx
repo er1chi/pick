@@ -1,6 +1,6 @@
 import { Show, type Accessor } from "solid-js";
 import { colors } from "@/theme";
-import { truncateEnd } from "@/utils/truncate";
+import { truncateEnd } from "@/utils/text";
 
 import type { JSX } from "@opentui/solid";
 

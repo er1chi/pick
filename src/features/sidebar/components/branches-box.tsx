@@ -8,7 +8,6 @@ import { useSidebarList } from "./sidebar-list";
 
 import type { JSX } from "solid-js";
 import type { GitBranch, GitBranchScope } from "@/services/local/types";
-import type { SidebarPaneProps } from "../types";
 
 const maxVisibleRows = 8;
 
@@ -16,7 +15,11 @@ function branchRowId(branch: GitBranch): string {
   return `branch-${branch.name}`;
 }
 
-export function BranchesBox(props: SidebarPaneProps): JSX.Element {
+interface BranchesBoxProps {
+  readonly rowWidth: number;
+}
+
+export function BranchesBox(props: BranchesBoxProps): JSX.Element {
   const [scope, setScope] = createSignal<GitBranchScope>("local");
   const forgeContext = useForgeContext();
   const [loaded] = createResource(

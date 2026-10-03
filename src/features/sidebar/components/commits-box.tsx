@@ -11,13 +11,12 @@ import {
 import { readCommits } from "@/services/local/local";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
-import { firstLine } from "@/utils/utils";
+import { firstLine } from "@/utils/text";
 import { scopedTitle } from "./sidebar-box";
 import { useSidebarList } from "./sidebar-list";
 
 import type { JSX } from "solid-js";
 import type { GitCommit } from "@/services/local/types";
-import type { SidebarPaneProps } from "../types";
 
 type CommitRow = Omit<GitCommit, "pushed"> & { readonly pushed?: boolean };
 
@@ -37,7 +36,11 @@ function commitRowId(commit: CommitRow): string {
   return `commit-${commit.sha}`;
 }
 
-export function CommitsBox(props: SidebarPaneProps): JSX.Element {
+interface CommitsBoxProps {
+  readonly rowWidth: number;
+}
+
+export function CommitsBox(props: CommitsBoxProps): JSX.Element {
   const viewContext = useViewContext();
   const pullRequest = usePullRequest();
   const forgeContext = useForgeContext();

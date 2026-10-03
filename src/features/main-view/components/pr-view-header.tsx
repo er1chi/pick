@@ -18,7 +18,7 @@ import {
   type PullRequestDetails,
 } from "@/services/forge/types";
 import { colors } from "@/theme";
-import { truncateEnd } from "@/utils/truncate";
+import { truncateEnd } from "@/utils/text";
 
 interface PersistentHeaderProps {
   readonly repositoryName: string;

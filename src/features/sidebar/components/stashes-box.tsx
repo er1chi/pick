@@ -7,7 +7,6 @@ import { useSidebarList } from "./sidebar-list";
 
 import type { JSX } from "solid-js";
 import type { GitStash } from "@/services/local/types";
-import type { SidebarPaneProps } from "../types";
 
 const maxVisibleRows = 5;
 
@@ -15,7 +14,11 @@ function stashRowId(stash: GitStash): string {
   return `stash-${stash.ref}`;
 }
 
-export function StashesBox(props: SidebarPaneProps): JSX.Element {
+interface StashesBoxProps {
+  readonly rowWidth: number;
+}
+
+export function StashesBox(props: StashesBoxProps): JSX.Element {
   const forgeContext = useForgeContext();
   const [loaded] = createResource(
     () => forgeContext.state().cwd,

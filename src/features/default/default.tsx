@@ -3,16 +3,16 @@ import { toast } from "@tuiparts/toast/solid";
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { useForgeContext } from "@/context/forge-context";
-import {
-  discoverRecentRepositories,
-  type RecentRepository,
-  type RepositoryDiscoveryError,
-} from "@/services/repo-discovery";
+import { discoverRecentRepositories } from "@/services/repo-discovery/discovery";
 import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { colors } from "@/theme";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
+import type {
+  RecentRepository,
+  RepositoryDiscoveryError,
+} from "@/services/repo-discovery/types";
 
 const discoveryRootLabel = "~/Developer";
 

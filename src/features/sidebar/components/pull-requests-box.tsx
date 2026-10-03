@@ -11,7 +11,7 @@ import {
 import { ForgeInvalidConnectionUrlError } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
-import { firstLine } from "@/utils/utils";
+import { firstLine } from "@/utils/text";
 import { useSidebarList } from "./sidebar-list";
 
 import type { Accessor, JSX } from "solid-js";
@@ -20,7 +20,6 @@ import type {
   ForgeOperationError,
   PullRequestSummary,
 } from "@/services/forge/types";
-import type { PullRequestPaneProps } from "../types";
 
 function listItems(titles: PrTitles): readonly PullRequestSummary[] {
   return visibleValue(titles.list())?.items ?? [];
@@ -81,7 +80,12 @@ function pullRequestRowId(summary: PullRequestSummary): string {
   return `pull-request-${summary.number}`;
 }
 
-export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
+interface PullRequestsBoxProps {
+  readonly titles: PrTitles;
+  readonly rowWidth: number;
+}
+
+export function PullRequestsBox(props: PullRequestsBoxProps): JSX.Element {
   const viewContext = useViewContext();
   const list = useSidebarList({
     pane: Pane.PullRequests,

@@ -28,7 +28,6 @@ import type { Result } from "better-result";
 import type { JSX } from "solid-js";
 import type { ForgeSection, PullRequestPatch } from "@/services/forge/types";
 import type { GitError, GitFileChange } from "@/services/local/types";
-import type { SidebarPaneProps } from "../types";
 
 type FilesView =
   | {
@@ -128,7 +127,11 @@ function fileRowId(row: FileTreeVisibleRow): string {
   return `file-${row.path}`;
 }
 
-export function FilesBox(props: SidebarPaneProps): JSX.Element {
+interface FilesBoxProps {
+  readonly rowWidth: number;
+}
+
+export function FilesBox(props: FilesBoxProps): JSX.Element {
   const viewContext = useViewContext();
   const patchStore = usePatchStore();
   const forgeContext = useForgeContext();

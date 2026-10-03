@@ -1,4 +1,4 @@
-import { presentText } from "@/utils/present-text";
+import { presentText } from "@/utils/text";
 
 const localDateTime = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",

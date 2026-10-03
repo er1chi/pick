@@ -34,10 +34,9 @@ import {
   prewarmSplitHighlights,
   type SplitFileDiffScrollTarget,
 } from "@/packages/pierre/solid/diffs";
-import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
-import { truncateEnd } from "@/utils/truncate";
+import { truncateEnd } from "@/utils/text";
 import { CommitMetadata } from "./components/commit-metadata";
 import { OverviewScreen } from "./components/overview-screen";
 import { PullRequestStatusLine } from "./components/pull-request-status";
@@ -54,8 +53,8 @@ export interface PrViewProps {
 }
 
 export function PrView(props: PrViewProps) {
-  const [_pane, setPane] = PaneStore.use();
-  const isFocused = useFocusedPane(Pane.Main);
+  const [pane, setPane] = PaneStore.use();
+  const isFocused = createMemo(() => pane.active === Pane.Main);
   const dimensions = useTerminalDimensions();
   const contentWidth = () =>
     Math.max(16, dimensions().width - MAIN_PANE_CHROME);

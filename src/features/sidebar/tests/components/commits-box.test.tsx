@@ -85,10 +85,8 @@ const localRepository = {
   forge: undefined,
 } as const;
 
-/** Mounts CommitsBox. Defaults the active pane to Commits so `j` is received. */
 function CommitsBoxHarness(props: { readonly pane?: Pane }): JSX.Element {
   const renderer = useRenderer();
-  // Create the keymap once; it needs the renderer, not per-render setup.
   const keymap = createMemo(() => createAppKeymap(renderer));
   return (
     <ForgeContextProvider value={localRepository}>
@@ -154,7 +152,6 @@ function CommitsBoxLayoutHarness(props: {
   );
 }
 
-/** SelectableRow paints its selected background with `colors.border`. */
 const selectedBackground = RGBA.fromHex(colors.border).toInts();
 
 function rowBackground(setup: TestSetup, sha: string): readonly number[] {
@@ -191,14 +188,12 @@ describe("CommitsBox", () => {
     try {
       await setup.waitFor(() => isSelected(setup, COMMIT_A.sha));
 
-      // First paint: the first commit row carries the selected background.
       expect(isSelected(setup, COMMIT_A.sha)).toBe(true);
       expect(isSelected(setup, COMMIT_B.sha)).toBe(false);
 
       setup.mockInput.pressKey("j");
       await setup.waitFor(() => isSelected(setup, COMMIT_B.sha));
 
-      // The highlight moves: second row selected, first row cleared.
       expect(isSelected(setup, COMMIT_B.sha)).toBe(true);
       expect(isSelected(setup, COMMIT_A.sha)).toBe(false);
     } finally {

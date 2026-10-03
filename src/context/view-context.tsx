@@ -21,14 +21,8 @@ interface LocalSource {
   readonly kind: "local";
 }
 
-/** Where the viewed commits and patches come from. */
 export type ViewSource = LocalSource | PullRequestSource;
 
-/**
- * What the main view shows: a source, and within it an optional commit and an
- * optional file. A file without a commit is the source's whole diff (the pull
- * request diff, or the working tree).
- */
 export interface ActiveView {
   readonly source: ViewSource;
   readonly commit: string | undefined;
@@ -37,7 +31,6 @@ export interface ActiveView {
 
 export const localSource: LocalSource = { kind: "local" };
 
-/** A stable key for a source, so per-source caches can tell sources apart. */
 export function viewSourceId(source: ViewSource): string {
   return source.kind === "local" ? "local" : source.id;
 }
@@ -77,10 +70,6 @@ export interface ViewContextValue {
   ): void;
   selectCommit(sha: string): void;
   selectFile(path: string): void;
-  /**
-   * Step back one level: close the open file diff, keeping a selected commit;
-   * with no file open, deselect the commit.
-   */
   closeFile(): void;
   close(): void;
 }

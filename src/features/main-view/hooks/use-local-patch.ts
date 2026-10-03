@@ -38,8 +38,6 @@ export function useLocalPatch(): void {
     );
   });
 
-  // A commit's patch never changes, so one read per commit is kept in the
-  // patch store until a pull request replaces the cache.
   createEffect(
     on(commitSha, (sha) => {
       if (

@@ -23,8 +23,6 @@ interface MainBodyComponentProps extends MainBodyProps {
   readonly summary: Accessor<PullRequestSummary | undefined>;
 }
 
-/** The open file's diff, else the selected commit, else the pull request
- * overview. The local source has no overview of its own. */
 export function MainBody(props: MainBodyComponentProps): JSX.Element {
   const commit = useSelectedCommit();
   return (

@@ -18,19 +18,9 @@ const emptyCommitPatches: CommitPatchCache = {
 };
 
 export interface PatchStoreValue {
-  /**
-   * The patch the files pane and the main diff both read. A selected commit
-   * uses that commit's patch; otherwise this is the pull request diff, or
-   * the working tree diff in the local view.
-   */
   readonly currentPatch: Accessor<PatchSection | undefined>;
   setPullRequestPatch(patch: PatchSection | undefined): void;
   setLocalPatch(patch: PatchSection | undefined): void;
-  /**
-   * Store one commit's patch for the source with this `viewSourceId`. A result
-   * for any source but the viewed one is ignored, so the cache never holds
-   * more than one.
-   */
   setCommitPatch(owner: string, sha: string, patch: PatchSection): void;
   cachedCommitPatch(sha: string): PatchSection | undefined;
   clearCommitPatches(): void;

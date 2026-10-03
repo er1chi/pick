@@ -11,8 +11,6 @@ interface CommitOverviewProps {
   readonly scrollRef: (target: ScrollBoxRenderable | undefined) => void;
 }
 
-/** A selected commit with no file open: its metadata and a prompt to pick a
- * file. */
 export function CommitOverview(props: CommitOverviewProps): JSX.Element {
   const commit = useSelectedCommit();
   return (

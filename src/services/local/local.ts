@@ -181,7 +181,6 @@ export async function readWorkingTreePatch(
   return Result.all([tracked, ...additions]).map((parts) => parts.join(""));
 }
 
-/** A commit's patch against its first parent, so merges read as one diff. */
 export async function readCommitPatch(
   cwd: string,
   sha: string,

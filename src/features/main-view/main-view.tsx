@@ -95,8 +95,6 @@ export function PrView(props: PrViewProps) {
   };
 
   const diffOpen = () => view().file !== undefined;
-  /** The local source has no overview: with nothing selected in it, the pane
-   * shows the repository landing screen instead. */
   const showsView = () =>
     opened() !== undefined ||
     view().commit !== undefined ||

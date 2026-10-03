@@ -7,8 +7,6 @@ export enum LoadStatus {
   Settled = "settled",
 }
 
-/** What the main pane hands each content body: display options and the
- * scroll targets its key bindings drive. */
 export interface MainBodyProps {
   readonly revealLocked: boolean;
   readonly maxWidth: number;

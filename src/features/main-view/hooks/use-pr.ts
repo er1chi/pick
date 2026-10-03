@@ -107,8 +107,7 @@ export function usePr(): PullRequestContextValue {
   }
 
   // Memos compare with ===, so a new view object with the same pull request
-  // id or commit sha does not rerun the load. Selecting a file, or opening a
-  // commit whose patch is already stored, reads that stored patch.
+  // id or commit sha does not rerun the load.
   const openedId = createMemo(() => viewPullRequest(viewContext.view())?.id);
   const forge = createMemo(() => forgeContext.state().forge);
   const commitSha = createMemo(() => viewContext.view().commit);

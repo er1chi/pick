@@ -72,15 +72,11 @@ function PersistentHeader(props: PersistentHeaderProps): JSX.Element {
   );
 }
 
-/** The context line: a selected commit, or else the source (a pull request or
- * local changes), plus any open file. */
 function contextBanner(
   source: string,
   commit: string | undefined,
   path: string | undefined,
 ): string {
-  // The full SHA stays in the commit metadata below; the fixed context line
-  // only needs a short, stable reference.
   const reference = commit === undefined ? undefined : commit.slice(0, 12);
   if (reference !== undefined && path !== undefined) {
     return `Context: Commit ${reference} · File ${path}`;
@@ -153,7 +149,6 @@ function sourceLabel(view: ActiveView): string {
 
 interface MainViewHeaderProps {
   readonly view: ActiveView;
-  /** The rest of the props only render for a pull request source. */
   readonly repositoryName: string;
   readonly titleLine: string | undefined;
   readonly headerKey: string;

@@ -6,8 +6,6 @@ import { useViewContext } from "@/context/view-context";
 import type { Accessor } from "solid-js";
 import type { PullRequestCommit } from "@/services/forge/types";
 
-/** The selected commit, looked up in the commits of the open pull request or
- * of the local branch. */
 export function useSelectedCommit(): Accessor<PullRequestCommit | undefined> {
   const viewContext = useViewContext();
   const pullRequest = usePullRequest();

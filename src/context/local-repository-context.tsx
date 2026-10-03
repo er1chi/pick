@@ -10,10 +10,6 @@ import type { ForgeSection } from "@/services/forge/types";
 import type { GitCommit } from "@/services/local/types";
 
 export interface LocalRepositoryValue {
-  /**
-   * The current branch's commits, in the same section shape a pull request
-   * document carries its commits in.
-   */
   readonly commits: Accessor<ForgeSection<readonly GitCommit[]> | undefined>;
 }
 

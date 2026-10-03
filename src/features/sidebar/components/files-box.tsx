@@ -136,8 +136,6 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
   const patchStore = usePatchStore();
   const forgeContext = useForgeContext();
   const opened = () => viewPullRequest(viewContext.view());
-  // The working tree status only applies to the local view with no commit
-  // selected; a pull request or a commit lists the files of its patch.
   const workingTree = () =>
     opened() === undefined && viewContext.view().commit === undefined;
   const [localChanges] = createResource(
@@ -166,9 +164,6 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
       : undefined;
   };
 
-  // The model owns path grouping: empty directories stay as separate rows
-  // (no single-child flattening) and the initial expansion is explicit so the
-  // nested hierarchy comes from @pierre/trees rather than string parsing.
   const { model } = useFileTree({
     flattenEmptyDirectories: false,
     initialExpansion: "closed",
@@ -182,8 +177,6 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
     getAllVisibleRows,
     areVisibleRowsEqual,
   );
-  // The highlighted row is the tree's focused row: j/k move the model's focus,
-  // and focus changes from the model move the highlight.
   const list = useSidebarList({
     pane: Pane.Files,
     items: rows,
@@ -204,8 +197,6 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
     }
   });
 
-  // Enter is the explicit activation: a directory expands/collapses in place,
-  // while a file is selected and hands focus to the main view.
   function activateFocusedItem(): void {
     const item = model.getFocusedItem();
     if (item === null) {

@@ -27,8 +27,6 @@ export interface GitStash {
   readonly message: string;
 }
 
-/** A local commit, shaped like a forge's pull request commit, plus whether a
- * remote branch already contains it. */
 export interface GitCommit extends PullRequestCommit {
   readonly pushed: boolean;
 }

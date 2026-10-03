@@ -1,14 +1,13 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { createMemo, createResource } from "solid-js";
+import { createMemo } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
-import { useForgeContext } from "@/context/forge-context";
+import { useLocalRepository } from "@/context/local-repository-context";
 import { usePullRequest } from "@/context/pull-request-context";
 import {
   useViewContext,
   viewCommit,
   viewPullRequest,
 } from "@/context/view-context";
-import { readCommits } from "@/services/local/local";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { firstLine } from "@/utils/text";
@@ -43,18 +42,13 @@ interface CommitsBoxProps {
 export function CommitsBox(props: CommitsBoxProps): JSX.Element {
   const viewContext = useViewContext();
   const pullRequest = usePullRequest();
-  const forgeContext = useForgeContext();
+  const localRepository = useLocalRepository();
   const opened = () => viewPullRequest(viewContext.view());
-  const [localCommits] = createResource(
-    () => (opened() === undefined ? forgeContext.state().cwd : undefined),
-    (cwd) => readCommits(cwd),
-  );
   const commits = createMemo<readonly CommitRow[]>(() => {
-    if (opened() === undefined) {
-      const result = localCommits.latest;
-      return result === undefined || result.isErr() ? [] : result.value;
-    }
-    const section = pullRequest.data()?.commits;
+    const section =
+      opened() === undefined
+        ? localRepository.commits()
+        : pullRequest.data()?.commits;
     return section?.status === "available" ? section.value : [];
   });
   const list = useSidebarList({

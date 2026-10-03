@@ -12,6 +12,7 @@ import {
   type Accessor,
 } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
+import { useLocalRepository } from "@/context/local-repository-context";
 import { usePatchStore } from "@/context/patch-store";
 import { usePullRequest } from "@/context/pull-request-context";
 import {
@@ -43,7 +44,6 @@ import { truncateEnd } from "@/utils/text";
 import { CommitMetadata } from "./components/commit-metadata";
 import { OverviewScreen } from "./components/overview-screen";
 import { PullRequestStatusLine } from "./components/pull-request-status";
-import { useLocalCommit } from "./hooks/use-local-commit";
 import { visibleValue } from "./utils/load-state";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
@@ -65,6 +65,7 @@ export function PrView(props: PrViewProps) {
   const viewContext = useViewContext();
   const patchStore = usePatchStore();
   const pullRequest = usePullRequest();
+  const localRepository = useLocalRepository();
   const view = () => viewContext.view();
   const localView = (): LocalView | undefined => {
     const current = view();
@@ -78,7 +79,6 @@ export function PrView(props: PrViewProps) {
       ? undefined
       : current;
   };
-  const localCommit = useLocalCommit();
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
   const [overviewScroll, setOverviewScroll] = createSignal<
     ScrollBoxRenderable | undefined
@@ -110,10 +110,10 @@ export function PrView(props: PrViewProps) {
     if (sha === undefined) {
       return undefined;
     }
-    if (view().kind === "local") {
-      return localCommit();
-    }
-    const section = pullRequest.data()?.commits;
+    const section =
+      view().kind === "local"
+        ? localRepository.commits()
+        : pullRequest.data()?.commits;
     const commits = section?.status === "available" ? section.value : [];
     return commits.find((commit) => commit.sha === sha);
   });

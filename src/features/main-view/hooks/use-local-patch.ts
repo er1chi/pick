@@ -49,7 +49,7 @@ export function useLocalPatch(): void {
           localCommitPatchOwner,
           sha,
           result.isOk()
-            ? available({ text: result.value })
+            ? available(result.value)
             : unsupported(`Could not read commit: ${result.error.message}`),
         );
       });

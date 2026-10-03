@@ -2,11 +2,11 @@ import { Result } from "better-result";
 import { runCli } from "@/utils/cli";
 import { GitCommandFailedError, GitUnavailableError } from "./types";
 
+import type { PullRequestPatch } from "@/services/forge/types";
 import type {
   GitBranch,
   GitBranchScope,
   GitCommit,
-  GitCommitDetails,
   GitError,
   GitFileChange,
   GitStash,
@@ -77,52 +77,53 @@ export async function readStashes(
 
 const commitLimit = 200;
 
+// Fields are NUL-separated and records end with a record separator, since a
+// full commit message can hold any other delimiter.
+const commitFields = ["%H", "%an", "%cn", "%aI", "%cI", "%B"];
+const commitFormat = `--format=${commitFields.join("%x00")}%x1e`;
+
+function parseCommit(
+  record: string,
+  unpushed: ReadonlySet<string>,
+): readonly GitCommit[] {
+  const [
+    sha = "",
+    author = "",
+    committer = "",
+    authoredAt = "",
+    committedAt = "",
+    ...message
+  ] = record.replace(/^\n/, "").split("\0");
+  return sha === ""
+    ? []
+    : [
+        {
+          sha,
+          message: message.join("\0").trimEnd(),
+          author: author === "" ? null : { login: author },
+          committer: committer === "" ? null : { login: committer },
+          authoredAt: authoredAt === "" ? null : authoredAt,
+          committedAt: committedAt === "" ? null : committedAt,
+          url: null,
+          pushed: !unpushed.has(sha),
+        },
+      ];
+}
+
 export async function readCommits(
   cwd: string,
 ): Promise<Result<readonly GitCommit[], GitError>> {
   const limit = `--max-count=${commitLimit}`;
   const [log, localOnly] = await Promise.all([
-    runGit(cwd, ["log", limit, "--format=%H%x09%s"]),
+    runGit(cwd, ["log", limit, commitFormat]),
     runGit(cwd, ["log", limit, "--format=%H", "HEAD", "--not", "--remotes"]),
   ]);
   return Result.gen(function* () {
     const unpushed = new Set((yield* localOnly).split("\n"));
     const text = yield* log;
     return Result.ok(
-      text.split("\n").flatMap((line) => {
-        const [sha, ...subject] = line.split("\t");
-        return sha === undefined || sha === ""
-          ? []
-          : [{ sha, message: subject.join("\t"), pushed: !unpushed.has(sha) }];
-      }),
+      text.split("\x1e").flatMap((record) => parseCommit(record, unpushed)),
     );
-  });
-}
-
-const commitDetailsFormat = "--format=%H%x00%an%x00%cn%x00%aI%x00%cI%x00%B";
-
-export async function readCommitDetails(
-  cwd: string,
-  sha: string,
-): Promise<Result<GitCommitDetails, GitError>> {
-  const output = await runGit(cwd, ["show", "-s", commitDetailsFormat, sha]);
-  return output.map((text) => {
-    const [
-      fullSha = sha,
-      authorName = "",
-      committerName = "",
-      authoredAt = "",
-      committedAt = "",
-      ...message
-    ] = text.split("\0");
-    return {
-      sha: fullSha,
-      message: message.join("\0").trimEnd(),
-      authorName,
-      committerName,
-      authoredAt,
-      committedAt,
-    };
   });
 }
 
@@ -184,12 +185,13 @@ export async function readWorkingTreePatch(
 export async function readCommitPatch(
   cwd: string,
   sha: string,
-): Promise<Result<string, GitError>> {
-  return runGit(cwd, [
+): Promise<Result<PullRequestPatch, GitError>> {
+  const output = await runGit(cwd, [
     "show",
     ...diffOptions,
     "--format=",
     "--diff-merges=first-parent",
     sha,
   ]);
+  return output.map((text) => ({ text }));
 }

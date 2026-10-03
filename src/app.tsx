@@ -8,6 +8,7 @@ import {
   useForgeContext,
   type RepositoryForgeContextState,
 } from "@/context/forge-context";
+import { LocalRepositoryProvider } from "@/context/local-repository-context";
 import { PullRequestProvider } from "@/context/pull-request-context";
 import {
   pullRequestViewId,
@@ -202,10 +203,12 @@ function RepositoryShell(props: {
     <box ref={setBox} flexDirection="column" width="100%" height="100%">
       <Menubar contextLabel={contextLabel} />
       <PullRequestProvider>
-        <box flexDirection="row" flexGrow={1} width="100%">
-          <Sidebar visible={sidebarVisible()} titles={titles} />
-          <PrView state={props.state} titles={titles} />
-        </box>
+        <LocalRepositoryProvider>
+          <box flexDirection="row" flexGrow={1} width="100%">
+            <Sidebar visible={sidebarVisible()} titles={titles} />
+            <PrView state={props.state} titles={titles} />
+          </box>
+        </LocalRepositoryProvider>
       </PullRequestProvider>
       <Footer
         bindings={repositoryFooterBindings(props.state.kind, pane.active)}

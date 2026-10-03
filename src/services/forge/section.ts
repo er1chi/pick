@@ -18,3 +18,10 @@ export function sectionFromResult<T>(
 ): ForgeSection<T> {
   return result.isOk() ? available(result.value) : failed(result.error);
 }
+
+export async function sectionFrom<Raw, T>(
+  result: Promise<Result<Raw, ForgeOperationError>>,
+  normalize: (raw: Raw) => T,
+): Promise<ForgeSection<T>> {
+  return sectionFromResult((await result).map(normalize));
+}

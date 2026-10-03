@@ -1,4 +1,5 @@
 import { Result } from "better-result";
+import { runCli } from "@/utils/cli";
 import { GitCommandFailedError, GitUnavailableError } from "./types";
 
 import type {
@@ -6,6 +7,7 @@ import type {
   GitBranchScope,
   GitCommit,
   GitError,
+  GitFileChange,
   GitStash,
 } from "./types";
 
@@ -14,39 +16,21 @@ async function runGit(
   args: readonly string[],
   okExitCodes: readonly number[] = [0],
 ): Promise<Result<string, GitError>> {
-  const execution = await Result.tryPromise({
-    try: async () => {
-      const subprocess = Bun.spawn(["git", ...args], {
-        cwd,
-        stdin: "ignore",
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-
-      const [stdout, , exitCode] = await Promise.all([
-        new Response(subprocess.stdout).text(),
-        new Response(subprocess.stderr).text(),
-        subprocess.exited,
-      ]);
-
-      return { stdout, exitCode };
-    },
-    catch: () =>
-      new GitUnavailableError({
-        message: "git could not be executed",
-      }),
-  });
-
-  return execution.andThen(({ stdout, exitCode }) =>
-    okExitCodes.includes(exitCode)
-      ? Result.ok(stdout)
-      : Result.err<never, GitError>(
-          new GitCommandFailedError({
-            exitCode,
-            message: `git ${args.join(" ")} exited with code ${exitCode}`,
-          }),
-        ),
-  );
+  const execution = await runCli("git", args, cwd);
+  return execution
+    .mapError(
+      (error): GitError => new GitUnavailableError({ message: error.message }),
+    )
+    .andThen(({ stdout, exitCode }) =>
+      okExitCodes.includes(exitCode)
+        ? Result.ok(stdout)
+        : Result.err<never, GitError>(
+            new GitCommandFailedError({
+              exitCode,
+              message: `git ${args.join(" ")} exited with code ${exitCode}`,
+            }),
+          ),
+    );
 }
 
 export async function readGitRemoteOutput(
@@ -116,7 +100,7 @@ export async function readCommits(
 
 export async function readChangedFiles(
   cwd: string,
-): Promise<Result<readonly string[], GitError>> {
+): Promise<Result<readonly GitFileChange[], GitError>> {
   const output = await runGit(cwd, [
     "status",
     "--porcelain=v1",
@@ -125,18 +109,19 @@ export async function readChangedFiles(
   ]);
   return output.map((text) => {
     const entries = text.split("\0");
-    const paths: string[] = [];
+    const files: GitFileChange[] = [];
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index] ?? "";
       if (entry.length < 4) {
         continue;
       }
-      paths.push(entry.slice(3));
-      if (/[RC]/.test(entry.slice(0, 2))) {
+      const status = entry.slice(0, 2);
+      files.push({ path: entry.slice(3), status });
+      if (/[RC]/.test(status)) {
         index += 1;
       }
     }
-    return paths;
+    return files;
   });
 }
 

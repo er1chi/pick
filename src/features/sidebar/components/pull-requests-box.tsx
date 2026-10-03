@@ -1,8 +1,7 @@
 import { useBindings } from "@opentui/keymap/solid";
 import { toast } from "@tuiparts/toast";
-import { createEffect, createSignal, Index, Show } from "solid-js";
+import { createEffect, Show } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
-import { PaneStore } from "@/context/active-pane-context";
 import { useViewContext } from "@/context/view-context";
 import {
   isPending,
@@ -10,22 +9,17 @@ import {
   visibleValue,
 } from "@/features/main-view/utils/load-state";
 import { ForgeInvalidConnectionUrlError } from "@/services/forge/types";
-import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
-import { useNavigateList } from "@/shared/hooks/use-navigate-list";
-import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
-import { firstLine } from "@/utils/utils";
-import { SidebarBox, SidebarScrollBox } from "./sidebar-box";
+import { firstLine } from "@/utils/text";
+import { useSidebarList } from "./sidebar-list";
 
-import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { Accessor, JSX } from "solid-js";
 import type { PrTitles } from "@/features/main-view/hooks/use-pr-titles";
 import type {
   ForgeOperationError,
   PullRequestSummary,
 } from "@/services/forge/types";
-import type { PullRequestPaneProps } from "../types";
 
 function listItems(titles: PrTitles): readonly PullRequestSummary[] {
   return visibleValue(titles.list())?.items ?? [];
@@ -41,7 +35,8 @@ const filterLabels = {
   all: "All",
 } as const;
 
-const connectionHint = "Try adjusting aliases in the forgejo-cli config.";
+const connectionHint =
+  "Check that the remote URL points at the Forgejo instance.";
 const maskedUrl = "••••••••••••";
 
 function listErrorHint(titles: PrTitles): string | undefined {
@@ -81,19 +76,26 @@ function listIsPending(titles: PrTitles): boolean {
   return isPending(titles.list());
 }
 
-export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
-  const [box, setBox] = createSignal<BoxRenderable>();
-  const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
-  const [_pane, setPane] = PaneStore.use();
-  const isFocused = useFocusedPane(Pane.PullRequests);
+function pullRequestRowId(summary: PullRequestSummary): string {
+  return `pull-request-${summary.number}`;
+}
+
+interface PullRequestsBoxProps {
+  readonly titles: PrTitles;
+  readonly rowWidth: number;
+}
+
+export function PullRequestsBox(props: PullRequestsBoxProps): JSX.Element {
   const viewContext = useViewContext();
-  const navigation = useNavigateList({ target: box });
+  const list = useSidebarList({
+    pane: Pane.PullRequests,
+    items: () => listItems(props.titles),
+    rowId: pullRequestRowId,
+  });
   const noError = listError(props.titles) === undefined;
 
-  createEffect(() => navigation.setCount(listItems(props.titles).length));
-
   useBindings(() => ({
-    target: box,
+    target: list.target,
     commands: [
       {
         name: "pr-list.filter-open",
@@ -122,11 +124,11 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
       {
         name: "pr-list.open",
         run: () => {
-          const summary = listItems(props.titles)[navigation.index()];
+          const summary = list.highlighted();
           const repository = visibleValue(props.titles.list())?.repository;
           if (summary !== undefined && repository !== undefined) {
             viewContext.openPullRequest(repository, summary.number);
-            setPane({ active: Pane.Files });
+            list.focus(Pane.Files);
           }
         },
       },
@@ -146,11 +148,6 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
       { key: "x", cmd: "pr-list.close" },
     ],
   }));
-
-  useScrollIntoView(() => {
-    const number = listItems(props.titles)[navigation.index()]?.number;
-    return number === undefined ? undefined : `pull-request-${number}`;
-  }, scrollBox);
 
   createEffect(() => {
     if (!noError) return;
@@ -176,20 +173,12 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
     return count + (listIsTruncated(props.titles) ? 1 : 0);
   }
 
-  function handleMouseFocus() {
-    setPane({ active: Pane.PullRequests });
-  }
-
   return (
-    <SidebarBox
-      id={Pane.PullRequests}
+    <list.Box
       title={`[2] Pull Requests · ${filterLabels[props.titles.filter()]}`}
       bottomTitle="[O]pen [C]losed [A]ll"
       bottomTitleAlignment="right"
-      active={isFocused()}
-      boxRef={setBox}
       height={2 + bodyRowCount()}
-      handleMouseFocus={handleMouseFocus}
     >
       <Show
         when={!listIsPending(props.titles)}
@@ -219,35 +208,29 @@ export function PullRequestsBox(props: PullRequestPaneProps): JSX.Element {
             </box>
           }
         >
-          <Show
-            when={listItems(props.titles).length > 0}
-            fallback={
-              <text fg={colors.muted} wrapMode="none">
-                No pull requests found for this repository.
-              </text>
-            }
-          >
-            <SidebarScrollBox scrollRef={setScrollBox}>
-              <Index each={listItems(props.titles)}>
-                {(summary, itemIndex) => (
-                  <SelectableRow
-                    id={`pull-request-${summary().number}`}
-                    selected={itemIndex === navigation.index()}
-                    label={`#${summary().number}`}
-                    detail={firstLine(summary().title)}
-                    maxWidth={props.rowWidth}
-                  />
-                )}
-              </Index>
+          <list.Rows
+            emptyText="No pull requests found for this repository."
+            showScrollbar
+            footer={
               <Show when={listIsTruncated(props.titles)}>
                 <text fg={colors.dim} wrapMode="none">
                   More pull requests are available.
                 </text>
               </Show>
-            </SidebarScrollBox>
-          </Show>
+            }
+          >
+            {(summary, index) => (
+              <SelectableRow
+                id={pullRequestRowId(summary())}
+                selected={index === list.index()}
+                label={`#${summary().number}`}
+                detail={firstLine(summary().title)}
+                maxWidth={props.rowWidth}
+              />
+            )}
+          </list.Rows>
         </Show>
       </Show>
-    </SidebarBox>
+    </list.Box>
   );
 }

@@ -14,7 +14,7 @@ import {
   type PullRequestSummary,
 } from "@/services/forge/types";
 import { formatPresentTimestamp } from "@/utils/format-timestamp";
-import { presentText } from "@/utils/present-text";
+import { presentText } from "@/utils/text";
 export { presentText };
 
 export function persistentMetadataLines(

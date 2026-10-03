@@ -1,7 +1,6 @@
 import { Show, type Accessor } from "solid-js";
 import { colors } from "@/theme";
-import { sanitizeLine } from "@/utils/sanitize-line";
-import { truncateEnd } from "@/utils/truncate";
+import { sanitizeLine, truncateEnd } from "@/utils/text";
 
 export interface SelectableRowProps {
   readonly id: string;

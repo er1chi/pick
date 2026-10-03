@@ -6,7 +6,7 @@ import {
   type SplitFileDiffScrollTarget,
 } from "@/packages/pierre/solid/diffs";
 import { colors } from "@/theme";
-import { truncateEnd } from "@/utils/truncate";
+import { truncateEnd } from "@/utils/text";
 import { patchFileIndex } from "../utils/patch-file-index";
 import { CommitMetadata } from "./commit-metadata";
 

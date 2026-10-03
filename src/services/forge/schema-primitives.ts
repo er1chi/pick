@@ -25,6 +25,17 @@ export const commitSchema = type({
   html_url: optionalNullableString,
 });
 
+/** A pull request in a REST list, which GitHub and Forgejo shape alike. */
+export const pullSummarySchema = type({
+  number: safeIntegerSchema,
+  title: "string",
+  state: "string",
+  draft: optionalBoolean,
+  merged_at: optionalNullableString,
+  user: optionalUser,
+});
+
+export type PullSummaryPayload = typeof pullSummarySchema.infer;
 export type UserPayload = typeof userSchema.infer;
 export type TeamPayload = typeof teamSchema.infer;
 export type CommitPayload = typeof commitSchema.infer;

@@ -122,10 +122,14 @@ describe("working tree changes", () => {
 
   afterAll(() => rm(dir, { recursive: true, force: true }));
 
-  test("lists staged, unstaged, renamed, and untracked paths", async () => {
-    const paths = (await readChangedFiles(dir)).unwrap();
+  test("lists staged, unstaged, renamed, and untracked files with their status", async () => {
+    const files = (await readChangedFiles(dir)).unwrap();
 
-    expect(paths).toEqual(["edited.txt", "new-name.txt", "docs/draft.md"]);
+    expect(files).toEqual([
+      { path: "edited.txt", status: " M" },
+      { path: "new-name.txt", status: "R " },
+      { path: "docs/draft.md", status: "??" },
+    ]);
   });
 
   test("patches tracked edits against HEAD and untracked files as additions", async () => {

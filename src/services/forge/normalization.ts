@@ -3,6 +3,7 @@ import { ForgeIncompatibleResponseError, PullRequestState } from "./types";
 
 import type {
   CommitPayload,
+  PullSummaryPayload,
   TeamPayload,
   UserPayload,
 } from "./schema-primitives";
@@ -10,11 +11,10 @@ import type {
   ForgeKind,
   ForgeOperationError,
   ForgeRepository,
-  ForgeSection,
   ForgeTeam,
   ForgeUser,
-  PullRequestComment,
   PullRequestCommit,
+  PullRequestSummary,
 } from "./types";
 
 export function normalizeRepository(
@@ -38,6 +38,18 @@ export function normalizeRepository(
   }
 
   return Result.ok({ fullName, owner, name, url: url ?? null });
+}
+
+export function normalizeSummary(
+  payload: PullSummaryPayload,
+): PullRequestSummary {
+  return {
+    number: payload.number,
+    title: payload.title,
+    state: normalizeState(payload.state, (payload.merged_at ?? null) !== null),
+    isDraft: payload.draft ?? null,
+    author: normalizeUser(payload.user),
+  };
 }
 
 export function normalizeUser(
@@ -72,38 +84,7 @@ export function normalizeCommit(payload: CommitPayload): PullRequestCommit {
   };
 }
 
-/** Marks comments as truncated when the forge reports more than it returned. */
-export function withExpectedCommentCount(
-  section: ForgeSection<readonly PullRequestComment[]>,
-  expectedCount: number | null,
-): ForgeSection<readonly PullRequestComment[]> {
-  if (section.status !== "available" || expectedCount === null) {
-    return section;
-  }
-  return {
-    ...section,
-    truncated: section.value.length < expectedCount,
-  };
-}
-
-export function matchPullRequestNumber<T extends { readonly number: number }>(
-  kind: ForgeKind,
-  payload: T,
-  expectedNumber: number,
-): Result<T, ForgeOperationError> {
-  if (payload.number !== expectedNumber) {
-    return incompatible(
-      kind,
-      `${kind} pull request number did not match ${expectedNumber}`,
-    );
-  }
-  return Result.ok(payload);
-}
-
-export function normalizeState(
-  state: string,
-  merged: boolean,
-): PullRequestState {
+function normalizeState(state: string, merged: boolean): PullRequestState {
   if (merged) {
     return PullRequestState.Merged;
   }
@@ -114,10 +95,6 @@ export function normalizeState(
     return PullRequestState.Closed;
   }
   return PullRequestState.Unknown;
-}
-
-export function normalizeGithubState(state: string): PullRequestState {
-  return normalizeState(state, state.toLowerCase() === "merged");
 }
 
 function incompatible<T>(

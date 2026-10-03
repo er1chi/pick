@@ -5,14 +5,25 @@ import {
   oneLine,
 } from "@/features/main-view/components/pr-view-chrome";
 import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
-import { commitMetaLine } from "@/features/main-view/utils/pr-view-display";
+import {
+  commitMessage,
+  commitMetaLine,
+} from "@/features/main-view/utils/pr-view-display";
 import { colors } from "@/theme";
 import { formatPresentTimestamp } from "@/utils/format-timestamp";
-import { presentText } from "@/utils/present-text";
-import { truncateEnd } from "@/utils/truncate";
-import { commitMessageLines } from "../utils/utils";
+import { presentText, truncateEnd } from "@/utils/text";
 
 import type { PullRequestCommit } from "@/services/forge/types";
+
+function commitMessageLines(
+  commit: PullRequestCommit | undefined,
+): readonly string[] {
+  const message = commit === undefined ? undefined : commitMessage(commit);
+  if (message === undefined) {
+    return [];
+  }
+  return message.split(/\r?\n/);
+}
 
 interface CommitMetadataProps {
   readonly sha: string;

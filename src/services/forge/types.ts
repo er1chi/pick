@@ -113,13 +113,13 @@ export class ForgeUnexpectedError extends TaggedError("ForgeUnexpectedError")<{
 export type CliExecutionError =
   | ForgeCommandSpawnFailedError
   | ForgeCommandFailedError
-  | ForgeInvalidConnectionUrlError
   | ForgeOutputLimitExceededError
-  | ForgeCancelledError
   | ForgeTimedOutError;
 
 export type ForgeOperationError =
   | CliExecutionError
+  | ForgeCancelledError
+  | ForgeInvalidConnectionUrlError
   | ForgeRequestFailedError
   | ForgeInvalidRequestError
   | ForgeInvalidJsonError

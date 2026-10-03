@@ -30,3 +30,8 @@ export interface GitCommit {
   readonly message: string;
   readonly pushed: boolean;
 }
+
+export interface GitFileChange {
+  readonly path: string;
+  readonly status: string;
+}

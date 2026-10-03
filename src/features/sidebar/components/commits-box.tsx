@@ -65,7 +65,7 @@ export function CommitsBox(props: CommitsBoxProps): JSX.Element {
 
   function activateHighlighted(): void {
     const sha = list.highlighted()?.sha;
-    if (sha !== undefined && opened() !== undefined) {
+    if (sha !== undefined) {
       viewContext.selectCommit(sha);
       list.focus(Pane.Files);
     }

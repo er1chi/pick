@@ -6,6 +6,7 @@ import type {
   GitBranch,
   GitBranchScope,
   GitCommit,
+  GitCommitDetails,
   GitError,
   GitFileChange,
   GitStash,
@@ -98,6 +99,33 @@ export async function readCommits(
   });
 }
 
+const commitDetailsFormat = "--format=%H%x00%an%x00%cn%x00%aI%x00%cI%x00%B";
+
+export async function readCommitDetails(
+  cwd: string,
+  sha: string,
+): Promise<Result<GitCommitDetails, GitError>> {
+  const output = await runGit(cwd, ["show", "-s", commitDetailsFormat, sha]);
+  return output.map((text) => {
+    const [
+      fullSha = sha,
+      authorName = "",
+      committerName = "",
+      authoredAt = "",
+      committedAt = "",
+      ...message
+    ] = text.split("\0");
+    return {
+      sha: fullSha,
+      message: message.join("\0").trimEnd(),
+      authorName,
+      committerName,
+      authoredAt,
+      committedAt,
+    };
+  });
+}
+
 export async function readChangedFiles(
   cwd: string,
 ): Promise<Result<readonly GitFileChange[], GitError>> {
@@ -150,4 +178,18 @@ export async function readWorkingTreePatch(
       ),
   );
   return Result.all([tracked, ...additions]).map((parts) => parts.join(""));
+}
+
+/** A commit's patch against its first parent, so merges read as one diff. */
+export async function readCommitPatch(
+  cwd: string,
+  sha: string,
+): Promise<Result<string, GitError>> {
+  return runGit(cwd, [
+    "show",
+    ...diffOptions,
+    "--format=",
+    "--diff-merges=first-parent",
+    sha,
+  ]);
 }

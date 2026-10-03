@@ -31,6 +31,15 @@ export interface GitCommit {
   readonly pushed: boolean;
 }
 
+export interface GitCommitDetails {
+  readonly sha: string;
+  readonly message: string;
+  readonly authorName: string;
+  readonly committerName: string;
+  readonly authoredAt: string;
+  readonly committedAt: string;
+}
+
 export interface GitFileChange {
   readonly path: string;
   readonly status: string;

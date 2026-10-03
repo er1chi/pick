@@ -5,8 +5,10 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  Match,
   on,
   Show,
+  Switch,
   type Accessor,
 } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
@@ -16,11 +18,12 @@ import {
   useViewContext,
   viewCommit,
   viewPullRequest,
+  type LocalView,
   type PullRequestView,
 } from "@/context/view-context";
 import { MAIN_PANE_CHROME } from "@/features/main-view/components/pr-view-chrome";
 import {
-  LocalDiffHeader,
+  LocalHeader,
   NoPullRequest,
   PrViewHeader,
 } from "@/features/main-view/components/pr-view-header";
@@ -40,6 +43,7 @@ import { truncateEnd } from "@/utils/text";
 import { CommitMetadata } from "./components/commit-metadata";
 import { OverviewScreen } from "./components/overview-screen";
 import { PullRequestStatusLine } from "./components/pull-request-status";
+import { useLocalCommit } from "./hooks/use-local-commit";
 import { visibleValue } from "./utils/load-state";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
@@ -62,10 +66,19 @@ export function PrView(props: PrViewProps) {
   const patchStore = usePatchStore();
   const pullRequest = usePullRequest();
   const view = () => viewContext.view();
-  const localFile = (): string | undefined => {
+  const localView = (): LocalView | undefined => {
     const current = view();
-    return current.kind === "local" ? current.file : undefined;
+    return current.kind === "local" ? current : undefined;
   };
+  const localFile = () => localView()?.file;
+  /** The local view, once a commit or a file is selected in it. */
+  const localSelection = () => {
+    const current = localView();
+    return current?.commit === undefined && current?.file === undefined
+      ? undefined
+      : current;
+  };
+  const localCommit = useLocalCommit();
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
   const [overviewScroll, setOverviewScroll] = createSignal<
     ScrollBoxRenderable | undefined
@@ -96,6 +109,9 @@ export function PrView(props: PrViewProps) {
     const sha = viewCommit(view());
     if (sha === undefined) {
       return undefined;
+    }
+    if (view().kind === "local") {
+      return localCommit();
     }
     const section = pullRequest.data()?.commits;
     const commits = section?.status === "available" ? section.value : [];
@@ -274,6 +290,74 @@ export function PrView(props: PrViewProps) {
     );
   }
 
+  function commitOverview(sha: string): JSX.Element {
+    return (
+      <scrollbox
+        ref={setOverviewScroll}
+        flexGrow={1}
+        flexShrink={1}
+        minHeight={0}
+        width="100%"
+      >
+        <box flexDirection="column" width="100%" gap={1}>
+          <CommitMetadata
+            sha={sha}
+            commit={selectedCommitValue()}
+            hasFile={false}
+            maxWidth={contentWidth()}
+          />
+          <text fg={colors.yellow}>
+            Select a file in the sidebar to view this commit's changes.
+          </text>
+        </box>
+      </scrollbox>
+    );
+  }
+
+  function localViewContent(current: Accessor<LocalView>): JSX.Element {
+    return (
+      <>
+        <LocalHeader
+          commit={current().commit}
+          path={current().file}
+          maxWidth={contentWidth()}
+        />
+        <Switch>
+          <Match when={current().file}>
+            {(path: Accessor<string>) => (
+              <>
+                <SelectedDiffBody
+                  path={path()}
+                  commitSha={current().commit}
+                  commit={selectedCommitValue()}
+                  label={
+                    current().commit === undefined
+                      ? "Working tree diff"
+                      : "Commit diff"
+                  }
+                  revealLocked={revealLocked()}
+                  maxWidth={contentWidth()}
+                  setDiffScroll={setDiffScroll}
+                />
+                {hintLine(
+                  "j/k scroll · [/] changes · {/} hunks · e lock files · o close diff",
+                )}
+              </>
+            )}
+          </Match>
+          <Match when={current().commit}>
+            {(sha: Accessor<string>) => (
+              <>
+                {commitOverview(sha())}
+                {hintLine("j/k scroll · o close commit")}
+              </>
+            )}
+          </Match>
+        </Switch>
+      </>
+    );
+  }
+
   function mainViewContent(current: PullRequestView): JSX.Element {
     switch (current.kind) {
       case "pr":
@@ -291,27 +375,7 @@ export function PrView(props: PrViewProps) {
           </scrollbox>
         );
       case "commit":
-        return (
-          <scrollbox
-            ref={setOverviewScroll}
-            flexGrow={1}
-            flexShrink={1}
-            minHeight={0}
-            width="100%"
-          >
-            <box flexDirection="column" width="100%" gap={1}>
-              <CommitMetadata
-                sha={current.sha}
-                commit={selectedCommitValue()}
-                hasFile={false}
-                maxWidth={contentWidth()}
-              />
-              <text fg={colors.yellow}>
-                Select a file in the sidebar to view this commit's changes.
-              </text>
-            </box>
-          </scrollbox>
-        );
+        return commitOverview(current.sha);
       case "diff":
         return (
           <SelectedDiffBody
@@ -357,26 +421,10 @@ export function PrView(props: PrViewProps) {
         when={opened()}
         fallback={
           <Show
-            when={localFile()}
+            when={localSelection()}
             fallback={<NoPullRequest state={currentState()} />}
           >
-            {(path: Accessor<string>) => (
-              <>
-                <LocalDiffHeader path={path()} maxWidth={contentWidth()} />
-                <SelectedDiffBody
-                  path={path()}
-                  commitSha={undefined}
-                  commit={undefined}
-                  label="Working tree diff"
-                  revealLocked={revealLocked()}
-                  maxWidth={contentWidth()}
-                  setDiffScroll={setDiffScroll}
-                />
-                {hintLine(
-                  "j/k scroll · [/] changes · {/} hunks · e lock files · o close diff",
-                )}
-              </>
-            )}
+            {(current: Accessor<LocalView>) => localViewContent(current)}
           </Show>
         }
       >

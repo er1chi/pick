@@ -142,13 +142,28 @@ function ContextRow(props: ContextRowProps): JSX.Element {
   );
 }
 
-export function LocalDiffHeader(props: {
-  readonly path: string;
+function localBanner(
+  commit: string | undefined,
+  path: string | undefined,
+): string {
+  const reference = commit === undefined ? undefined : commit.slice(0, 12);
+  if (reference !== undefined && path !== undefined) {
+    return `Context: Commit ${reference} · File ${path}`;
+  }
+  if (reference !== undefined) {
+    return `Context: Commit ${reference}`;
+  }
+  return `Context: Local changes · File ${path ?? ""}`;
+}
+
+export function LocalHeader(props: {
+  readonly commit: string | undefined;
+  readonly path: string | undefined;
   readonly maxWidth: number;
 }): JSX.Element {
   return (
     <ContextRow
-      banner={`Context: Local changes · File ${props.path}`}
+      banner={localBanner(props.commit, props.path)}
       affordances={[CLOSE_DIFF_LABEL]}
       maxWidth={props.maxWidth}
     />

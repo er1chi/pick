@@ -27,17 +27,25 @@ export type PullRequestView = PullRequestIdentity &
       }
   );
 
-interface LocalView {
+export interface LocalView {
   readonly kind: "local";
+  readonly commit: string | undefined;
   readonly file: string | undefined;
 }
 
 export type ActiveView = LocalView | PullRequestView;
 
-const localView: LocalView = { kind: "local", file: undefined };
+const localView: LocalView = {
+  kind: "local",
+  commit: undefined,
+  file: undefined,
+};
 
 /** The commit a view is anchored to, when the view is a commit or a commit diff. */
 export function viewCommit(view: ActiveView): string | undefined {
+  if (view.kind === "local") {
+    return view.commit;
+  }
   if (view.kind === "commit") {
     return view.sha;
   }
@@ -61,7 +69,7 @@ export interface ViewContextValue {
   selectFile(path: string): void;
   /**
    * Close the open file diff, keeping a selected commit; with no diff open,
-   * return to the pull request overview.
+   * return to the pull request overview, or to local changes.
    */
   closeFile(): void;
   close(): void;
@@ -85,8 +93,9 @@ export function ViewContextProvider(props: {
   }
 
   function selectCommit(sha: string): void {
-    const current = viewPullRequest(view());
-    if (current === undefined) {
+    const current = view();
+    if (current.kind === "local") {
+      setView({ kind: "local", commit: sha, file: undefined });
       return;
     }
     setView({ kind: "commit", id: current.id, number: current.number, sha });
@@ -95,7 +104,7 @@ export function ViewContextProvider(props: {
   function selectFile(path: string): void {
     const current = view();
     if (current.kind === "local") {
-      setView({ kind: "local", file: path });
+      setView({ kind: "local", commit: current.commit, file: path });
       return;
     }
     setView({
@@ -110,7 +119,11 @@ export function ViewContextProvider(props: {
   function closeFile(): void {
     const current = view();
     if (current.kind === "local") {
-      setView(localView);
+      setView(
+        current.file === undefined
+          ? localView
+          : { kind: "local", commit: current.commit, file: undefined },
+      );
       return;
     }
     if (current.kind === "diff" && current.commit !== undefined) {

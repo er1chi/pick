@@ -2,7 +2,7 @@ import cliSpinners from "cli-spinners";
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { usePatchStore } from "@/context/patch-store";
 import { usePullRequest } from "@/context/pull-request-context";
-import { useViewContext, viewCommit } from "@/context/view-context";
+import { useViewContext } from "@/context/view-context";
 import { oneLine } from "@/features/main-view/components/pr-view-chrome";
 import { colors } from "@/theme";
 
@@ -35,7 +35,7 @@ export function PullRequestStatusLine(): JSX.Element {
       return phase;
     }
     if (
-      viewCommit(viewContext.view()) !== undefined &&
+      viewContext.view().commit !== undefined &&
       patchStore.currentPatch() === undefined
     ) {
       return "loading";

@@ -26,7 +26,7 @@ export function LocalRepositoryProvider(props: {
   const viewContext = useViewContext();
   const [commits] = createResource(
     () =>
-      viewContext.view().kind === "local"
+      viewContext.view().source.kind === "local"
         ? forgeContext.state().cwd
         : undefined,
     (cwd) => readCommits(cwd),

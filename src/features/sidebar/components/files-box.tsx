@@ -3,11 +3,7 @@ import { createEffect, createMemo, createResource } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { useForgeContext } from "@/context/forge-context";
 import { usePatchStore } from "@/context/patch-store";
-import {
-  useViewContext,
-  viewCommit,
-  viewPullRequest,
-} from "@/context/view-context";
+import { useViewContext, viewPullRequest } from "@/context/view-context";
 import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
 import {
   areVisibleRowsEqual,
@@ -143,7 +139,7 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
   // The working tree status only applies to the local view with no commit
   // selected; a pull request or a commit lists the files of its patch.
   const workingTree = () =>
-    opened() === undefined && viewCommit(viewContext.view()) === undefined;
+    opened() === undefined && viewContext.view().commit === undefined;
   const [localChanges] = createResource(
     () => (opened() === undefined ? forgeContext.state().cwd : undefined),
     (cwd) => readChangedFiles(cwd),

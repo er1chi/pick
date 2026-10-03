@@ -4,7 +4,7 @@ import {
   type RepositoryForgeContextState,
 } from "@/context/forge-context";
 import { usePullRequest } from "@/context/pull-request-context";
-import { viewCommit, type PullRequestView } from "@/context/view-context";
+import { viewPullRequest, type ActiveView } from "@/context/view-context";
 import {
   CLOSE_AFFORDANCE_GAP,
   CLOSE_DIFF_LABEL,
@@ -19,6 +19,7 @@ import {
 } from "@/services/forge/types";
 import { colors } from "@/theme";
 import { truncateEnd } from "@/utils/text";
+import { PullRequestStatusLine } from "./pull-request-status";
 
 interface PersistentHeaderProps {
   readonly repositoryName: string;
@@ -146,31 +147,28 @@ function ContextRow(props: ContextRowProps): JSX.Element {
   );
 }
 
-export function LocalHeader(props: {
-  readonly commit: string | undefined;
-  readonly path: string | undefined;
-  readonly maxWidth: number;
-}): JSX.Element {
-  return (
-    <ContextRow
-      banner={contextBanner("Local changes", props.commit, props.path)}
-      affordances={[CLOSE_DIFF_LABEL]}
-      maxWidth={props.maxWidth}
-    />
-  );
+function sourceLabel(view: ActiveView): string {
+  return view.source.kind === "local" ? "Local changes" : "Pull request";
 }
 
-interface PrViewHeaderProps {
-  readonly view: PullRequestView;
+interface MainViewHeaderProps {
+  readonly view: ActiveView;
+  /** The rest of the props only render for a pull request source. */
   readonly repositoryName: string;
   readonly titleLine: string | undefined;
   readonly headerKey: string;
   readonly maxWidth: number;
 }
 
-export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
+export function MainViewHeader(props: MainViewHeaderProps): JSX.Element {
   const pullRequest = usePullRequest();
-  const diffContextSelected = () => props.view.kind !== "pr";
+  const isPullRequest = () => viewPullRequest(props.view) !== undefined;
+  const selected = () =>
+    props.view.commit !== undefined || props.view.file !== undefined;
+  const affordances = () => [
+    ...(selected() ? [CLOSE_DIFF_LABEL] : []),
+    ...(isPullRequest() ? [CLOSE_PR_LABEL] : []),
+  ];
   const detailsSection = () => pullRequest.data()?.details;
   const details = () => {
     const section = detailsSection();
@@ -189,44 +187,45 @@ export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
       flexGrow={0}
       flexShrink={0}
     >
+      <Show when={isPullRequest()}>
+        <PullRequestStatusLine />
+      </Show>
       <ContextRow
         banner={contextBanner(
-          "Pull request",
-          viewCommit(props.view),
-          props.view.kind === "diff" ? props.view.path : undefined,
+          sourceLabel(props.view),
+          props.view.commit,
+          props.view.file,
         )}
-        affordances={
-          diffContextSelected()
-            ? [CLOSE_DIFF_LABEL, CLOSE_PR_LABEL]
-            : [CLOSE_PR_LABEL]
-        }
+        affordances={affordances()}
         maxWidth={props.maxWidth}
       />
-      <Show keyed when={props.headerKey}>
-        {() => (
-          <PersistentHeader
-            repositoryName={props.repositoryName}
-            titleLine={props.titleLine}
-            details={props.view.kind === "diff" ? undefined : details()}
-            maxWidth={props.maxWidth}
-          />
-        )}
-      </Show>
-      <Show when={detailsError()}>
-        {(error: Accessor<string>) => (
-          <box flexDirection="column">
-            {oneLine(
-              <text fg={colors.yellow} wrapMode="none" truncate>
-                Could not load pull request details.
-              </text>,
-            )}
-            {oneLine(
-              <text fg={colors.dim} wrapMode="none" truncate>
-                {error()}
-              </text>,
-            )}
-          </box>
-        )}
+      <Show when={isPullRequest()}>
+        <Show keyed when={props.headerKey}>
+          {() => (
+            <PersistentHeader
+              repositoryName={props.repositoryName}
+              titleLine={props.titleLine}
+              details={props.view.file === undefined ? details() : undefined}
+              maxWidth={props.maxWidth}
+            />
+          )}
+        </Show>
+        <Show when={detailsError()}>
+          {(error: Accessor<string>) => (
+            <box flexDirection="column">
+              {oneLine(
+                <text fg={colors.yellow} wrapMode="none" truncate>
+                  Could not load pull request details.
+                </text>,
+              )}
+              {oneLine(
+                <text fg={colors.dim} wrapMode="none" truncate>
+                  {error()}
+                </text>,
+              )}
+            </box>
+          )}
+        </Show>
       </Show>
     </box>
   );

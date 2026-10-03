@@ -11,52 +11,62 @@ export function pullRequestViewId(
   return `${repository.owner}/${repository.name}#${number}`;
 }
 
-interface PullRequestIdentity {
+export interface PullRequestSource {
+  readonly kind: "pull-request";
   readonly id: string;
   readonly number: number;
 }
 
-export type PullRequestView = PullRequestIdentity &
-  (
-    | { readonly kind: "pr" }
-    | { readonly kind: "commit"; readonly sha: string }
-    | {
-        readonly kind: "diff";
-        readonly path: string;
-        readonly commit: string | undefined;
-      }
-  );
-
-export interface LocalView {
+interface LocalSource {
   readonly kind: "local";
+}
+
+/** Where the viewed commits and patches come from. */
+export type ViewSource = LocalSource | PullRequestSource;
+
+/**
+ * What the main view shows: a source, and within it an optional commit and an
+ * optional file. A file without a commit is the source's whole diff (the pull
+ * request diff, or the working tree).
+ */
+export interface ActiveView {
+  readonly source: ViewSource;
   readonly commit: string | undefined;
   readonly file: string | undefined;
 }
 
-export type ActiveView = LocalView | PullRequestView;
+export const localSource: LocalSource = { kind: "local" };
 
-const localView: LocalView = {
-  kind: "local",
+/** A stable key for a source, so per-source caches can tell sources apart. */
+export function viewSourceId(source: ViewSource): string {
+  return source.kind === "local" ? "local" : source.id;
+}
+
+export function pullRequestView(
+  repository: Pick<ForgeRepository, "owner" | "name">,
+  number: number,
+): ActiveView {
+  return {
+    source: {
+      kind: "pull-request",
+      id: pullRequestViewId(repository, number),
+      number,
+    },
+    commit: undefined,
+    file: undefined,
+  };
+}
+
+const localView: ActiveView = {
+  source: localSource,
   commit: undefined,
   file: undefined,
 };
 
-/** The commit a view is anchored to, when the view is a commit or a commit diff. */
-export function viewCommit(view: ActiveView): string | undefined {
-  if (view.kind === "local") {
-    return view.commit;
-  }
-  if (view.kind === "commit") {
-    return view.sha;
-  }
-  if (view.kind === "diff") {
-    return view.commit;
-  }
-  return undefined;
-}
-
-export function viewPullRequest(view: ActiveView): PullRequestView | undefined {
-  return view.kind === "local" ? undefined : view;
+export function viewPullRequest(
+  view: ActiveView,
+): PullRequestSource | undefined {
+  return view.source.kind === "pull-request" ? view.source : undefined;
 }
 
 export interface ViewContextValue {
@@ -68,8 +78,8 @@ export interface ViewContextValue {
   selectCommit(sha: string): void;
   selectFile(path: string): void;
   /**
-   * Close the open file diff, keeping a selected commit; with no diff open,
-   * return to the pull request overview, or to local changes.
+   * Step back one level: close the open file diff, keeping a selected commit;
+   * with no file open, deselect the commit.
    */
   closeFile(): void;
   close(): void;
@@ -89,53 +99,24 @@ export function ViewContextProvider(props: {
     repository: Pick<ForgeRepository, "owner" | "name">,
     number: number,
   ): void {
-    setView({ kind: "pr", id: pullRequestViewId(repository, number), number });
+    setView(pullRequestView(repository, number));
   }
 
   function selectCommit(sha: string): void {
-    const current = view();
-    if (current.kind === "local") {
-      setView({ kind: "local", commit: sha, file: undefined });
-      return;
-    }
-    setView({ kind: "commit", id: current.id, number: current.number, sha });
+    setView({ source: view().source, commit: sha, file: undefined });
   }
 
   function selectFile(path: string): void {
-    const current = view();
-    if (current.kind === "local") {
-      setView({ kind: "local", commit: current.commit, file: path });
-      return;
-    }
-    setView({
-      kind: "diff",
-      id: current.id,
-      number: current.number,
-      path,
-      commit: viewCommit(current),
-    });
+    setView({ ...view(), file: path });
   }
 
   function closeFile(): void {
     const current = view();
-    if (current.kind === "local") {
-      setView(
-        current.file === undefined
-          ? localView
-          : { kind: "local", commit: current.commit, file: undefined },
-      );
-      return;
-    }
-    if (current.kind === "diff" && current.commit !== undefined) {
-      setView({
-        kind: "commit",
-        id: current.id,
-        number: current.number,
-        sha: current.commit,
-      });
-      return;
-    }
-    setView({ kind: "pr", id: current.id, number: current.number });
+    setView(
+      current.file === undefined
+        ? { ...current, commit: undefined }
+        : { ...current, file: undefined },
+    );
   }
 
   function close(): void {

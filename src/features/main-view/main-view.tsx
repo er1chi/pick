@@ -1,31 +1,18 @@
 import { useBindings } from "@opentui/keymap/solid";
 import { useTerminalDimensions } from "@opentui/solid";
 import { basename } from "node:path";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  on,
-  Show,
-  type Accessor,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
 import { usePatchStore } from "@/context/patch-store";
 import { usePullRequest } from "@/context/pull-request-context";
-import {
-  useViewContext,
-  viewPullRequest,
-  type LocalView,
-  type PullRequestView,
-} from "@/context/view-context";
+import { useViewContext, viewPullRequest } from "@/context/view-context";
 import {
   HintLine,
   MAIN_PANE_CHROME,
 } from "@/features/main-view/components/pr-view-chrome";
 import {
-  LocalHeader,
+  MainViewHeader,
   NoPullRequest,
-  PrViewHeader,
 } from "@/features/main-view/components/pr-view-header";
 import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
 import {
@@ -38,9 +25,7 @@ import {
 } from "@/packages/pierre/solid/diffs";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
-import { LocalBody } from "./components/local-body";
-import { PullRequestBody } from "./components/pull-request-body";
-import { PullRequestStatusLine } from "./components/pull-request-status";
+import { MainBody } from "./components/main-body";
 import { visibleValue } from "./utils/load-state";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
@@ -63,18 +48,6 @@ export function PrView(props: PrViewProps) {
   const patchStore = usePatchStore();
   const pullRequest = usePullRequest();
   const view = () => viewContext.view();
-  const localView = (): LocalView | undefined => {
-    const current = view();
-    return current.kind === "local" ? current : undefined;
-  };
-  const localFile = () => localView()?.file;
-  /** The local view, once a commit or a file is selected in it. */
-  const localSelection = () => {
-    const current = localView();
-    return current?.commit === undefined && current?.file === undefined
-      ? undefined
-      : current;
-  };
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
   const [overviewScroll, setOverviewScroll] = createSignal<
     ScrollBoxRenderable | undefined
@@ -121,7 +94,23 @@ export function PrView(props: PrViewProps) {
     return `${number ?? "none"}:${detailsKey}:${titleLine() ?? ""}:${headerRepositoryName()}`;
   };
 
-  const diffOpen = () => view().kind === "diff" || localFile() !== undefined;
+  const diffOpen = () => view().file !== undefined;
+  /** The local source has no overview: with nothing selected in it, the pane
+   * shows the repository landing screen instead. */
+  const showsView = () =>
+    opened() !== undefined ||
+    view().commit !== undefined ||
+    view().file !== undefined;
+  const hint = () => {
+    const closePullRequest = opened() === undefined ? "" : " · x close PR";
+    if (diffOpen()) {
+      return `j/k scroll · [/] changes · {/} hunks · e lock files · o close diff${closePullRequest}`;
+    }
+    if (view().commit !== undefined) {
+      return `j/k scroll · o close commit${closePullRequest}`;
+    }
+    return `j/k scroll${closePullRequest}`;
+  };
 
   function scrollContent(lines: number): void {
     if (diffOpen()) {
@@ -294,54 +283,18 @@ export function PrView(props: PrViewProps) {
       }}
     >
       <Show
-        when={opened()}
-        fallback={
-          <Show
-            when={localSelection()}
-            fallback={<NoPullRequest state={currentState()} />}
-          >
-            {(current: Accessor<LocalView>) => (
-              <>
-                <LocalHeader
-                  commit={current().commit}
-                  path={current().file}
-                  maxWidth={contentWidth()}
-                />
-                <LocalBody view={current()} {...bodyProps} />
-                <HintLine
-                  text={
-                    current().file === undefined
-                      ? "j/k scroll · o close commit"
-                      : "j/k scroll · [/] changes · {/} hunks · e lock files · o close diff"
-                  }
-                  maxWidth={contentWidth()}
-                />
-              </>
-            )}
-          </Show>
-        }
+        when={showsView()}
+        fallback={<NoPullRequest state={currentState()} />}
       >
-        {(current: Accessor<PullRequestView>) => (
-          <>
-            <PullRequestStatusLine />
-            <PrViewHeader
-              view={current()}
-              repositoryName={headerRepositoryName()}
-              titleLine={titleLine()}
-              headerKey={headerKey()}
-              maxWidth={contentWidth()}
-            />
-            <PullRequestBody
-              view={current()}
-              summary={summary}
-              {...bodyProps}
-            />
-            <HintLine
-              text="j/k scroll · e lock files · x close PR"
-              maxWidth={contentWidth()}
-            />
-          </>
-        )}
+        <MainViewHeader
+          view={view()}
+          repositoryName={headerRepositoryName()}
+          titleLine={titleLine()}
+          headerKey={headerKey()}
+          maxWidth={contentWidth()}
+        />
+        <MainBody view={view()} summary={summary} {...bodyProps} />
+        <HintLine text={hint()} maxWidth={contentWidth()} />
       </Show>
     </box>
   );

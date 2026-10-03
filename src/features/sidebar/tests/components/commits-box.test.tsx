@@ -21,11 +21,7 @@ import {
   PullRequestProvider,
   type PullRequestContextValue,
 } from "@/context/pull-request-context";
-import {
-  pullRequestViewId,
-  ViewContextProvider,
-  type ActiveView,
-} from "@/context/view-context";
+import { ViewContextProvider, pullRequestView } from "@/context/view-context";
 import { createAppKeymap } from "@/shared/keymap";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
@@ -58,11 +54,7 @@ const COMMIT_B: PullRequestCommit = {
   url: null,
 };
 
-const openPullRequest: ActiveView = {
-  kind: "pr",
-  id: pullRequestViewId({ owner: "octocat", name: "hello" }, 1),
-  number: 1,
-};
+const openPullRequest = pullRequestView({ owner: "octocat", name: "hello" }, 1);
 
 function pullRequestValue(
   commits: Accessor<readonly PullRequestCommit[]>,

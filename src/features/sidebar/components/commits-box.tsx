@@ -3,11 +3,7 @@ import { createMemo } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { useLocalRepository } from "@/context/local-repository-context";
 import { usePullRequest } from "@/context/pull-request-context";
-import {
-  useViewContext,
-  viewCommit,
-  viewPullRequest,
-} from "@/context/view-context";
+import { useViewContext, viewPullRequest } from "@/context/view-context";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { firstLine } from "@/utils/text";
@@ -81,7 +77,7 @@ export function CommitsBox(props: CommitsBoxProps): JSX.Element {
       >
         {(commit) => {
           const highlighted = () => commit().sha === list.highlighted()?.sha;
-          const active = () => commit().sha === viewCommit(viewContext.view());
+          const active = () => commit().sha === viewContext.view().commit;
           return (
             <SelectableRow
               id={commitRowId(commit())}

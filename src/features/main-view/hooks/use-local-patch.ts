@@ -1,7 +1,11 @@
 import { createEffect, createMemo, createResource, on } from "solid-js";
 import { useForgeContext } from "@/context/forge-context";
-import { localCommitPatchOwner, usePatchStore } from "@/context/patch-store";
-import { useViewContext } from "@/context/view-context";
+import { usePatchStore } from "@/context/patch-store";
+import {
+  localSource,
+  useViewContext,
+  viewSourceId,
+} from "@/context/view-context";
 import { available, unsupported } from "@/services/forge/section";
 import { readCommitPatch, readWorkingTreePatch } from "@/services/local/local";
 
@@ -11,14 +15,14 @@ export function useLocalPatch(): void {
   const patchStore = usePatchStore();
   const [patch] = createResource(
     () =>
-      viewContext.view().kind === "local"
+      viewContext.view().source.kind === "local"
         ? forgeContext.state().cwd
         : undefined,
     (cwd) => readWorkingTreePatch(cwd),
   );
   const commitSha = createMemo(() => {
     const view = viewContext.view();
-    return view.kind === "local" ? view.commit : undefined;
+    return view.source.kind === "local" ? view.commit : undefined;
   });
 
   createEffect(() => {
@@ -46,7 +50,7 @@ export function useLocalPatch(): void {
       }
       void readCommitPatch(forgeContext.state().cwd, sha).then((result) => {
         patchStore.setCommitPatch(
-          localCommitPatchOwner,
+          viewSourceId(localSource),
           sha,
           result.isOk()
             ? available(result.value)

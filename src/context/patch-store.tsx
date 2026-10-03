@@ -1,5 +1,5 @@
 import { createContext, createSignal, useContext } from "solid-js";
-import { useViewContext, viewCommit, viewPullRequest } from "./view-context";
+import { useViewContext, viewSourceId } from "./view-context";
 
 import type { JSX } from "@opentui/solid";
 import type { Accessor } from "solid-js";
@@ -11,9 +11,6 @@ interface CommitPatchCache {
   readonly owner: string | undefined;
   readonly patches: ReadonlyMap<string, PatchSection>;
 }
-
-/** Cache owner for commit patches read from the local repository. */
-export const localCommitPatchOwner = "local";
 
 const emptyCommitPatches: CommitPatchCache = {
   owner: undefined,
@@ -30,9 +27,9 @@ export interface PatchStoreValue {
   setPullRequestPatch(patch: PatchSection | undefined): void;
   setLocalPatch(patch: PatchSection | undefined): void;
   /**
-   * Store one commit's patch for the open pull request, or for the local
-   * repository under `localCommitPatchOwner`. A result for any other owner is
-   * ignored, so the cache never holds more than one.
+   * Store one commit's patch for the source with this `viewSourceId`. A result
+   * for any source but the viewed one is ignored, so the cache never holds
+   * more than one.
    */
   setCommitPatch(owner: string, sha: string, patch: PatchSection): void;
   cachedCommitPatch(sha: string): PatchSection | undefined;
@@ -45,8 +42,7 @@ export function PatchStoreProvider(props: {
   readonly children: JSX.Element;
 }): JSX.Element {
   const viewContext = useViewContext();
-  const ownerId = () =>
-    viewPullRequest(viewContext.view())?.id ?? localCommitPatchOwner;
+  const ownerId = () => viewSourceId(viewContext.view().source);
   const [pullRequestPatch, setPullRequestPatch] = createSignal<
     PatchSection | undefined
   >();
@@ -78,11 +74,10 @@ export function PatchStoreProvider(props: {
 
   function currentPatch(): PatchSection | undefined {
     const current = viewContext.view();
-    const sha = viewCommit(current);
-    if (sha !== undefined) {
-      return cachedCommitPatch(sha);
+    if (current.commit !== undefined) {
+      return cachedCommitPatch(current.commit);
     }
-    return current.kind === "local" ? localPatch() : pullRequestPatch();
+    return current.source.kind === "local" ? localPatch() : pullRequestPatch();
   }
 
   const store: PatchStoreValue = {

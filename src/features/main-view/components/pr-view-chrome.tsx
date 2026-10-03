@@ -49,3 +49,15 @@ export function renderMutedLine(
 ): JSX.Element {
   return <MutedLine line={line} maxWidth={maxWidth} />;
 }
+
+/** The dim key-hint row at the bottom of the main pane. */
+export function HintLine(props: {
+  readonly text: string;
+  readonly maxWidth: number;
+}): JSX.Element {
+  return oneLine(
+    <text fg={colors.dim} wrapMode="none" truncate>
+      {truncateEnd(props.text, props.maxWidth)}
+    </text>,
+  );
+}

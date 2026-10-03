@@ -71,9 +71,13 @@ function PersistentHeader(props: PersistentHeaderProps): JSX.Element {
   );
 }
 
-function contextBanner(view: PullRequestView): string {
-  const commit = viewCommit(view);
-  const path = view.kind === "diff" ? view.path : undefined;
+/** The context line: a selected commit, or else the source (a pull request or
+ * local changes), plus any open file. */
+function contextBanner(
+  source: string,
+  commit: string | undefined,
+  path: string | undefined,
+): string {
   // The full SHA stays in the commit metadata below; the fixed context line
   // only needs a short, stable reference.
   const reference = commit === undefined ? undefined : commit.slice(0, 12);
@@ -84,9 +88,9 @@ function contextBanner(view: PullRequestView): string {
     return `Context: Commit ${reference}`;
   }
   if (path !== undefined) {
-    return `Context: Pull request · File ${path}`;
+    return `Context: ${source} · File ${path}`;
   }
-  return "Context: Pull request";
+  return `Context: ${source}`;
 }
 
 interface ContextRowProps {
@@ -142,20 +146,6 @@ function ContextRow(props: ContextRowProps): JSX.Element {
   );
 }
 
-function localBanner(
-  commit: string | undefined,
-  path: string | undefined,
-): string {
-  const reference = commit === undefined ? undefined : commit.slice(0, 12);
-  if (reference !== undefined && path !== undefined) {
-    return `Context: Commit ${reference} · File ${path}`;
-  }
-  if (reference !== undefined) {
-    return `Context: Commit ${reference}`;
-  }
-  return `Context: Local changes · File ${path ?? ""}`;
-}
-
 export function LocalHeader(props: {
   readonly commit: string | undefined;
   readonly path: string | undefined;
@@ -163,7 +153,7 @@ export function LocalHeader(props: {
 }): JSX.Element {
   return (
     <ContextRow
-      banner={localBanner(props.commit, props.path)}
+      banner={contextBanner("Local changes", props.commit, props.path)}
       affordances={[CLOSE_DIFF_LABEL]}
       maxWidth={props.maxWidth}
     />
@@ -200,7 +190,11 @@ export function PrViewHeader(props: PrViewHeaderProps): JSX.Element {
       flexShrink={0}
     >
       <ContextRow
-        banner={contextBanner(props.view)}
+        banner={contextBanner(
+          "Pull request",
+          viewCommit(props.view),
+          props.view.kind === "diff" ? props.view.path : undefined,
+        )}
         affordances={
           diffContextSelected()
             ? [CLOSE_DIFF_LABEL, CLOSE_PR_LABEL]

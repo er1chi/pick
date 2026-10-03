@@ -1,13 +1,6 @@
 import { useBindings } from "@opentui/keymap/solid";
-import {
-  Index,
-  createEffect,
-  createMemo,
-  createResource,
-  createSignal,
-} from "solid-js";
+import { createEffect, createMemo, createResource } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
-import { PaneStore } from "@/context/active-pane-context";
 import { useForgeContext } from "@/context/forge-context";
 import { usePatchStore } from "@/context/patch-store";
 import { useViewContext, viewPullRequest } from "@/context/view-context";
@@ -22,16 +15,15 @@ import {
   useFileTreeSelector,
 } from "@/packages/pierre/solid/trees";
 import { readChangedFiles } from "@/services/local/local";
-import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
-import { useNavigateList } from "@/shared/hooks/use-navigate-list";
-import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
-import { EmptyGate } from "./empty-gate";
-import { scopedTitle, SidebarBox, SidebarScrollBox } from "./sidebar-box";
+import { scopedTitle } from "./sidebar-box";
+import { useSidebarList } from "./sidebar-list";
 
-import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
-import type { FileTree as FileTreeModel } from "@pierre/trees";
+import type {
+  FileTree as FileTreeModel,
+  FileTreeVisibleRow,
+} from "@pierre/trees";
 import type { Result } from "better-result";
 import type { JSX } from "solid-js";
 import type { ForgeSection, PullRequestPatch } from "@/services/forge/types";
@@ -132,11 +124,11 @@ function toggleFocusedDirectory(model: FileTreeModel): void {
   }
 }
 
+function fileRowId(row: FileTreeVisibleRow): string {
+  return `file-${row.path}`;
+}
+
 export function FilesBox(props: SidebarPaneProps): JSX.Element {
-  const [box, setBox] = createSignal<BoxRenderable>();
-  const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable>();
-  const [_pane, setPane] = PaneStore.use();
-  const isFocused = useFocusedPane(Pane.Files);
   const viewContext = useViewContext();
   const patchStore = usePatchStore();
   const forgeContext = useForgeContext();
@@ -183,19 +175,23 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
     getAllVisibleRows,
     areVisibleRowsEqual,
   );
-  const navigation = useNavigateList({ target: box });
-
-  createEffect(() => navigation.setCount(rows().length));
+  // The highlighted row is the tree's focused row: j/k move the model's focus,
+  // and focus changes from the model move the highlight.
+  const list = useSidebarList({
+    pane: Pane.Files,
+    items: rows,
+    rowId: fileRowId,
+  });
 
   createEffect(() => {
     const focused = rows().findIndex((row) => row.isFocused);
     if (focused >= 0) {
-      navigation.setIndex(focused);
+      list.setIndex(focused);
     }
   });
 
   createEffect(() => {
-    const next = rows()[navigation.index()];
+    const next = list.highlighted();
     if (next !== undefined && !next.isFocused) {
       model.focusPath(next.path);
     }
@@ -213,56 +209,37 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
       return;
     }
     viewContext.selectFile(item.getPath());
-    setPane({ active: Pane.Main });
+    list.focus(Pane.Main);
   }
 
-  // Follow the keyboard highlight rather than the content selection, so moving
-  // through the tree scrolls the focused row into view without opening it.
-  useScrollIntoView(() => {
-    const focusedRow = rows().find((row) => row.isFocused);
-    return focusedRow === undefined ? undefined : `file-${focusedRow.path}`;
-  }, scrollBox);
-
   useBindings(() => ({
-    target: box,
+    target: list.target,
     bindings: [
       { key: "return", cmd: activateFocusedItem },
       { key: "right", cmd: () => toggleFocusedDirectory(model) },
       { key: "left", cmd: () => model.focusParentItem() },
     ],
   }));
-  function handleMouseFocus() {
-    setPane({ active: Pane.Files });
-  }
-
   return (
-    <SidebarBox
-      id={Pane.Files}
+    <list.Box
       title={scopedTitle(
         opened() === undefined ? "[0] Changes" : "[0] Files",
         opened()?.number,
       )}
-      active={isFocused()}
-      boxRef={setBox}
       flexGrow={1}
-      handleMouseFocus={handleMouseFocus}
     >
-      <EmptyGate hasItems={rows().length > 0} emptyText={emptyText()}>
-        <SidebarScrollBox scrollRef={setScrollBox} hideScrollbar>
-          <Index each={rows()}>
-            {(row) => (
-              <SelectableRow
-                id={`file-${row().path}`}
-                selected={row().isFocused}
-                guide={fileTreeRowGuides(row())}
-                label={`${fileTreeRowPrefix(row())}${fileTreeRowLabel(row())}`}
-                marker={fileMarker(row().path)}
-                maxWidth={props.rowWidth}
-              />
-            )}
-          </Index>
-        </SidebarScrollBox>
-      </EmptyGate>
-    </SidebarBox>
+      <list.Rows emptyText={emptyText()}>
+        {(row) => (
+          <SelectableRow
+            id={fileRowId(row())}
+            selected={row().isFocused}
+            guide={fileTreeRowGuides(row())}
+            label={`${fileTreeRowPrefix(row())}${fileTreeRowLabel(row())}`}
+            marker={fileMarker(row().path)}
+            maxWidth={props.rowWidth}
+          />
+        )}
+      </list.Rows>
+    </list.Box>
   );
 }

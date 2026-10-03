@@ -25,6 +25,7 @@ import { readChangedFiles } from "@/services/local/local";
 import { useFocusedPane } from "@/shared/hooks/use-focused-pane";
 import { useNavigateList } from "@/shared/hooks/use-navigate-list";
 import { useScrollIntoView } from "@/shared/hooks/use-scroll-into-view";
+import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { EmptyGate } from "./empty-gate";
 import { scopedTitle, SidebarBox, SidebarScrollBox } from "./sidebar-box";
@@ -34,12 +35,39 @@ import type { FileTree as FileTreeModel } from "@pierre/trees";
 import type { Result } from "better-result";
 import type { JSX } from "solid-js";
 import type { ForgeSection, PullRequestPatch } from "@/services/forge/types";
-import type { GitError } from "@/services/local/types";
+import type { GitError, GitFileChange } from "@/services/local/types";
 import type { SidebarPaneProps } from "../types";
 
 type FilesView =
-  | { readonly kind: "list"; readonly paths: readonly string[] }
+  | {
+      readonly kind: "list";
+      readonly paths: readonly string[];
+      readonly statuses: ReadonlyMap<string, string>;
+    }
   | { readonly kind: "message"; readonly text: string };
+
+const patchStatuses = {
+  change: "M",
+  new: "A",
+  deleted: "D",
+  "rename-pure": "R",
+  "rename-changed": "R",
+};
+
+function statusMarker(status: string | undefined) {
+  if (status === undefined) {
+    return undefined;
+  }
+  let color: string = colors.yellow;
+  if (status.includes("D") || status.includes("U") || status === "AA") {
+    color = colors.red;
+  } else if (status.includes("R") || status.includes("C")) {
+    color = colors.blue;
+  } else if (status.includes("A") || status === "??") {
+    color = colors.green;
+  }
+  return { text: status, color };
+}
 
 type SectionProblem = Exclude<ForgeSection<unknown>, { status: "available" }>;
 
@@ -65,7 +93,13 @@ function changedFiles(
     const index = patchFileIndex(section);
     return index.names.length === 0
       ? { kind: "message", text: "No changed files." }
-      : { kind: "list", paths: index.names };
+      : {
+          kind: "list",
+          paths: index.names,
+          statuses: new Map(
+            index.files.map((file) => [file.name, patchStatuses[file.type]]),
+          ),
+        };
   }
   return {
     kind: "message",
@@ -74,7 +108,7 @@ function changedFiles(
 }
 
 function localFiles(
-  result: Result<readonly string[], GitError> | undefined,
+  result: Result<readonly GitFileChange[], GitError> | undefined,
 ): FilesView {
   if (result === undefined) {
     return { kind: "message", text: "Loading changes…" };
@@ -84,7 +118,11 @@ function localFiles(
   }
   return result.value.length === 0
     ? { kind: "message", text: "No local changes." }
-    : { kind: "list", paths: result.value };
+    : {
+        kind: "list",
+        paths: result.value.map((file) => file.path),
+        statuses: new Map(result.value.map((file) => [file.path, file.status])),
+      };
 }
 
 function toggleFocusedDirectory(model: FileTreeModel): void {
@@ -107,9 +145,10 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
     () => (opened() === undefined ? forgeContext.state().cwd : undefined),
     (cwd) => readChangedFiles(cwd),
   );
+  const localFilesView = createMemo(() => localFiles(localChanges.latest));
   const filesView = createMemo<FilesView>(() => {
     if (opened() === undefined) {
-      return localFiles(localChanges.latest);
+      return localFilesView();
     }
     return changedFiles(patchStore.currentPatch());
   });
@@ -120,6 +159,12 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
   const emptyText = () => {
     const view = filesView();
     return view.kind === "message" ? view.text : "No changed files.";
+  };
+  const fileMarker = (path: string) => {
+    const view = filesView();
+    return view.kind === "list"
+      ? statusMarker(view.statuses.get(path))
+      : undefined;
   };
 
   // The model owns path grouping: empty directories stay as separate rows
@@ -211,6 +256,7 @@ export function FilesBox(props: SidebarPaneProps): JSX.Element {
                 selected={row().isFocused}
                 guide={fileTreeRowGuides(row())}
                 label={`${fileTreeRowPrefix(row())}${fileTreeRowLabel(row())}`}
+                marker={fileMarker(row().path)}
                 maxWidth={props.rowWidth}
               />
             )}

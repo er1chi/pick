@@ -7,6 +7,7 @@ import type {
   GitBranchScope,
   GitCommit,
   GitError,
+  GitFileChange,
   GitStash,
 } from "./types";
 
@@ -99,7 +100,7 @@ export async function readCommits(
 
 export async function readChangedFiles(
   cwd: string,
-): Promise<Result<readonly string[], GitError>> {
+): Promise<Result<readonly GitFileChange[], GitError>> {
   const output = await runGit(cwd, [
     "status",
     "--porcelain=v1",
@@ -108,18 +109,19 @@ export async function readChangedFiles(
   ]);
   return output.map((text) => {
     const entries = text.split("\0");
-    const paths: string[] = [];
+    const files: GitFileChange[] = [];
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index] ?? "";
       if (entry.length < 4) {
         continue;
       }
-      paths.push(entry.slice(3));
-      if (/[RC]/.test(entry.slice(0, 2))) {
+      const status = entry.slice(0, 2);
+      files.push({ path: entry.slice(3), status });
+      if (/[RC]/.test(status)) {
         index += 1;
       }
     }
-    return paths;
+    return files;
   });
 }
 

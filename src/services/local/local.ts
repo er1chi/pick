@@ -204,31 +204,6 @@ export async function readCommitPatch(
   return output.map((text) => ({ text }));
 }
 
-async function pushRemote(cwd: string): Promise<Result<string, GitError>> {
-  const configured = await runGit(
-    cwd,
-    ["config", "--get", "remote.pushDefault"],
-    [0, 1],
-  );
-  const remote = configured.map((text) => text.trim());
-  if (remote.isErr() || remote.value !== "") {
-    return remote;
-  }
-  const remotes = await runGit(cwd, ["remote"]);
-  return remotes.andThen((text) => {
-    const names = text.split("\n").filter((name) => name !== "");
-    const name = names.includes("origin") ? "origin" : names[0];
-    return name === undefined
-      ? Result.err<never, GitError>(
-          new GitCommandFailedError({
-            exitCode: 1,
-            message: "No remote is configured to push to.",
-          }),
-        )
-      : Result.ok(name);
-  });
-}
-
 function plainLine(line: string): string {
   // oxlint-disable-next-line no-control-regex
   return Bun.stripANSI(line).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
@@ -238,28 +213,14 @@ export async function pushBranch(
   cwd: string,
   onLine: (line: string) => void,
 ): Promise<Result<void, GitError>> {
-  const options: CliOptions = {
-    env: { GIT_TERMINAL_PROMPT: "0" },
-    onLine: (line) => onLine(plainLine(line)),
-  };
-  const upstream = await runGit(cwd, [
-    "rev-parse",
-    "--abbrev-ref",
-    "--symbolic-full-name",
-    "@{upstream}",
-  ]);
-  if (upstream.isOk()) {
-    return (await runGit(cwd, ["push"], [0], options)).map(() => {});
-  }
-  const remote = await pushRemote(cwd);
-  if (remote.isErr()) {
-    return remote;
-  }
   const pushed = await runGit(
     cwd,
-    ["push", "--set-upstream", remote.value, "HEAD"],
+    ["-c", "push.autoSetupRemote=true", "push"],
     [0],
-    options,
+    {
+      env: { GIT_TERMINAL_PROMPT: "0" },
+      onLine: (line) => onLine(plainLine(line)),
+    },
   );
   return pushed.map(() => {});
 }

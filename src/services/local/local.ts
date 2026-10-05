@@ -1,6 +1,10 @@
 import { Result } from "better-result";
 import { runCli } from "@/utils/cli";
-import { GitCommandFailedError, GitUnavailableError } from "./types";
+import {
+  GitBranchNotMergedError,
+  GitCommandFailedError,
+  GitUnavailableError,
+} from "./types";
 
 import type { PullRequestPatch } from "@/services/forge/types";
 import type { CliOptions } from "@/utils/cli";
@@ -72,6 +76,22 @@ export async function readBranches(
         : [{ name, current: head === "*" }];
     }),
   );
+}
+
+export async function deleteBranch(
+  cwd: string,
+  branch: string,
+  force: boolean,
+): Promise<Result<void, GitError | GitBranchNotMergedError>> {
+  const output = await runGit(cwd, ["branch", force ? "-D" : "-d", branch]);
+  return output
+    .map(() => {})
+    .mapError((error) =>
+      GitCommandFailedError.is(error) &&
+      error.message.includes("not fully merged")
+        ? new GitBranchNotMergedError({ branch, message: error.message })
+        : error,
+    );
 }
 
 export async function readStashes(
@@ -192,6 +212,14 @@ export async function readWorkingTreePatch(
   return Result.all([tracked, ...additions]).map((parts) => parts.join(""));
 }
 
+export async function dropStash(
+  cwd: string,
+  ref: string,
+): Promise<Result<void, GitError>> {
+  const output = await runGit(cwd, ["stash", "drop", ref]);
+  return output.map(() => {});
+}
+
 export async function readCommitPatch(
   cwd: string,
   sha: string,
@@ -228,6 +256,19 @@ export async function pushBranch(
   onLine: (line: string) => void,
 ): Promise<Result<void, GitError>> {
   return runRemoteGit(cwd, ["-c", "push.autoSetupRemote=true", "push"], onLine);
+}
+
+export async function deleteRemoteBranch(
+  cwd: string,
+  name: string,
+  onLine: (line: string) => void,
+): Promise<Result<void, GitError>> {
+  const separator = name.indexOf("/");
+  return runRemoteGit(
+    cwd,
+    ["push", name.slice(0, separator), "--delete", name.slice(separator + 1)],
+    onLine,
+  );
 }
 
 export async function pullBranch(

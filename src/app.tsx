@@ -93,12 +93,17 @@ function repositoryFooterBindings(
         { key: "P", label: "Push" },
       ];
     case Pane.Stashes:
-      return [...base, { key: "j/k", label: "Navigate" }];
+      return [
+        ...base,
+        { key: "j/k", label: "Navigate" },
+        { key: "D", label: "Delete" },
+      ];
     case Pane.Branches:
       return [
         ...base,
         { key: "j/k", label: "Navigate" },
         { key: "l/r", label: "Local/Remote" },
+        { key: "D", label: "Delete" },
       ];
     case Pane.Main:
       return [

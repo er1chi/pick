@@ -15,6 +15,13 @@ export class GitCommandFailedError extends TaggedError(
 
 export type GitError = GitUnavailableError | GitCommandFailedError;
 
+export class GitBranchNotMergedError extends TaggedError(
+  "GitBranchNotMergedError",
+)<{
+  readonly branch: string;
+  readonly message: string;
+}> {}
+
 export type GitBranchScope = "local" | "remote";
 
 export interface GitBranch {

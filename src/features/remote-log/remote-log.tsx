@@ -10,19 +10,16 @@ import type { RemoteLog } from "@/context/local-repository-context";
 
 const height = 12;
 
-const operationLabels = { push: "Push", pull: "Sync" } as const;
-
 function statusTitle(log: RemoteLog, frame: string): string {
-  const label = operationLabels[log.operation];
   switch (log.status) {
     case "running":
-      return `${label} ${frame}`;
+      return `${log.title} ${frame}`;
     case "succeeded":
-      return `${label} · Done`;
+      return `${log.title} · Done`;
     case "failed":
-      return `${label} · Failed`;
+      return `${log.title} · Failed`;
     case "idle":
-      return label;
+      return log.title;
   }
 }
 

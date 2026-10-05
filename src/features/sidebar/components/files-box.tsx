@@ -138,14 +138,14 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
   const workingTree = () =>
     opened() === undefined && viewContext.view().commit === undefined;
   const title = () => {
-    const commit = viewContext.view().commit;
-    if (opened() === undefined && commit !== undefined) {
-      return `[0] Files · ${commit.slice(0, 7)}`;
+    const commit = viewContext.view().commit?.slice(0, 7);
+    const number = opened()?.number;
+    if (commit === undefined) {
+      return scopedTitle(workingTree() ? "[0] Changes" : "[0] Files", number);
     }
-    return scopedTitle(
-      workingTree() ? "[0] Changes" : "[0] Files",
-      opened()?.number,
-    );
+    return number === undefined
+      ? `[0] Files · ${commit}`
+      : `${scopedTitle("[0] Files", number)} · ${commit}`;
   };
   const localFilesView = createMemo(() =>
     localFiles(localRepository.changedFiles()),

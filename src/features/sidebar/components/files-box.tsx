@@ -1,7 +1,7 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { createEffect, createMemo, createResource } from "solid-js";
+import { createEffect, createMemo } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
-import { useForgeContext } from "@/context/forge-context";
+import { useLocalRepository } from "@/context/local-repository-context";
 import { usePatchStore } from "@/context/patch-store";
 import { useViewContext, viewPullRequest } from "@/context/view-context";
 import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
@@ -14,7 +14,6 @@ import {
   useFileTree,
   useFileTreeSelector,
 } from "@/packages/pierre/solid/trees";
-import { readChangedFiles } from "@/services/local/local";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { scopedTitle } from "./sidebar-box";
@@ -134,15 +133,25 @@ interface FilesBoxProps {
 export function FilesBox(props: FilesBoxProps): JSX.Element {
   const viewContext = useViewContext();
   const patchStore = usePatchStore();
-  const forgeContext = useForgeContext();
+  const localRepository = useLocalRepository();
   const opened = () => viewPullRequest(viewContext.view());
-  const [localChanges] = createResource(
-    () => (opened() === undefined ? forgeContext.state().cwd : undefined),
-    (cwd) => readChangedFiles(cwd),
+  const workingTree = () =>
+    opened() === undefined && viewContext.view().commit === undefined;
+  const title = () => {
+    const commit = viewContext.view().commit?.slice(0, 7);
+    const number = opened()?.number;
+    if (commit === undefined) {
+      return scopedTitle(workingTree() ? "[0] Changes" : "[0] Files", number);
+    }
+    return number === undefined
+      ? `[0] Files · ${commit}`
+      : `${scopedTitle("[0] Files", number)} · ${commit}`;
+  };
+  const localFilesView = createMemo(() =>
+    localFiles(localRepository.changedFiles()),
   );
-  const localFilesView = createMemo(() => localFiles(localChanges.latest));
   const filesView = createMemo<FilesView>(() => {
-    if (opened() === undefined) {
+    if (workingTree()) {
       return localFilesView();
     }
     return changedFiles(patchStore.currentPatch());
@@ -162,9 +171,6 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
       : undefined;
   };
 
-  // The model owns path grouping: empty directories stay as separate rows
-  // (no single-child flattening) and the initial expansion is explicit so the
-  // nested hierarchy comes from @pierre/trees rather than string parsing.
   const { model } = useFileTree({
     flattenEmptyDirectories: false,
     initialExpansion: "closed",
@@ -178,8 +184,6 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
     getAllVisibleRows,
     areVisibleRowsEqual,
   );
-  // The highlighted row is the tree's focused row: j/k move the model's focus,
-  // and focus changes from the model move the highlight.
   const list = useSidebarList({
     pane: Pane.Files,
     items: rows,
@@ -200,8 +204,6 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
     }
   });
 
-  // Enter is the explicit activation: a directory expands/collapses in place,
-  // while a file is selected and hands focus to the main view.
   function activateFocusedItem(): void {
     const item = model.getFocusedItem();
     if (item === null) {
@@ -224,13 +226,7 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
     ],
   }));
   return (
-    <list.Box
-      title={scopedTitle(
-        opened() === undefined ? "[0] Changes" : "[0] Files",
-        opened()?.number,
-      )}
-      flexGrow={1}
-    >
+    <list.Box title={title()} flexGrow={1}>
       <list.Rows emptyText={emptyText()}>
         {(row) => (
           <SelectableRow

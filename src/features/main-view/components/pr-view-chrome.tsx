@@ -15,7 +15,6 @@ export const CLOSE_PR_LABEL = "[x] Close PR";
 export const CLOSE_DIFF_LABEL = "[o] Close diff";
 export const CLOSE_AFFORDANCE_GAP = 1;
 
-/** Bounds content to exactly one visual row so it truncates instead of wrapping. */
 export function oneLine(content: JSX.Element): JSX.Element {
   return (
     <box width="100%" height={1} flexGrow={0} flexShrink={0} overflow="hidden">
@@ -48,4 +47,15 @@ export function renderMutedLine(
   maxWidth?: number,
 ): JSX.Element {
   return <MutedLine line={line} maxWidth={maxWidth} />;
+}
+
+export function HintLine(props: {
+  readonly text: string;
+  readonly maxWidth: number;
+}): JSX.Element {
+  return oneLine(
+    <text fg={colors.dim} wrapMode="none" truncate>
+      {truncateEnd(props.text, props.maxWidth)}
+    </text>,
+  );
 }

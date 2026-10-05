@@ -1,29 +1,12 @@
-import cliSpinners from "cli-spinners";
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { Show } from "solid-js";
 import { usePatchStore } from "@/context/patch-store";
 import { usePullRequest } from "@/context/pull-request-context";
-import { useViewContext, viewCommit } from "@/context/view-context";
+import { useViewContext } from "@/context/view-context";
 import { oneLine } from "@/features/main-view/components/pr-view-chrome";
+import { useSpinnerFrame } from "@/shared/hooks/use-spinner-frame";
 import { colors } from "@/theme";
 
 import type { Accessor, JSX } from "solid-js";
-
-function useSpinnerFrame(active: Accessor<boolean>): Accessor<string> {
-  const spinner = cliSpinners.dots;
-  const [index, setIndex] = createSignal(0);
-
-  createEffect(() => {
-    if (!active()) {
-      return;
-    }
-    const timer = setInterval(() => {
-      setIndex((current) => (current + 1) % spinner.frames.length);
-    }, spinner.interval);
-    onCleanup(() => clearInterval(timer));
-  });
-
-  return () => spinner.frames[index()] ?? "";
-}
 
 export function PullRequestStatusLine(): JSX.Element {
   const pullRequest = usePullRequest();
@@ -35,7 +18,7 @@ export function PullRequestStatusLine(): JSX.Element {
       return phase;
     }
     if (
-      viewCommit(viewContext.view()) !== undefined &&
+      viewContext.view().commit !== undefined &&
       patchStore.currentPatch() === undefined
     ) {
       return "loading";

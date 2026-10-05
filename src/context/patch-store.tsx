@@ -1,5 +1,5 @@
 import { createContext, createSignal, useContext } from "solid-js";
-import { useViewContext, viewCommit, viewPullRequest } from "./view-context";
+import { useViewContext, viewSourceId } from "./view-context";
 
 import type { JSX } from "@opentui/solid";
 import type { Accessor } from "solid-js";
@@ -18,18 +18,10 @@ const emptyCommitPatches: CommitPatchCache = {
 };
 
 export interface PatchStoreValue {
-  /**
-   * The patch the files pane and the main diff both read. A selected commit
-   * uses that commit's patch; otherwise this is the pull request diff.
-   */
   readonly currentPatch: Accessor<PatchSection | undefined>;
   setPullRequestPatch(patch: PatchSection | undefined): void;
   setLocalPatch(patch: PatchSection | undefined): void;
-  /**
-   * Store one commit's patch for the open pull request. A result for any other
-   * pull request is ignored, so the cache never holds more than one.
-   */
-  setCommitPatch(pullRequestId: string, sha: string, patch: PatchSection): void;
+  setCommitPatch(owner: string, sha: string, patch: PatchSection): void;
   cachedCommitPatch(sha: string): PatchSection | undefined;
   clearCommitPatches(): void;
 }
@@ -40,7 +32,7 @@ export function PatchStoreProvider(props: {
   readonly children: JSX.Element;
 }): JSX.Element {
   const viewContext = useViewContext();
-  const openedId = () => viewPullRequest(viewContext.view())?.id;
+  const ownerId = () => viewSourceId(viewContext.view().source);
   const [pullRequestPatch, setPullRequestPatch] = createSignal<
     PatchSection | undefined
   >();
@@ -50,32 +42,32 @@ export function PatchStoreProvider(props: {
 
   function cachedCommitPatch(sha: string): PatchSection | undefined {
     const cache = commitPatches();
-    return cache.owner === openedId() ? cache.patches.get(sha) : undefined;
+    return cache.owner === ownerId() ? cache.patches.get(sha) : undefined;
   }
 
   function setCommitPatch(
-    pullRequestId: string,
+    owner: string,
     sha: string,
     patch: PatchSection,
   ): void {
-    if (openedId() !== pullRequestId) {
+    if (ownerId() !== owner) {
       return;
     }
     setCommitPatches((cache) => ({
-      owner: pullRequestId,
-      patches: new Map(
-        cache.owner === pullRequestId ? cache.patches : undefined,
-      ).set(sha, patch),
+      owner,
+      patches: new Map(cache.owner === owner ? cache.patches : undefined).set(
+        sha,
+        patch,
+      ),
     }));
   }
 
   function currentPatch(): PatchSection | undefined {
     const current = viewContext.view();
-    if (current.kind === "local") {
-      return localPatch();
+    if (current.commit !== undefined) {
+      return cachedCommitPatch(current.commit);
     }
-    const sha = viewCommit(current);
-    return sha === undefined ? pullRequestPatch() : cachedCommitPatch(sha);
+    return current.source.kind === "local" ? localPatch() : pullRequestPatch();
   }
 
   const store: PatchStoreValue = {

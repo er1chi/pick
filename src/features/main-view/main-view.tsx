@@ -1,30 +1,19 @@
 import { useBindings } from "@opentui/keymap/solid";
 import { useTerminalDimensions } from "@opentui/solid";
 import { basename } from "node:path";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  on,
-  Show,
-  type Accessor,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
 import { PaneStore } from "@/context/active-pane-context";
 import { usePatchStore } from "@/context/patch-store";
 import { usePullRequest } from "@/context/pull-request-context";
+import { useViewContext, viewPullRequest } from "@/context/view-context";
 import {
-  useViewContext,
-  viewCommit,
-  viewPullRequest,
-  type PullRequestView,
-} from "@/context/view-context";
-import { MAIN_PANE_CHROME } from "@/features/main-view/components/pr-view-chrome";
+  HintLine,
+  MAIN_PANE_CHROME,
+} from "@/features/main-view/components/pr-view-chrome";
 import {
-  LocalDiffHeader,
+  MainViewHeader,
   NoPullRequest,
-  PrViewHeader,
 } from "@/features/main-view/components/pr-view-header";
-import { SelectedDiffBody } from "@/features/main-view/components/selected-diff";
 import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
 import {
   presentRepositoryName,
@@ -36,14 +25,10 @@ import {
 } from "@/packages/pierre/solid/diffs";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
-import { truncateEnd } from "@/utils/text";
-import { CommitMetadata } from "./components/commit-metadata";
-import { OverviewScreen } from "./components/overview-screen";
-import { PullRequestStatusLine } from "./components/pull-request-status";
+import { MainBody } from "./components/main-body";
 import { visibleValue } from "./utils/load-state";
 
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
-import type { JSX } from "@opentui/solid";
 import type { RepositoryForgeContextState } from "@/context/forge-context";
 import type { PrTitles } from "./hooks/use-pr-titles";
 
@@ -62,10 +47,6 @@ export function PrView(props: PrViewProps) {
   const patchStore = usePatchStore();
   const pullRequest = usePullRequest();
   const view = () => viewContext.view();
-  const localFile = (): string | undefined => {
-    const current = view();
-    return current.kind === "local" ? current.file : undefined;
-  };
   const [contentBox, setContentBox] = createSignal<BoxRenderable | undefined>();
   const [overviewScroll, setOverviewScroll] = createSignal<
     ScrollBoxRenderable | undefined
@@ -92,15 +73,6 @@ export function PrView(props: PrViewProps) {
     const details = pullRequest.data()?.details;
     return details?.status === "available" ? details.value : undefined;
   };
-  const selectedCommitValue = createMemo(() => {
-    const sha = viewCommit(view());
-    if (sha === undefined) {
-      return undefined;
-    }
-    const section = pullRequest.data()?.commits;
-    const commits = section?.status === "available" ? section.value : [];
-    return commits.find((commit) => commit.sha === sha);
-  });
   const headerRepositoryName = () =>
     presentRepositoryName(
       currentDetails()?.repository.fullName,
@@ -121,7 +93,21 @@ export function PrView(props: PrViewProps) {
     return `${number ?? "none"}:${detailsKey}:${titleLine() ?? ""}:${headerRepositoryName()}`;
   };
 
-  const diffOpen = () => view().kind === "diff" || localFile() !== undefined;
+  const diffOpen = () => view().file !== undefined;
+  const showsView = () =>
+    opened() !== undefined ||
+    view().commit !== undefined ||
+    view().file !== undefined;
+  const hint = () => {
+    const closePullRequest = opened() === undefined ? "" : " · x close PR";
+    if (diffOpen()) {
+      return `j/k scroll · [/] changes · {/} hunks · e lock files · o close diff${closePullRequest}`;
+    }
+    if (view().commit !== undefined) {
+      return `j/k scroll · o close commit${closePullRequest}`;
+    }
+    return `j/k scroll${closePullRequest}`;
+  };
 
   function scrollContent(lines: number): void {
     if (diffOpen()) {
@@ -258,77 +244,6 @@ export function PrView(props: PrViewProps) {
     ),
   );
 
-  function hintLine(text: string): JSX.Element {
-    return (
-      <box
-        height={1}
-        width="100%"
-        flexGrow={0}
-        flexShrink={0}
-        overflow="hidden"
-      >
-        <text fg={colors.dim} wrapMode="none" truncate>
-          {truncateEnd(text, contentWidth())}
-        </text>
-      </box>
-    );
-  }
-
-  function mainViewContent(current: PullRequestView): JSX.Element {
-    switch (current.kind) {
-      case "pr":
-        return (
-          <scrollbox
-            ref={setOverviewScroll}
-            flexGrow={1}
-            flexShrink={1}
-            minHeight={0}
-            width="100%"
-            stickyScroll
-            stickyStart="top"
-          >
-            <OverviewScreen summary={summary} />
-          </scrollbox>
-        );
-      case "commit":
-        return (
-          <scrollbox
-            ref={setOverviewScroll}
-            flexGrow={1}
-            flexShrink={1}
-            minHeight={0}
-            width="100%"
-          >
-            <box flexDirection="column" width="100%" gap={1}>
-              <CommitMetadata
-                sha={current.sha}
-                commit={selectedCommitValue()}
-                hasFile={false}
-                maxWidth={contentWidth()}
-              />
-              <text fg={colors.yellow}>
-                Select a file in the sidebar to view this commit's changes.
-              </text>
-            </box>
-          </scrollbox>
-        );
-      case "diff":
-        return (
-          <SelectedDiffBody
-            path={current.path}
-            commitSha={current.commit}
-            commit={selectedCommitValue()}
-            label={
-              current.commit === undefined ? "Pull request diff" : "Commit diff"
-            }
-            revealLocked={revealLocked()}
-            maxWidth={contentWidth()}
-            setDiffScroll={setDiffScroll}
-          />
-        );
-    }
-  }
-
   return (
     <box
       id={Pane.Main}
@@ -339,7 +254,7 @@ export function PrView(props: PrViewProps) {
       flexGrow={1}
       flexShrink={1}
       minWidth={0}
-      height="100%"
+      minHeight={0}
       overflow="hidden"
       gap={0}
       paddingLeft={2}
@@ -354,46 +269,25 @@ export function PrView(props: PrViewProps) {
       }}
     >
       <Show
-        when={opened()}
-        fallback={
-          <Show
-            when={localFile()}
-            fallback={<NoPullRequest state={currentState()} />}
-          >
-            {(path: Accessor<string>) => (
-              <>
-                <LocalDiffHeader path={path()} maxWidth={contentWidth()} />
-                <SelectedDiffBody
-                  path={path()}
-                  commitSha={undefined}
-                  commit={undefined}
-                  label="Working tree diff"
-                  revealLocked={revealLocked()}
-                  maxWidth={contentWidth()}
-                  setDiffScroll={setDiffScroll}
-                />
-                {hintLine(
-                  "j/k scroll · [/] changes · {/} hunks · e lock files · o close diff",
-                )}
-              </>
-            )}
-          </Show>
-        }
+        when={showsView()}
+        fallback={<NoPullRequest state={currentState()} />}
       >
-        {(current: Accessor<PullRequestView>) => (
-          <>
-            <PullRequestStatusLine />
-            <PrViewHeader
-              view={current()}
-              repositoryName={headerRepositoryName()}
-              titleLine={titleLine()}
-              headerKey={headerKey()}
-              maxWidth={contentWidth()}
-            />
-            {mainViewContent(current())}
-            {hintLine("j/k scroll · e lock files · x close PR")}
-          </>
-        )}
+        <MainViewHeader
+          view={view()}
+          repositoryName={headerRepositoryName()}
+          titleLine={titleLine()}
+          headerKey={headerKey()}
+          maxWidth={contentWidth()}
+        />
+        <MainBody
+          view={view()}
+          summary={summary}
+          revealLocked={revealLocked()}
+          maxWidth={contentWidth()}
+          setOverviewScroll={setOverviewScroll}
+          setDiffScroll={setDiffScroll}
+        />
+        <HintLine text={hint()} maxWidth={contentWidth()} />
       </Show>
     </box>
   );

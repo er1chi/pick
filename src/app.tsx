@@ -8,6 +8,7 @@ import {
   useForgeContext,
   type RepositoryForgeContextState,
 } from "@/context/forge-context";
+import { LocalRepositoryProvider } from "@/context/local-repository-context";
 import { PullRequestProvider } from "@/context/pull-request-context";
 import {
   pullRequestViewId,
@@ -16,11 +17,11 @@ import {
 } from "@/context/view-context";
 import { Default } from "@/features/default/default";
 import { Footer, type FooterBinding } from "@/features/footer/footer";
-import { useLocalPatch } from "@/features/main-view/hooks/use-local-patch";
 import { usePrTitles } from "@/features/main-view/hooks/use-pr-titles";
 import { PrView } from "@/features/main-view/main-view";
 import { LoadStatus } from "@/features/main-view/types";
 import { Menubar } from "@/features/menubar/menubar";
+import { RemoteLogPanel } from "@/features/remote-log/remote-log";
 import { Sidebar } from "@/features/sidebar/sidebar";
 import {
   ForgeExecutableUnavailableError,
@@ -85,14 +86,24 @@ function repositoryFooterBindings(
         { key: "Enter", label: "Open file/Toggle folder" },
       ];
     case Pane.Commits:
-      return [...base, { key: "j/k", label: "Navigate/select commit" }];
+      return [
+        ...base,
+        { key: "j/k", label: "Navigate/select commit" },
+        { key: "S", label: "Sync" },
+        { key: "P", label: "Push" },
+      ];
     case Pane.Stashes:
-      return [...base, { key: "j/k", label: "Navigate" }];
+      return [
+        ...base,
+        { key: "j/k", label: "Navigate" },
+        { key: "D", label: "Delete" },
+      ];
     case Pane.Branches:
       return [
         ...base,
         { key: "j/k", label: "Navigate" },
         { key: "l/r", label: "Local/Remote" },
+        { key: "D", label: "Delete" },
       ];
     case Pane.Main:
       return [
@@ -128,7 +139,6 @@ function RepositoryShell(props: {
   const viewContext = useViewContext();
   const contextLabel = repositoryContextLabel(props.state.kind);
   const titles = usePrTitles();
-  useLocalPatch();
 
   createEffect(() => {
     const opened = viewPullRequest(viewContext.view());
@@ -202,10 +212,20 @@ function RepositoryShell(props: {
     <box ref={setBox} flexDirection="column" width="100%" height="100%">
       <Menubar contextLabel={contextLabel} />
       <PullRequestProvider>
-        <box flexDirection="row" flexGrow={1} width="100%">
-          <Sidebar visible={sidebarVisible()} titles={titles} />
-          <PrView state={props.state} titles={titles} />
-        </box>
+        <LocalRepositoryProvider>
+          <box flexDirection="row" flexGrow={1} width="100%">
+            <Sidebar visible={sidebarVisible()} titles={titles} />
+            <box
+              flexDirection="column"
+              flexGrow={1}
+              flexShrink={1}
+              minWidth={0}
+            >
+              <PrView state={props.state} titles={titles} />
+              <RemoteLogPanel target={box} />
+            </box>
+          </box>
+        </LocalRepositoryProvider>
       </PullRequestProvider>
       <Footer
         bindings={repositoryFooterBindings(props.state.kind, pane.active)}

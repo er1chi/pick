@@ -9,7 +9,7 @@ import {
 import {
   pullRequestViewId,
   ViewContextProvider,
-  type ActiveView,
+  pullRequestView,
 } from "@/context/view-context";
 import { CommitMetadata } from "@/features/main-view/components/commit-metadata";
 import { available } from "@/services/forge/section";
@@ -21,11 +21,7 @@ import type {
 
 const SHA = "abcdef1234567890";
 const pullRequestId = pullRequestViewId({ owner: "octocat", name: "hello" }, 1);
-const openPullRequest: ActiveView = {
-  kind: "pr",
-  id: pullRequestId,
-  number: 1,
-};
+const openPullRequest = pullRequestView({ owner: "octocat", name: "hello" }, 1);
 
 const commit: PullRequestCommit = {
   sha: SHA,

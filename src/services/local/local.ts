@@ -1,7 +1,13 @@
 import { Result } from "better-result";
 import { runCli } from "@/utils/cli";
-import { GitCommandFailedError, GitUnavailableError } from "./types";
+import {
+  GitBranchNotMergedError,
+  GitCommandFailedError,
+  GitUnavailableError,
+} from "./types";
 
+import type { PullRequestPatch } from "@/services/forge/types";
+import type { CliOptions } from "@/utils/cli";
 import type {
   GitBranch,
   GitBranchScope,
@@ -11,26 +17,38 @@ import type {
   GitStash,
 } from "./types";
 
+interface GitOptions extends CliOptions {
+  readonly okExitCodes?: readonly number[];
+}
+
 async function runGit(
   cwd: string,
   args: readonly string[],
-  okExitCodes: readonly number[] = [0],
+  options: GitOptions = {},
 ): Promise<Result<string, GitError>> {
-  const execution = await runCli("git", args, cwd);
+  const { okExitCodes = [0], ...cliOptions } = options;
+  const execution = await runCli("git", args, cwd, cliOptions);
   return execution
     .mapError(
       (error): GitError => new GitUnavailableError({ message: error.message }),
     )
-    .andThen(({ stdout, exitCode }) =>
+    .andThen(({ stdout, stderr, exitCode }) =>
       okExitCodes.includes(exitCode)
         ? Result.ok(stdout)
         : Result.err<never, GitError>(
             new GitCommandFailedError({
               exitCode,
-              message: `git ${args.join(" ")} exited with code ${exitCode}`,
+              message:
+                gitErrorLine(stderr) ??
+                `git ${args.join(" ")} exited with code ${exitCode}`,
             }),
           ),
     );
+}
+
+function gitErrorLine(stderr: string): string | undefined {
+  const match = /^(?:fatal|error): (.+)$/m.exec(stderr);
+  return match?.[1]?.trim();
 }
 
 export async function readGitRemoteOutput(
@@ -60,6 +78,22 @@ export async function readBranches(
   );
 }
 
+export async function deleteBranch(
+  cwd: string,
+  branch: string,
+  force: boolean,
+): Promise<Result<void, GitError | GitBranchNotMergedError>> {
+  const output = await runGit(cwd, ["branch", force ? "-D" : "-d", branch]);
+  return output
+    .map(() => {})
+    .mapError((error) =>
+      GitCommandFailedError.is(error) &&
+      error.message.includes("not fully merged")
+        ? new GitBranchNotMergedError({ branch, message: error.message })
+        : error,
+    );
+}
+
 export async function readStashes(
   cwd: string,
 ): Promise<Result<readonly GitStash[], GitError>> {
@@ -76,24 +110,50 @@ export async function readStashes(
 
 const commitLimit = 200;
 
+const commitFields = ["%H", "%an", "%cn", "%aI", "%cI", "%B"];
+const commitFormat = `--format=${commitFields.join("%x00")}%x1e`;
+
+function parseCommit(
+  record: string,
+  unpushed: ReadonlySet<string>,
+): readonly GitCommit[] {
+  const [
+    sha = "",
+    author = "",
+    committer = "",
+    authoredAt = "",
+    committedAt = "",
+    ...message
+  ] = record.replace(/^\n/, "").split("\0");
+  return sha === ""
+    ? []
+    : [
+        {
+          sha,
+          message: message.join("\0").trimEnd(),
+          author: author === "" ? null : { login: author },
+          committer: committer === "" ? null : { login: committer },
+          authoredAt: authoredAt === "" ? null : authoredAt,
+          committedAt: committedAt === "" ? null : committedAt,
+          url: null,
+          pushed: !unpushed.has(sha),
+        },
+      ];
+}
+
 export async function readCommits(
   cwd: string,
 ): Promise<Result<readonly GitCommit[], GitError>> {
   const limit = `--max-count=${commitLimit}`;
   const [log, localOnly] = await Promise.all([
-    runGit(cwd, ["log", limit, "--format=%H%x09%s"]),
+    runGit(cwd, ["log", limit, commitFormat]),
     runGit(cwd, ["log", limit, "--format=%H", "HEAD", "--not", "--remotes"]),
   ]);
   return Result.gen(function* () {
     const unpushed = new Set((yield* localOnly).split("\n"));
     const text = yield* log;
     return Result.ok(
-      text.split("\n").flatMap((line) => {
-        const [sha, ...subject] = line.split("\t");
-        return sha === undefined || sha === ""
-          ? []
-          : [{ sha, message: subject.join("\t"), pushed: !unpushed.has(sha) }];
-      }),
+      text.split("\x1e").flatMap((record) => parseCommit(record, unpushed)),
     );
   });
 }
@@ -145,9 +205,75 @@ export async function readWorkingTreePatch(
         runGit(
           cwd,
           ["diff", ...diffOptions, "--no-index", "--", "/dev/null", path],
-          [0, 1],
+          { okExitCodes: [0, 1] },
         ),
       ),
   );
   return Result.all([tracked, ...additions]).map((parts) => parts.join(""));
+}
+
+export async function dropStash(
+  cwd: string,
+  ref: string,
+): Promise<Result<void, GitError>> {
+  const output = await runGit(cwd, ["stash", "drop", ref]);
+  return output.map(() => {});
+}
+
+export async function readCommitPatch(
+  cwd: string,
+  sha: string,
+): Promise<Result<PullRequestPatch, GitError>> {
+  const output = await runGit(cwd, [
+    "show",
+    ...diffOptions,
+    "--format=",
+    "--diff-merges=first-parent",
+    sha,
+  ]);
+  return output.map((text) => ({ text }));
+}
+
+function plainLine(line: string): string {
+  // oxlint-disable-next-line no-control-regex
+  return Bun.stripANSI(line).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
+}
+
+async function runRemoteGit(
+  cwd: string,
+  args: readonly string[],
+  onLine: (line: string) => void,
+): Promise<Result<void, GitError>> {
+  const output = await runGit(cwd, args, {
+    env: { GIT_TERMINAL_PROMPT: "0", GIT_MERGE_AUTOEDIT: "no" },
+    onLine: (line) => onLine(plainLine(line)),
+  });
+  return output.map(() => {});
+}
+
+export async function pushBranch(
+  cwd: string,
+  onLine: (line: string) => void,
+): Promise<Result<void, GitError>> {
+  return runRemoteGit(cwd, ["-c", "push.autoSetupRemote=true", "push"], onLine);
+}
+
+export async function deleteRemoteBranch(
+  cwd: string,
+  name: string,
+  onLine: (line: string) => void,
+): Promise<Result<void, GitError>> {
+  const separator = name.indexOf("/");
+  return runRemoteGit(
+    cwd,
+    ["push", name.slice(0, separator), "--delete", name.slice(separator + 1)],
+    onLine,
+  );
+}
+
+export async function pullBranch(
+  cwd: string,
+  onLine: (line: string) => void,
+): Promise<Result<void, GitError>> {
+  return runRemoteGit(cwd, ["pull"], onLine);
 }

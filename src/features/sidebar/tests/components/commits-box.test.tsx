@@ -16,15 +16,13 @@ import {
   ApplicationContext,
   ForgeContextProvider,
 } from "@/context/forge-context";
+import { LocalRepositoryProvider } from "@/context/local-repository-context";
+import { PatchStoreProvider } from "@/context/patch-store";
 import {
   PullRequestProvider,
   type PullRequestContextValue,
 } from "@/context/pull-request-context";
-import {
-  pullRequestViewId,
-  ViewContextProvider,
-  type ActiveView,
-} from "@/context/view-context";
+import { ViewContextProvider, pullRequestView } from "@/context/view-context";
 import { createAppKeymap } from "@/shared/keymap";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
@@ -57,11 +55,7 @@ const COMMIT_B: PullRequestCommit = {
   url: null,
 };
 
-const openPullRequest: ActiveView = {
-  kind: "pr",
-  id: pullRequestViewId({ owner: "octocat", name: "hello" }, 1),
-  number: 1,
-};
+const openPullRequest = pullRequestView({ owner: "octocat", name: "hello" }, 1);
 
 function pullRequestValue(
   commits: Accessor<readonly PullRequestCommit[]>,
@@ -92,10 +86,8 @@ const localRepository = {
   forge: undefined,
 } as const;
 
-/** Mounts CommitsBox. Defaults the active pane to Commits so `j` is received. */
 function CommitsBoxHarness(props: { readonly pane?: Pane }): JSX.Element {
   const renderer = useRenderer();
-  // Create the keymap once; it needs the renderer, not per-render setup.
   const keymap = createMemo(() => createAppKeymap(renderer));
   return (
     <ForgeContextProvider value={localRepository}>
@@ -103,8 +95,12 @@ function CommitsBoxHarness(props: { readonly pane?: Pane }): JSX.Element {
         <KeymapProvider keymap={keymap()}>
           <ViewContextProvider initialView={openPullRequest}>
             <PullRequestProvider value={listedPullRequest}>
-              <SetActivePane pane={props.pane ?? Pane.Commits} />
-              <CommitsBox rowWidth={30} />
+              <PatchStoreProvider>
+                <LocalRepositoryProvider>
+                  <SetActivePane pane={props.pane ?? Pane.Commits} />
+                  <CommitsBox rowWidth={30} />
+                </LocalRepositoryProvider>
+              </PatchStoreProvider>
             </PullRequestProvider>
           </ViewContextProvider>
         </KeymapProvider>
@@ -147,7 +143,11 @@ function CommitsBoxLayoutHarness(props: {
                     {(_, index) => <text id={`file-row-${index()}`}>file</text>}
                   </For>
                 </box>
-                <CommitsBox rowWidth={30} />
+                <PatchStoreProvider>
+                  <LocalRepositoryProvider>
+                    <CommitsBox rowWidth={30} />
+                  </LocalRepositoryProvider>
+                </PatchStoreProvider>
               </box>
             </PullRequestProvider>
           </ViewContextProvider>
@@ -157,7 +157,6 @@ function CommitsBoxLayoutHarness(props: {
   );
 }
 
-/** SelectableRow paints its selected background with `colors.border`. */
 const selectedBackground = RGBA.fromHex(colors.border).toInts();
 
 function rowBackground(setup: TestSetup, sha: string): readonly number[] {
@@ -192,18 +191,16 @@ describe("CommitsBox", () => {
       height: 12,
     });
     try {
-      await setup.waitFor(() => isSelected(setup, COMMIT_A.sha));
-
-      // First paint: the first commit row carries the selected background.
-      expect(isSelected(setup, COMMIT_A.sha)).toBe(true);
-      expect(isSelected(setup, COMMIT_B.sha)).toBe(false);
-
-      setup.mockInput.pressKey("j");
       await setup.waitFor(() => isSelected(setup, COMMIT_B.sha));
 
-      // The highlight moves: second row selected, first row cleared.
       expect(isSelected(setup, COMMIT_B.sha)).toBe(true);
       expect(isSelected(setup, COMMIT_A.sha)).toBe(false);
+
+      setup.mockInput.pressKey("j");
+      await setup.waitFor(() => isSelected(setup, COMMIT_A.sha));
+
+      expect(isSelected(setup, COMMIT_A.sha)).toBe(true);
+      expect(isSelected(setup, COMMIT_B.sha)).toBe(false);
     } finally {
       setup.renderer.destroy();
     }

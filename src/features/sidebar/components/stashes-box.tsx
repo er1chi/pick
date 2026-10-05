@@ -1,7 +1,8 @@
-import { createResource } from "solid-js";
+import { useBindings } from "@opentui/keymap/solid";
+import { toast } from "@tuiparts/toast/solid";
+import { useConfirm } from "@/components/confirm-dialog";
 import { SelectableRow } from "@/components/selectable-row";
-import { useForgeContext } from "@/context/forge-context";
-import { readStashes } from "@/services/local/local";
+import { useLocalRepository } from "@/context/local-repository-context";
 import { Pane } from "@/types";
 import { useSidebarList } from "./sidebar-list";
 
@@ -19,17 +20,14 @@ interface StashesBoxProps {
 }
 
 export function StashesBox(props: StashesBoxProps): JSX.Element {
-  const forgeContext = useForgeContext();
-  const [loaded] = createResource(
-    () => forgeContext.state().cwd,
-    (cwd) => readStashes(cwd),
-  );
+  const localRepository = useLocalRepository();
+  const confirm = useConfirm();
   const stashes = (): readonly GitStash[] => {
-    const result = loaded.latest;
+    const result = localRepository.stashes();
     return result === undefined || result.isErr() ? [] : result.value;
   };
   const emptyText = () => {
-    const result = loaded.latest;
+    const result = localRepository.stashes();
     if (result === undefined) {
       return "Loading stashes…";
     }
@@ -41,8 +39,29 @@ export function StashesBox(props: StashesBoxProps): JSX.Element {
     rowId: stashRowId,
   });
 
+  async function dropHighlighted(): Promise<void> {
+    const stash = list.highlighted();
+    if (stash === undefined || !(await confirm(`Drop ${stash.ref}?`))) {
+      return;
+    }
+    const dropped = await localRepository.dropStash(stash.ref);
+    if (dropped.isErr()) {
+      toast.error(`Could not drop ${stash.ref}: ${dropped.error.message}`);
+    }
+  }
+
+  useBindings(() => ({
+    target: list.target,
+    bindings: [{ key: "shift+d", cmd: () => void dropHighlighted() }],
+  }));
+
   return (
-    <list.Box title="[4] Stashes" maxVisibleRows={maxVisibleRows}>
+    <list.Box
+      title="[4] Stashes"
+      bottomTitle="[D]elete"
+      bottomTitleAlignment="right"
+      maxVisibleRows={maxVisibleRows}
+    >
       <list.Rows emptyText={emptyText()}>
         {(stash, index) => (
           <SelectableRow

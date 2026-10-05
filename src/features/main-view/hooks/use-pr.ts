@@ -2,11 +2,7 @@ import { createEffect, createMemo, on, onCleanup } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
 import { useForgeContext } from "@/context/forge-context";
 import { usePatchStore } from "@/context/patch-store";
-import {
-  useViewContext,
-  viewCommit,
-  viewPullRequest,
-} from "@/context/view-context";
+import { useViewContext, viewPullRequest } from "@/context/view-context";
 import { failed } from "@/services/forge/section";
 
 import type { Accessor } from "solid-js";
@@ -110,14 +106,9 @@ export function usePr(): PullRequestContextValue {
     patchStore.setCommitPatch(pullRequestId, sha, result.value);
   }
 
-  // Memos compare with ===, so a new view object with the same pull request
-  // id or commit sha does not rerun the load. Selecting a file, or opening a
-  // commit whose patch is already stored, reads that stored patch.
   const openedId = createMemo(() => viewPullRequest(viewContext.view())?.id);
   const forge = createMemo(() => forgeContext.state().forge);
-  const commitSha = createMemo(() => {
-    return viewCommit(viewContext.view());
-  });
+  const commitSha = createMemo(() => viewContext.view().commit);
 
   createEffect(
     on([openedId, forge], () => {

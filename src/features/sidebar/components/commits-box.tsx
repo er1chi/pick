@@ -1,14 +1,9 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { createMemo, createResource } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
-import { useForgeContext } from "@/context/forge-context";
-import { usePullRequest } from "@/context/pull-request-context";
-import {
-  useViewContext,
-  viewCommit,
-  viewPullRequest,
-} from "@/context/view-context";
-import { readCommits } from "@/services/local/local";
+import { useLocalRepository } from "@/context/local-repository-context";
+import { useViewContext, viewPullRequest } from "@/context/view-context";
+import { useSourceCommits } from "@/shared/hooks/use-source-commits";
+import { useSpinnerFrame } from "@/shared/hooks/use-spinner-frame";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { firstLine } from "@/utils/text";
@@ -16,23 +11,21 @@ import { scopedTitle } from "./sidebar-box";
 import { useSidebarList } from "./sidebar-list";
 
 import type { JSX } from "solid-js";
-import type { GitCommit } from "@/services/local/types";
-
-type CommitRow = Omit<GitCommit, "pushed"> & { readonly pushed?: boolean };
+import type { SourceCommit } from "@/shared/hooks/use-source-commits";
 
 const maxVisibleRows = 13;
 
 const pushedMarker = { text: "✓", color: colors.dim };
 const localMarker = { text: "↑", color: colors.yellow };
 
-function pushMarker(commit: CommitRow) {
+function pushMarker(commit: SourceCommit) {
   if (commit.pushed === undefined) {
     return undefined;
   }
   return commit.pushed ? pushedMarker : localMarker;
 }
 
-function commitRowId(commit: CommitRow): string {
+function commitRowId(commit: SourceCommit): string {
   return `commit-${commit.sha}`;
 }
 
@@ -42,21 +35,9 @@ interface CommitsBoxProps {
 
 export function CommitsBox(props: CommitsBoxProps): JSX.Element {
   const viewContext = useViewContext();
-  const pullRequest = usePullRequest();
-  const forgeContext = useForgeContext();
+  const localRepository = useLocalRepository();
   const opened = () => viewPullRequest(viewContext.view());
-  const [localCommits] = createResource(
-    () => (opened() === undefined ? forgeContext.state().cwd : undefined),
-    (cwd) => readCommits(cwd),
-  );
-  const commits = createMemo<readonly CommitRow[]>(() => {
-    if (opened() === undefined) {
-      const result = localCommits.latest;
-      return result === undefined || result.isErr() ? [] : result.value;
-    }
-    const section = pullRequest.data()?.commits;
-    return section?.status === "available" ? section.value : [];
-  });
+  const commits = useSourceCommits();
   const list = useSidebarList({
     pane: Pane.Commits,
     items: commits,
@@ -65,20 +46,45 @@ export function CommitsBox(props: CommitsBoxProps): JSX.Element {
 
   function activateHighlighted(): void {
     const sha = list.highlighted()?.sha;
-    if (sha !== undefined && opened() !== undefined) {
+    if (sha !== undefined) {
       viewContext.selectCommit(sha);
       list.focus(Pane.Files);
     }
   }
 
+  function pushLocalCommits(): void {
+    if (opened() === undefined && localRepository.hasUnpushedCommits()) {
+      void localRepository.push();
+    }
+  }
+
+  function pullLocalBranch(): void {
+    if (opened() === undefined) {
+      void localRepository.pull();
+    }
+  }
+
+  const running = () => localRepository.remoteLog.status === "running";
+  const spinnerFrame = useSpinnerFrame(running);
+  const title = () => {
+    const scoped = scopedTitle("[1] Commits", opened()?.number);
+    return running() ? `${scoped} ${spinnerFrame()}` : scoped;
+  };
+
   useBindings(() => ({
     target: list.target,
-    bindings: [{ key: "return", cmd: activateHighlighted }],
+    bindings: [
+      { key: "return", cmd: activateHighlighted },
+      { key: "shift+p", cmd: pushLocalCommits },
+      { key: "shift+s", cmd: pullLocalBranch },
+    ],
   }));
 
   return (
     <list.Box
-      title={scopedTitle("[1] Commits", opened()?.number)}
+      title={title()}
+      bottomTitle={opened() === undefined ? "[S]ync [P]ush" : undefined}
+      bottomTitleAlignment="right"
       maxVisibleRows={maxVisibleRows}
       flexGrow={0}
     >
@@ -87,7 +93,7 @@ export function CommitsBox(props: CommitsBoxProps): JSX.Element {
       >
         {(commit) => {
           const highlighted = () => commit().sha === list.highlighted()?.sha;
-          const active = () => commit().sha === viewCommit(viewContext.view());
+          const active = () => commit().sha === viewContext.view().commit;
           return (
             <SelectableRow
               id={commitRowId(commit())}

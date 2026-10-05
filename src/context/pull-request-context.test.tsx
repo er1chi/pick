@@ -12,6 +12,7 @@ import {
   usePullRequest,
 } from "@/context/pull-request-context";
 import {
+  pullRequestView,
   pullRequestViewId,
   viewPullRequest,
   useViewContext,
@@ -138,7 +139,7 @@ describe("pull request loading", () => {
       expect(requests.commitPatches).toEqual([]);
       expect(harness.pullRequest.data()?.diff).toBe(pullRequestDiff);
       expect(harness.patches.currentPatch()).toBe(pullRequestDiff);
-      expect(harness.view.view()?.kind).toBe("diff");
+      expect(harness.view.view().file).toBe("src/app.tsx");
 
       harness.view.selectCommit(commitA);
       await settle();
@@ -192,11 +193,7 @@ describe("pull request loading", () => {
       harness.view.openPullRequest(repository, 7);
       await settle();
 
-      expect(harness.view.view()).toEqual({
-        kind: "pr",
-        id: pullRequestViewId(repository, 7),
-        number: 7,
-      });
+      expect(harness.view.view()).toEqual(pullRequestView(repository, 7));
       expect(harness.pullRequest.data()?.diff).toBe(pullRequestDiff);
       expect(harness.patches.currentPatch()).toBe(pullRequestDiff);
       expect(requests.pullRequests).toEqual([7]);
@@ -290,20 +287,14 @@ describe("view context", () => {
       harness.view.selectFile("a.ts");
       harness.view.closeFile();
       expect(harness.view.view()).toEqual({
-        kind: "commit",
-        id: pullRequestViewId(repository, 7),
-        number: 7,
-        sha: "abc",
+        ...pullRequestView(repository, 7),
+        commit: "abc",
       });
 
       harness.view.closeFile();
       harness.view.selectFile("a.ts");
       harness.view.closeFile();
-      expect(harness.view.view()).toEqual({
-        kind: "pr",
-        id: pullRequestViewId(repository, 7),
-        number: 7,
-      });
+      expect(harness.view.view()).toEqual(pullRequestView(repository, 7));
     } finally {
       dispose();
     }

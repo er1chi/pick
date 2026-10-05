@@ -31,7 +31,6 @@ import { visibleValue } from "./utils/load-state";
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import type { RepositoryForgeContextState } from "@/context/forge-context";
 import type { PrTitles } from "./hooks/use-pr-titles";
-import type { MainBodyProps } from "./types";
 
 export interface PrViewProps {
   readonly state: RepositoryForgeContextState;
@@ -211,17 +210,6 @@ export function PrView(props: PrViewProps) {
     ],
   }));
 
-  const bodyProps: MainBodyProps = {
-    get revealLocked() {
-      return revealLocked();
-    },
-    get maxWidth() {
-      return contentWidth();
-    },
-    setOverviewScroll,
-    setDiffScroll,
-  };
-
   createEffect(() => {
     // Track the request token so an explicit focus request re-runs this even
     // when the content pane was already active.
@@ -291,7 +279,14 @@ export function PrView(props: PrViewProps) {
           headerKey={headerKey()}
           maxWidth={contentWidth()}
         />
-        <MainBody view={view()} summary={summary} {...bodyProps} />
+        <MainBody
+          view={view()}
+          summary={summary}
+          revealLocked={revealLocked()}
+          maxWidth={contentWidth()}
+          setOverviewScroll={setOverviewScroll}
+          setDiffScroll={setDiffScroll}
+        />
         <HintLine text={hint()} maxWidth={contentWidth()} />
       </Show>
     </box>

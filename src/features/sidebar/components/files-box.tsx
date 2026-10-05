@@ -138,6 +138,16 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
   const opened = () => viewPullRequest(viewContext.view());
   const workingTree = () =>
     opened() === undefined && viewContext.view().commit === undefined;
+  const title = () => {
+    const commit = viewContext.view().commit;
+    if (opened() === undefined && commit !== undefined) {
+      return `[0] Files · ${commit.slice(0, 7)}`;
+    }
+    return scopedTitle(
+      workingTree() ? "[0] Changes" : "[0] Files",
+      opened()?.number,
+    );
+  };
   const [localChanges] = createResource(
     () => (opened() === undefined ? forgeContext.state().cwd : undefined),
     (cwd) => readChangedFiles(cwd),
@@ -219,13 +229,7 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
     ],
   }));
   return (
-    <list.Box
-      title={scopedTitle(
-        workingTree() ? "[0] Changes" : "[0] Files",
-        opened()?.number,
-      )}
-      flexGrow={1}
-    >
+    <list.Box title={title()} flexGrow={1}>
       <list.Rows emptyText={emptyText()}>
         {(row) => (
           <SelectableRow

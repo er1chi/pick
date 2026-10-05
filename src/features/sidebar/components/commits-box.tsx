@@ -58,10 +58,11 @@ export function CommitsBox(props: CommitsBoxProps): JSX.Element {
     }
   }
 
-  const spinnerFrame = useSpinnerFrame(localRepository.pushing);
+  const pushing = () => localRepository.pushLog.status === "running";
+  const spinnerFrame = useSpinnerFrame(pushing);
   const title = () => {
     const scoped = scopedTitle("[1] Commits", opened()?.number);
-    return localRepository.pushing() ? `${scoped} ${spinnerFrame()}` : scoped;
+    return pushing() ? `${scoped} ${spinnerFrame()}` : scoped;
   };
 
   useBindings(() => ({

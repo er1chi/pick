@@ -1,4 +1,3 @@
-import { toast } from "@tuiparts/toast/solid";
 import {
   createContext,
   createEffect,
@@ -31,10 +30,8 @@ import type {
   GitFileChange,
 } from "@/services/local/types";
 
-type PushStatus = "running" | "succeeded" | "failed";
-
 export interface PushLog {
-  readonly status: PushStatus;
+  readonly status: "idle" | "running" | "succeeded" | "failed";
   readonly lines: readonly string[];
 }
 
@@ -44,8 +41,7 @@ export interface LocalRepositoryValue {
     Result<readonly GitFileChange[], GitError> | undefined
   >;
   readonly hasUnpushedCommits: Accessor<boolean>;
-  readonly pushing: Accessor<boolean>;
-  readonly pushLog: Accessor<PushLog | undefined>;
+  readonly pushLog: PushLog;
   push(): Promise<void>;
   dismissPushLog(): void;
 }
@@ -62,11 +58,10 @@ export function LocalRepositoryProvider(props: {
     viewContext.view().source.kind === "local"
       ? forgeContext.state().cwd
       : undefined;
-  const [log, setLog] = createStore<{
-    status: PushStatus | undefined;
+  const [pushLog, setPushLog] = createStore<{
+    status: PushLog["status"];
     lines: string[];
-  }>({ status: undefined, lines: [] });
-  const pushing = () => log.status === "running";
+  }>({ status: "idle", lines: [] });
   const [commits, { refetch }] = createResource(localCwd, readCommits);
   const [changedFiles] = createResource(localCwd, readChangedFiles);
   const [workingTreePatch] = createResource(localCwd, readWorkingTreePatch);
@@ -133,28 +128,21 @@ export function LocalRepositoryProvider(props: {
         result.value.some((commit) => !commit.pushed)
       );
     },
-    pushing,
-    pushLog: () =>
-      log.status === undefined
-        ? undefined
-        : { status: log.status, lines: log.lines },
+    pushLog,
     push: async () => {
-      if (pushing()) {
+      if (pushLog.status === "running") {
         return;
       }
-      setLog({ status: "running", lines: [] });
+      setPushLog({ status: "running", lines: [] });
       const pushed = await pushBranch(forgeContext.state().cwd, (line) =>
-        setLog("lines", log.lines.length, line),
+        setPushLog("lines", pushLog.lines.length, line),
       );
       await refetch();
-      setLog("status", pushed.isOk() ? "succeeded" : "failed");
-      if (pushed.isErr()) {
-        toast.error(`Could not push: ${pushed.error.message}`);
-      }
+      setPushLog("status", pushed.isOk() ? "succeeded" : "failed");
     },
     dismissPushLog: () => {
-      if (!pushing()) {
-        setLog({ status: undefined, lines: [] });
+      if (pushLog.status !== "running") {
+        setPushLog({ status: "idle", lines: [] });
       }
     },
   };

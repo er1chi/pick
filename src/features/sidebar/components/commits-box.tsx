@@ -1,9 +1,8 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { createMemo } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
 import { useLocalRepository } from "@/context/local-repository-context";
-import { usePullRequest } from "@/context/pull-request-context";
 import { useViewContext, viewPullRequest } from "@/context/view-context";
+import { useSourceCommits } from "@/shared/hooks/use-source-commits";
 import { useSpinnerFrame } from "@/shared/hooks/use-spinner-frame";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
@@ -12,23 +11,21 @@ import { scopedTitle } from "./sidebar-box";
 import { useSidebarList } from "./sidebar-list";
 
 import type { JSX } from "solid-js";
-import type { GitCommit } from "@/services/local/types";
-
-type CommitRow = Omit<GitCommit, "pushed"> & { readonly pushed?: boolean };
+import type { SourceCommit } from "@/shared/hooks/use-source-commits";
 
 const maxVisibleRows = 13;
 
 const pushedMarker = { text: "✓", color: colors.dim };
 const localMarker = { text: "↑", color: colors.yellow };
 
-function pushMarker(commit: CommitRow) {
+function pushMarker(commit: SourceCommit) {
   if (commit.pushed === undefined) {
     return undefined;
   }
   return commit.pushed ? pushedMarker : localMarker;
 }
 
-function commitRowId(commit: CommitRow): string {
+function commitRowId(commit: SourceCommit): string {
   return `commit-${commit.sha}`;
 }
 
@@ -38,16 +35,9 @@ interface CommitsBoxProps {
 
 export function CommitsBox(props: CommitsBoxProps): JSX.Element {
   const viewContext = useViewContext();
-  const pullRequest = usePullRequest();
   const localRepository = useLocalRepository();
   const opened = () => viewPullRequest(viewContext.view());
-  const commits = createMemo<readonly CommitRow[]>(() => {
-    const section =
-      opened() === undefined
-        ? localRepository.commits()
-        : pullRequest.data()?.commits;
-    return section?.status === "available" ? section.value : [];
-  });
+  const commits = useSourceCommits();
   const list = useSidebarList({
     pane: Pane.Commits,
     items: commits,

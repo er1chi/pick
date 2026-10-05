@@ -13,13 +13,17 @@ import type {
   GitStash,
 } from "./types";
 
+interface GitOptions extends CliOptions {
+  readonly okExitCodes?: readonly number[];
+}
+
 async function runGit(
   cwd: string,
   args: readonly string[],
-  okExitCodes: readonly number[] = [0],
-  options?: CliOptions,
+  options: GitOptions = {},
 ): Promise<Result<string, GitError>> {
-  const execution = await runCli("git", args, cwd, options);
+  const { okExitCodes = [0], ...cliOptions } = options;
+  const execution = await runCli("git", args, cwd, cliOptions);
   return execution
     .mapError(
       (error): GitError => new GitUnavailableError({ message: error.message }),
@@ -183,7 +187,7 @@ export async function readWorkingTreePatch(
         runGit(
           cwd,
           ["diff", ...diffOptions, "--no-index", "--", "/dev/null", path],
-          [0, 1],
+          { okExitCodes: [0, 1] },
         ),
       ),
   );
@@ -216,7 +220,6 @@ export async function pushBranch(
   const pushed = await runGit(
     cwd,
     ["-c", "push.autoSetupRemote=true", "push"],
-    [0],
     {
       env: { GIT_TERMINAL_PROMPT: "0" },
       onLine: (line) => onLine(plainLine(line)),

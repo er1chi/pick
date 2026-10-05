@@ -1,6 +1,8 @@
+import { toast } from "@tuiparts/toast/solid";
 import { createContext, createResource, useContext } from "solid-js";
+import { createStore } from "solid-js/store";
 import { available, unsupported } from "@/services/forge/section";
-import { readCommits } from "@/services/local/local";
+import { pushBranch, readCommits } from "@/services/local/local";
 import { useForgeContext } from "./forge-context";
 import { useViewContext } from "./view-context";
 
@@ -9,8 +11,21 @@ import type { Accessor } from "solid-js";
 import type { ForgeSection } from "@/services/forge/types";
 import type { GitCommit } from "@/services/local/types";
 
+type PushStatus = "running" | "succeeded" | "failed";
+
+export interface PushLog {
+  readonly status: PushStatus;
+  readonly lines: readonly string[];
+}
+
 export interface LocalRepositoryValue {
   readonly commits: Accessor<ForgeSection<readonly GitCommit[]> | undefined>;
+  readonly hasUnpushedCommits: Accessor<boolean>;
+  readonly pushing: Accessor<boolean>;
+  /** Output of the latest push, until it is dismissed. */
+  readonly pushLog: Accessor<PushLog | undefined>;
+  push(): Promise<void>;
+  dismissPushLog(): void;
 }
 
 const LocalRepositoryContext = createContext<LocalRepositoryValue>();
@@ -20,7 +35,12 @@ export function LocalRepositoryProvider(props: {
 }): JSX.Element {
   const forgeContext = useForgeContext();
   const viewContext = useViewContext();
-  const [commits] = createResource(
+  const [log, setLog] = createStore<{
+    status: PushStatus | undefined;
+    lines: string[];
+  }>({ status: undefined, lines: [] });
+  const pushing = () => log.status === "running";
+  const [commits, { refetch }] = createResource(
     () =>
       viewContext.view().source.kind === "local"
         ? forgeContext.state().cwd
@@ -37,6 +57,38 @@ export function LocalRepositoryProvider(props: {
       return result.isOk()
         ? available(result.value)
         : unsupported(`Could not read commits: ${result.error.message}`);
+    },
+    hasUnpushedCommits: () => {
+      const result = commits.latest;
+      return (
+        result !== undefined &&
+        result.isOk() &&
+        result.value.some((commit) => !commit.pushed)
+      );
+    },
+    pushing,
+    pushLog: () =>
+      log.status === undefined
+        ? undefined
+        : { status: log.status, lines: log.lines },
+    push: async () => {
+      if (pushing()) {
+        return;
+      }
+      setLog({ status: "running", lines: [] });
+      const pushed = await pushBranch(forgeContext.state().cwd, (line) =>
+        setLog("lines", log.lines.length, line),
+      );
+      await refetch();
+      setLog("status", pushed.isOk() ? "succeeded" : "failed");
+      if (pushed.isErr()) {
+        toast.error(`Could not push: ${pushed.error.message}`);
+      }
+    },
+    dismissPushLog: () => {
+      if (!pushing()) {
+        setLog({ status: undefined, lines: [] });
+      }
     },
   };
 

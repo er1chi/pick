@@ -4,6 +4,7 @@ import { SelectableRow } from "@/components/selectable-row";
 import { useLocalRepository } from "@/context/local-repository-context";
 import { usePullRequest } from "@/context/pull-request-context";
 import { useViewContext, viewPullRequest } from "@/context/view-context";
+import { useSpinnerFrame } from "@/shared/hooks/use-spinner-frame";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { firstLine } from "@/utils/text";
@@ -61,17 +62,28 @@ export function CommitsBox(props: CommitsBoxProps): JSX.Element {
     }
   }
 
+  function pushLocalCommits(): void {
+    if (opened() === undefined && localRepository.hasUnpushedCommits()) {
+      void localRepository.push();
+    }
+  }
+
+  const spinnerFrame = useSpinnerFrame(localRepository.pushing);
+  const title = () => {
+    const scoped = scopedTitle("[1] Commits", opened()?.number);
+    return localRepository.pushing() ? `${scoped} ${spinnerFrame()}` : scoped;
+  };
+
   useBindings(() => ({
     target: list.target,
-    bindings: [{ key: "return", cmd: activateHighlighted }],
+    bindings: [
+      { key: "return", cmd: activateHighlighted },
+      { key: "shift+p", cmd: pushLocalCommits },
+    ],
   }));
 
   return (
-    <list.Box
-      title={scopedTitle("[1] Commits", opened()?.number)}
-      maxVisibleRows={maxVisibleRows}
-      flexGrow={0}
-    >
+    <list.Box title={title()} maxVisibleRows={maxVisibleRows} flexGrow={0}>
       <list.Rows
         emptyText={opened() === undefined ? "No local commits." : "No commits."}
       >

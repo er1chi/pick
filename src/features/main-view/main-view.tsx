@@ -266,7 +266,7 @@ export function PrView(props: PrViewProps) {
       flexGrow={1}
       flexShrink={1}
       minWidth={0}
-      height="100%"
+      minHeight={0}
       overflow="hidden"
       gap={0}
       paddingLeft={2}

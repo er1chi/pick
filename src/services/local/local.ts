@@ -3,6 +3,7 @@ import { runCli } from "@/utils/cli";
 import { GitCommandFailedError, GitUnavailableError } from "./types";
 
 import type { PullRequestPatch } from "@/services/forge/types";
+import type { CliOptions } from "@/utils/cli";
 import type {
   GitBranch,
   GitBranchScope,
@@ -16,22 +17,30 @@ async function runGit(
   cwd: string,
   args: readonly string[],
   okExitCodes: readonly number[] = [0],
+  options?: CliOptions,
 ): Promise<Result<string, GitError>> {
-  const execution = await runCli("git", args, cwd);
+  const execution = await runCli("git", args, cwd, options);
   return execution
     .mapError(
       (error): GitError => new GitUnavailableError({ message: error.message }),
     )
-    .andThen(({ stdout, exitCode }) =>
+    .andThen(({ stdout, stderr, exitCode }) =>
       okExitCodes.includes(exitCode)
         ? Result.ok(stdout)
         : Result.err<never, GitError>(
             new GitCommandFailedError({
               exitCode,
-              message: `git ${args.join(" ")} exited with code ${exitCode}`,
+              message:
+                gitErrorLine(stderr) ??
+                `git ${args.join(" ")} exited with code ${exitCode}`,
             }),
           ),
     );
+}
+
+function gitErrorLine(stderr: string): string | undefined {
+  const match = /^(?:fatal|error): (.+)$/m.exec(stderr);
+  return match?.[1]?.trim();
 }
 
 export async function readGitRemoteOutput(
@@ -193,4 +202,62 @@ export async function readCommitPatch(
     sha,
   ]);
   return output.map((text) => ({ text }));
+}
+
+async function pushRemote(cwd: string): Promise<Result<string, GitError>> {
+  const configured = await runGit(
+    cwd,
+    ["config", "--get", "remote.pushDefault"],
+    [0, 1],
+  );
+  const remote = configured.map((text) => text.trim());
+  if (remote.isErr() || remote.value !== "") {
+    return remote;
+  }
+  const remotes = await runGit(cwd, ["remote"]);
+  return remotes.andThen((text) => {
+    const names = text.split("\n").filter((name) => name !== "");
+    const name = names.includes("origin") ? "origin" : names[0];
+    return name === undefined
+      ? Result.err<never, GitError>(
+          new GitCommandFailedError({
+            exitCode: 1,
+            message: "No remote is configured to push to.",
+          }),
+        )
+      : Result.ok(name);
+  });
+}
+
+/** Pushes the current branch, setting its upstream on the first push. Git's
+ * output, including that of its hooks, is passed to `onLine` as it arrives. */
+export async function pushBranch(
+  cwd: string,
+  onLine: (line: string) => void,
+): Promise<Result<void, GitError>> {
+  const options: CliOptions = {
+    // Credential prompts would draw over the TUI, so git fails fast instead.
+    env: { GIT_TERMINAL_PROMPT: "0" },
+    onLine,
+  };
+  const upstream = await runGit(cwd, [
+    "rev-parse",
+    "--abbrev-ref",
+    "--symbolic-full-name",
+    "@{upstream}",
+  ]);
+  if (upstream.isOk()) {
+    return (await runGit(cwd, ["push"], [0], options)).map(() => {});
+  }
+  const remote = await pushRemote(cwd);
+  if (remote.isErr()) {
+    return remote;
+  }
+  const pushed = await runGit(
+    cwd,
+    ["push", "--set-upstream", remote.value, "HEAD"],
+    [0],
+    options,
+  );
+  return pushed.map(() => {});
 }

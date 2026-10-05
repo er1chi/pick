@@ -8,7 +8,10 @@ import {
   useForgeContext,
   type RepositoryForgeContextState,
 } from "@/context/forge-context";
-import { LocalRepositoryProvider } from "@/context/local-repository-context";
+import {
+  LocalRepositoryProvider,
+  useLocalRepository,
+} from "@/context/local-repository-context";
 import { PullRequestProvider } from "@/context/pull-request-context";
 import {
   pullRequestViewId,
@@ -22,6 +25,7 @@ import { usePrTitles } from "@/features/main-view/hooks/use-pr-titles";
 import { PrView } from "@/features/main-view/main-view";
 import { LoadStatus } from "@/features/main-view/types";
 import { Menubar } from "@/features/menubar/menubar";
+import { PushLogPanel } from "@/features/push-log/push-log";
 import { Sidebar } from "@/features/sidebar/sidebar";
 import {
   ForgeExecutableUnavailableError,
@@ -86,7 +90,11 @@ function repositoryFooterBindings(
         { key: "Enter", label: "Open file/Toggle folder" },
       ];
     case Pane.Commits:
-      return [...base, { key: "j/k", label: "Navigate/select commit" }];
+      return [
+        ...base,
+        { key: "j/k", label: "Navigate/select commit" },
+        { key: "P", label: "Push" },
+      ];
     case Pane.Stashes:
       return [...base, { key: "j/k", label: "Navigate" }];
     case Pane.Branches:
@@ -206,7 +214,16 @@ function RepositoryShell(props: {
         <LocalRepositoryProvider>
           <box flexDirection="row" flexGrow={1} width="100%">
             <Sidebar visible={sidebarVisible()} titles={titles} />
-            <PrView state={props.state} titles={titles} />
+            <box
+              flexDirection="column"
+              flexGrow={1}
+              flexShrink={1}
+              minWidth={0}
+            >
+              <PrView state={props.state} titles={titles} />
+              <PushLogPanel />
+              <DismissPushLog target={box} />
+            </box>
           </box>
         </LocalRepositoryProvider>
       </PullRequestProvider>
@@ -215,6 +232,20 @@ function RepositoryShell(props: {
       />
     </box>
   );
+}
+
+function DismissPushLog(props: {
+  readonly target: Accessor<BoxRenderable | undefined>;
+}) {
+  const localRepository = useLocalRepository();
+  useBindings(() => ({
+    target: props.target,
+    bindings:
+      localRepository.pushLog() === undefined
+        ? []
+        : [{ key: "escape", cmd: () => localRepository.dismissPushLog() }],
+  }));
+  return null;
 }
 
 function DefaultWelcome() {

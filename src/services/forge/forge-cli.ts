@@ -23,7 +23,7 @@ export async function executeCli(
   args: readonly string[],
   cwd: string,
 ): Promise<Result<string, CliExecutionError>> {
-  const execution = await runCli(executable, args, cwd, timeoutMs);
+  const execution = await runCli(executable, args, cwd, { timeoutMs });
   return execution
     .mapError(
       (error): CliExecutionError =>

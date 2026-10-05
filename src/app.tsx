@@ -8,10 +8,7 @@ import {
   useForgeContext,
   type RepositoryForgeContextState,
 } from "@/context/forge-context";
-import {
-  LocalRepositoryProvider,
-  useLocalRepository,
-} from "@/context/local-repository-context";
+import { LocalRepositoryProvider } from "@/context/local-repository-context";
 import { PullRequestProvider } from "@/context/pull-request-context";
 import {
   pullRequestViewId,
@@ -219,8 +216,7 @@ function RepositoryShell(props: {
               minWidth={0}
             >
               <PrView state={props.state} titles={titles} />
-              <PushLogPanel />
-              <DismissPushLog target={box} />
+              <PushLogPanel target={box} />
             </box>
           </box>
         </LocalRepositoryProvider>
@@ -230,20 +226,6 @@ function RepositoryShell(props: {
       />
     </box>
   );
-}
-
-function DismissPushLog(props: {
-  readonly target: Accessor<BoxRenderable | undefined>;
-}) {
-  const localRepository = useLocalRepository();
-  useBindings(() => ({
-    target: props.target,
-    bindings:
-      localRepository.pushLog() === undefined
-        ? []
-        : [{ key: "escape", cmd: () => localRepository.dismissPushLog() }],
-  }));
-  return null;
 }
 
 function DefaultWelcome() {

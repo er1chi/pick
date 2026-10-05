@@ -1,8 +1,10 @@
+import { useBindings } from "@opentui/keymap/solid";
 import { For, Show } from "solid-js";
 import { useLocalRepository } from "@/context/local-repository-context";
 import { useSpinnerFrame } from "@/shared/hooks/use-spinner-frame";
 import { colors } from "@/theme";
 
+import type { BoxRenderable } from "@opentui/core";
 import type { Accessor, JSX } from "solid-js";
 import type { PushLog } from "@/context/local-repository-context";
 
@@ -19,9 +21,21 @@ function statusTitle(log: PushLog, frame: string): string {
   }
 }
 
-export function PushLogPanel(): JSX.Element {
+interface PushLogPanelProps {
+  readonly target: Accessor<BoxRenderable | undefined>;
+}
+
+export function PushLogPanel(props: PushLogPanelProps): JSX.Element {
   const localRepository = useLocalRepository();
   const frame = useSpinnerFrame(localRepository.pushing);
+
+  useBindings(() => ({
+    target: props.target,
+    bindings:
+      localRepository.pushLog() === undefined
+        ? []
+        : [{ key: "escape", cmd: () => localRepository.dismissPushLog() }],
+  }));
 
   return (
     <Show when={localRepository.pushLog()}>

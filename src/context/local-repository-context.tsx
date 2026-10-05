@@ -22,7 +22,6 @@ export interface LocalRepositoryValue {
   readonly commits: Accessor<ForgeSection<readonly GitCommit[]> | undefined>;
   readonly hasUnpushedCommits: Accessor<boolean>;
   readonly pushing: Accessor<boolean>;
-  /** Output of the latest push, until it is dismissed. */
   readonly pushLog: Accessor<PushLog | undefined>;
   push(): Promise<void>;
   dismissPushLog(): void;

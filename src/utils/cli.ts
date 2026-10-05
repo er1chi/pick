@@ -26,7 +26,6 @@ export type CliError =
 export interface CliOptions {
   readonly timeoutMs?: number;
   readonly env?: Readonly<Record<string, string>>;
-  /** Receives each line of stdout and stderr as it is written. */
   readonly onLine?: (line: string) => void;
 }
 

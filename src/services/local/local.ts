@@ -229,21 +229,16 @@ async function pushRemote(cwd: string): Promise<Result<string, GitError>> {
   });
 }
 
-// Hooks print colors and other escape sequences even into a pipe, and the
-// terminal would act on them when the line is drawn.
 function plainLine(line: string): string {
   // oxlint-disable-next-line no-control-regex
   return Bun.stripANSI(line).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
 }
 
-/** Pushes the current branch, setting its upstream on the first push. Git's
- * output, including that of its hooks, is passed to `onLine` as it arrives. */
 export async function pushBranch(
   cwd: string,
   onLine: (line: string) => void,
 ): Promise<Result<void, GitError>> {
   const options: CliOptions = {
-    // Credential prompts would draw over the TUI, so git fails fast instead.
     env: { GIT_TERMINAL_PROMPT: "0" },
     onLine: (line) => onLine(plainLine(line)),
   };

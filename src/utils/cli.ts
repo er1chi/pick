@@ -44,12 +44,15 @@ async function readOutput(
   for await (const chunk of stream) {
     const decoded = decoder.decode(chunk, { stream: true });
     text += decoded;
-    const lines = (pending + decoded).split(/\r?\n|\r/);
-    pending = lines.pop() ?? "";
+    const buffered = pending + decoded;
+    const end = buffered.endsWith("\r") ? -1 : buffered.length;
+    const lines = buffered.slice(0, end).split(/\r?\n|\r/);
+    pending = (lines.pop() ?? "") + buffered.slice(end);
     lines.forEach(onLine);
   }
-  if (pending !== "") {
-    onLine(pending);
+  const last = pending.replace(/\r$/, "");
+  if (last !== "") {
+    onLine(last);
   }
   return text;
 }

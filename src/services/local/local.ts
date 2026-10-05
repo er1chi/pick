@@ -90,8 +90,6 @@ export async function readStashes(
 
 const commitLimit = 200;
 
-// Fields are NUL-separated and records end with a record separator, since a
-// full commit message can hold any other delimiter.
 const commitFields = ["%H", "%an", "%cn", "%aI", "%cI", "%B"];
 const commitFormat = `--format=${commitFields.join("%x00")}%x1e`;
 

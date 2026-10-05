@@ -6,30 +6,33 @@ import { colors } from "@/theme";
 
 import type { BoxRenderable } from "@opentui/core";
 import type { Accessor, JSX } from "solid-js";
-import type { PushLog } from "@/context/local-repository-context";
+import type { RemoteLog } from "@/context/local-repository-context";
 
 const height = 12;
 
-function statusTitle(status: PushLog["status"], frame: string): string {
-  switch (status) {
+const operationLabels = { push: "Push", pull: "Sync" } as const;
+
+function statusTitle(log: RemoteLog, frame: string): string {
+  const label = operationLabels[log.operation];
+  switch (log.status) {
     case "running":
-      return `Push ${frame}`;
+      return `${label} ${frame}`;
     case "succeeded":
-      return "Push · Done";
+      return `${label} · Done`;
     case "failed":
-      return "Push · Failed";
+      return `${label} · Failed`;
     case "idle":
-      return "Push";
+      return label;
   }
 }
 
-interface PushLogPanelProps {
+interface RemoteLogPanelProps {
   readonly target: Accessor<BoxRenderable | undefined>;
 }
 
-export function PushLogPanel(props: PushLogPanelProps): JSX.Element {
+export function RemoteLogPanel(props: RemoteLogPanelProps): JSX.Element {
   const localRepository = useLocalRepository();
-  const log = localRepository.pushLog;
+  const log = localRepository.remoteLog;
   const frame = useSpinnerFrame(() => log.status === "running");
 
   useBindings(() => ({
@@ -37,7 +40,7 @@ export function PushLogPanel(props: PushLogPanelProps): JSX.Element {
     bindings:
       log.status === "idle"
         ? []
-        : [{ key: "escape", cmd: () => localRepository.dismissPushLog() }],
+        : [{ key: "escape", cmd: () => localRepository.dismissRemoteLog() }],
   }));
 
   return (
@@ -51,7 +54,7 @@ export function PushLogPanel(props: PushLogPanelProps): JSX.Element {
         paddingRight={1}
         border
         borderColor={log.status === "failed" ? colors.red : colors.border}
-        title={statusTitle(log.status, frame())}
+        title={statusTitle(log, frame())}
         bottomTitle={log.status === "running" ? undefined : "Esc close"}
         bottomTitleAlignment="right"
       >

@@ -58,11 +58,17 @@ export function CommitsBox(props: CommitsBoxProps): JSX.Element {
     }
   }
 
-  const pushing = () => localRepository.pushLog.status === "running";
-  const spinnerFrame = useSpinnerFrame(pushing);
+  function pullLocalBranch(): void {
+    if (opened() === undefined) {
+      void localRepository.pull();
+    }
+  }
+
+  const running = () => localRepository.remoteLog.status === "running";
+  const spinnerFrame = useSpinnerFrame(running);
   const title = () => {
     const scoped = scopedTitle("[1] Commits", opened()?.number);
-    return pushing() ? `${scoped} ${spinnerFrame()}` : scoped;
+    return running() ? `${scoped} ${spinnerFrame()}` : scoped;
   };
 
   useBindings(() => ({
@@ -70,11 +76,18 @@ export function CommitsBox(props: CommitsBoxProps): JSX.Element {
     bindings: [
       { key: "return", cmd: activateHighlighted },
       { key: "shift+p", cmd: pushLocalCommits },
+      { key: "shift+s", cmd: pullLocalBranch },
     ],
   }));
 
   return (
-    <list.Box title={title()} maxVisibleRows={maxVisibleRows} flexGrow={0}>
+    <list.Box
+      title={title()}
+      bottomTitle={opened() === undefined ? "[S]ync [P]ush" : undefined}
+      bottomTitleAlignment="right"
+      maxVisibleRows={maxVisibleRows}
+      flexGrow={0}
+    >
       <list.Rows
         emptyText={opened() === undefined ? "No local commits." : "No commits."}
       >

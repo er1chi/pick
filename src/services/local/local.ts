@@ -211,17 +211,28 @@ function plainLine(line: string): string {
   return Bun.stripANSI(line).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
 }
 
+async function runRemoteGit(
+  cwd: string,
+  args: readonly string[],
+  onLine: (line: string) => void,
+): Promise<Result<void, GitError>> {
+  const output = await runGit(cwd, args, {
+    env: { GIT_TERMINAL_PROMPT: "0", GIT_MERGE_AUTOEDIT: "no" },
+    onLine: (line) => onLine(plainLine(line)),
+  });
+  return output.map(() => {});
+}
+
 export async function pushBranch(
   cwd: string,
   onLine: (line: string) => void,
 ): Promise<Result<void, GitError>> {
-  const pushed = await runGit(
-    cwd,
-    ["-c", "push.autoSetupRemote=true", "push"],
-    {
-      env: { GIT_TERMINAL_PROMPT: "0" },
-      onLine: (line) => onLine(plainLine(line)),
-    },
-  );
-  return pushed.map(() => {});
+  return runRemoteGit(cwd, ["-c", "push.autoSetupRemote=true", "push"], onLine);
+}
+
+export async function pullBranch(
+  cwd: string,
+  onLine: (line: string) => void,
+): Promise<Result<void, GitError>> {
+  return runRemoteGit(cwd, ["pull"], onLine);
 }

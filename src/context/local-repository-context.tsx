@@ -10,6 +10,7 @@ import {
 import { createStore } from "solid-js/store";
 import { available, unsupported } from "@/services/forge/section";
 import {
+  pullBranch,
   pushBranch,
   readChangedFiles,
   readCommitPatch,
@@ -30,7 +31,10 @@ import type {
   GitFileChange,
 } from "@/services/local/types";
 
-export interface PushLog {
+type RemoteOperation = "push" | "pull";
+
+export interface RemoteLog {
+  readonly operation: RemoteOperation;
   readonly status: "idle" | "running" | "succeeded" | "failed";
   readonly lines: readonly string[];
 }
@@ -41,9 +45,10 @@ export interface LocalRepositoryValue {
     Result<readonly GitFileChange[], GitError> | undefined
   >;
   readonly hasUnpushedCommits: Accessor<boolean>;
-  readonly pushLog: PushLog;
+  readonly remoteLog: RemoteLog;
   push(): Promise<void>;
-  dismissPushLog(): void;
+  pull(): Promise<void>;
+  dismissRemoteLog(): void;
 }
 
 const LocalRepositoryContext = createContext<LocalRepositoryValue>();
@@ -58,13 +63,40 @@ export function LocalRepositoryProvider(props: {
     viewContext.view().source.kind === "local"
       ? forgeContext.state().cwd
       : undefined;
-  const [pushLog, setPushLog] = createStore<{
-    status: PushLog["status"];
+  const [remoteLog, setRemoteLog] = createStore<{
+    operation: RemoteOperation;
+    status: RemoteLog["status"];
     lines: string[];
-  }>({ status: "idle", lines: [] });
-  const [commits, { refetch }] = createResource(localCwd, readCommits);
-  const [changedFiles] = createResource(localCwd, readChangedFiles);
-  const [workingTreePatch] = createResource(localCwd, readWorkingTreePatch);
+  }>({ operation: "push", status: "idle", lines: [] });
+  const [commits, { refetch: refetchCommits }] = createResource(
+    localCwd,
+    readCommits,
+  );
+  const [changedFiles, { refetch: refetchChangedFiles }] = createResource(
+    localCwd,
+    readChangedFiles,
+  );
+  const [workingTreePatch, { refetch: refetchWorkingTreePatch }] =
+    createResource(localCwd, readWorkingTreePatch);
+
+  async function runRemote(
+    operation: RemoteOperation,
+    command: typeof pushBranch,
+  ): Promise<void> {
+    if (remoteLog.status === "running") {
+      return;
+    }
+    setRemoteLog({ operation, status: "running", lines: [] });
+    const result = await command(forgeContext.state().cwd, (line) =>
+      setRemoteLog("lines", remoteLog.lines.length, line),
+    );
+    await Promise.all([
+      refetchCommits(),
+      refetchChangedFiles(),
+      refetchWorkingTreePatch(),
+    ]);
+    setRemoteLog("status", result.isOk() ? "succeeded" : "failed");
+  }
   const selectedCommit = createMemo(() =>
     localCwd() === undefined ? undefined : viewContext.view().commit,
   );
@@ -128,21 +160,12 @@ export function LocalRepositoryProvider(props: {
         result.value.some((commit) => !commit.pushed)
       );
     },
-    pushLog,
-    push: async () => {
-      if (pushLog.status === "running") {
-        return;
-      }
-      setPushLog({ status: "running", lines: [] });
-      const pushed = await pushBranch(forgeContext.state().cwd, (line) =>
-        setPushLog("lines", pushLog.lines.length, line),
-      );
-      await refetch();
-      setPushLog("status", pushed.isOk() ? "succeeded" : "failed");
-    },
-    dismissPushLog: () => {
-      if (pushLog.status !== "running") {
-        setPushLog({ status: "idle", lines: [] });
+    remoteLog,
+    push: () => runRemote("push", pushBranch),
+    pull: () => runRemote("pull", pullBranch),
+    dismissRemoteLog: () => {
+      if (remoteLog.status !== "running") {
+        setRemoteLog({ status: "idle", lines: [] });
       }
     },
   };

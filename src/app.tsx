@@ -21,7 +21,7 @@ import { usePrTitles } from "@/features/main-view/hooks/use-pr-titles";
 import { PrView } from "@/features/main-view/main-view";
 import { LoadStatus } from "@/features/main-view/types";
 import { Menubar } from "@/features/menubar/menubar";
-import { PushLogPanel } from "@/features/push-log/push-log";
+import { RemoteLogPanel } from "@/features/remote-log/remote-log";
 import { Sidebar } from "@/features/sidebar/sidebar";
 import {
   ForgeExecutableUnavailableError,
@@ -89,6 +89,7 @@ function repositoryFooterBindings(
       return [
         ...base,
         { key: "j/k", label: "Navigate/select commit" },
+        { key: "S", label: "Sync" },
         { key: "P", label: "Push" },
       ];
     case Pane.Stashes:
@@ -216,7 +217,7 @@ function RepositoryShell(props: {
               minWidth={0}
             >
               <PrView state={props.state} titles={titles} />
-              <PushLogPanel target={box} />
+              <RemoteLogPanel target={box} />
             </box>
           </box>
         </LocalRepositoryProvider>

@@ -17,6 +17,7 @@ import {
   ForgeContextProvider,
 } from "@/context/forge-context";
 import { LocalRepositoryProvider } from "@/context/local-repository-context";
+import { PatchStoreProvider } from "@/context/patch-store";
 import {
   PullRequestProvider,
   type PullRequestContextValue,
@@ -94,10 +95,12 @@ function CommitsBoxHarness(props: { readonly pane?: Pane }): JSX.Element {
         <KeymapProvider keymap={keymap()}>
           <ViewContextProvider initialView={openPullRequest}>
             <PullRequestProvider value={listedPullRequest}>
-              <LocalRepositoryProvider>
-                <SetActivePane pane={props.pane ?? Pane.Commits} />
-                <CommitsBox rowWidth={30} />
-              </LocalRepositoryProvider>
+              <PatchStoreProvider>
+                <LocalRepositoryProvider>
+                  <SetActivePane pane={props.pane ?? Pane.Commits} />
+                  <CommitsBox rowWidth={30} />
+                </LocalRepositoryProvider>
+              </PatchStoreProvider>
             </PullRequestProvider>
           </ViewContextProvider>
         </KeymapProvider>
@@ -140,9 +143,11 @@ function CommitsBoxLayoutHarness(props: {
                     {(_, index) => <text id={`file-row-${index()}`}>file</text>}
                   </For>
                 </box>
-                <LocalRepositoryProvider>
-                  <CommitsBox rowWidth={30} />
-                </LocalRepositoryProvider>
+                <PatchStoreProvider>
+                  <LocalRepositoryProvider>
+                    <CommitsBox rowWidth={30} />
+                  </LocalRepositoryProvider>
+                </PatchStoreProvider>
               </box>
             </PullRequestProvider>
           </ViewContextProvider>

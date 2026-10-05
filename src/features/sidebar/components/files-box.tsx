@@ -1,7 +1,7 @@
 import { useBindings } from "@opentui/keymap/solid";
-import { createEffect, createMemo, createResource } from "solid-js";
+import { createEffect, createMemo } from "solid-js";
 import { SelectableRow } from "@/components/selectable-row";
-import { useForgeContext } from "@/context/forge-context";
+import { useLocalRepository } from "@/context/local-repository-context";
 import { usePatchStore } from "@/context/patch-store";
 import { useViewContext, viewPullRequest } from "@/context/view-context";
 import { patchFileIndex } from "@/features/main-view/utils/patch-file-index";
@@ -14,7 +14,6 @@ import {
   useFileTree,
   useFileTreeSelector,
 } from "@/packages/pierre/solid/trees";
-import { readChangedFiles } from "@/services/local/local";
 import { colors } from "@/theme";
 import { Pane } from "@/types";
 import { scopedTitle } from "./sidebar-box";
@@ -134,7 +133,7 @@ interface FilesBoxProps {
 export function FilesBox(props: FilesBoxProps): JSX.Element {
   const viewContext = useViewContext();
   const patchStore = usePatchStore();
-  const forgeContext = useForgeContext();
+  const localRepository = useLocalRepository();
   const opened = () => viewPullRequest(viewContext.view());
   const workingTree = () =>
     opened() === undefined && viewContext.view().commit === undefined;
@@ -148,11 +147,9 @@ export function FilesBox(props: FilesBoxProps): JSX.Element {
       opened()?.number,
     );
   };
-  const [localChanges] = createResource(
-    () => (opened() === undefined ? forgeContext.state().cwd : undefined),
-    (cwd) => readChangedFiles(cwd),
+  const localFilesView = createMemo(() =>
+    localFiles(localRepository.changedFiles()),
   );
-  const localFilesView = createMemo(() => localFiles(localChanges.latest));
   const filesView = createMemo<FilesView>(() => {
     if (workingTree()) {
       return localFilesView();

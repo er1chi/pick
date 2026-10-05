@@ -13,10 +13,11 @@ export function useSourceCommits(): Accessor<readonly SourceCommit[]> {
   const pullRequest = usePullRequest();
   const localRepository = useLocalRepository();
   return createMemo(() => {
-    const section =
-      viewContext.view().source.kind === "local"
-        ? localRepository.commits()
-        : pullRequest.data()?.commits;
-    return section?.status === "available" ? section.value : [];
+    if (viewContext.view().source.kind === "local") {
+      const section = localRepository.commits();
+      return section?.status === "available" ? section.value : [];
+    }
+    const section = pullRequest.data()?.commits;
+    return section?.status === "available" ? section.value.toReversed() : [];
   });
 }

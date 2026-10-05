@@ -191,16 +191,16 @@ describe("CommitsBox", () => {
       height: 12,
     });
     try {
-      await setup.waitFor(() => isSelected(setup, COMMIT_A.sha));
-
-      expect(isSelected(setup, COMMIT_A.sha)).toBe(true);
-      expect(isSelected(setup, COMMIT_B.sha)).toBe(false);
-
-      setup.mockInput.pressKey("j");
       await setup.waitFor(() => isSelected(setup, COMMIT_B.sha));
 
       expect(isSelected(setup, COMMIT_B.sha)).toBe(true);
       expect(isSelected(setup, COMMIT_A.sha)).toBe(false);
+
+      setup.mockInput.pressKey("j");
+      await setup.waitFor(() => isSelected(setup, COMMIT_A.sha));
+
+      expect(isSelected(setup, COMMIT_A.sha)).toBe(true);
+      expect(isSelected(setup, COMMIT_B.sha)).toBe(false);
     } finally {
       setup.renderer.destroy();
     }

@@ -67,7 +67,7 @@ export function RemoteLogPanel(props: RemoteLogPanelProps): JSX.Element {
         >
           <For each={log.lines}>
             {(line) => (
-              <text fg={colors.muted} wrapMode="none" truncate>
+              <text fg={colors.muted} wrapMode="none">
                 {line === "" ? " " : line}
               </text>
             )}
